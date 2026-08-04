@@ -4,29 +4,283 @@ import type {
   ChatConversation, DashboardMetrics, AnalyticsPoint, UserProfile,
   JobSearchConfig, ChatMessage, AgentRun,
 } from '@/types';
-import {
-  seedJobs, seedResumes, seedCoverLetters, seedApplications, seedWorkflows,
-  seedAgents, seedDocuments, seedNotifications, seedIntegrations, seedPrompts,
-  seedAutomations, seedConversations, seedDashboardMetrics, seedAnalytics,
-  seedUserProfile,
-} from '@/lib/seed';
+import { supabase } from '@/lib/supabase';
 import { uid, sleep } from '@/utils';
 
-/**
- * Mock service layer. Each service mirrors a production API with async methods.
- * Swap implementations to call Supabase / edge functions without changing call sites.
- */
+/* ── helpers ── */
 
-const lat = (ms = 200) => sleep(ms + Math.random() * 200);
+function mapJob(row: Record<string, unknown>): Job {
+  return {
+    id: String(row.id),
+    company: String(row.company ?? ''),
+    role: String(row.role ?? ''),
+    description: String(row.description ?? ''),
+    matchScore: Number(row.match_score ?? 0),
+    salaryMin: row.salary_min as number | undefined,
+    salaryMax: row.salary_max as number | undefined,
+    skills: (row.skills as string[]) ?? [],
+    postingDate: (row.posting_date as string) ?? (row.created_at as string),
+    source: String(row.source ?? ''),
+    location: String(row.location ?? ''),
+    remote: Boolean(row.remote),
+    hybrid: Boolean(row.hybrid),
+    experience: row.experience as string | undefined,
+    duplicate: Boolean(row.duplicate),
+    resumeStatus: (row.resume_status as Job['resumeStatus']) ?? 'none',
+    applicationStatus: (row.application_status as Job['applicationStatus']) ?? 'draft',
+    status: (row.status as Job['status']) ?? 'discovered',
+    url: row.url as string | undefined,
+    createdAt: row.created_at as string,
+  };
+}
+
+function mapResume(row: Record<string, unknown>): Resume {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    type: (row.type as Resume['type']) ?? 'general',
+    content: String(row.content ?? ''),
+    atsScore: Number(row.ats_score ?? 0),
+    versions: (row.resume_versions as Record<string, unknown>[])?.map((v) => ({
+      id: String(v.id),
+      resumeId: String(v.resume_id ?? row.id),
+      version: Number(v.version ?? 1),
+      content: String(v.content ?? ''),
+      atsScore: Number(v.ats_score ?? 0),
+      createdAt: (v.created_at as string) ?? '',
+      note: v.note as string | undefined,
+    })) ?? [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapCoverLetter(row: Record<string, unknown>): CoverLetter {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    jobId: row.job_id as string | undefined,
+    companyName: row.company_name as string | undefined,
+    role: row.role as string | undefined,
+    content: String(row.content ?? ''),
+    versions: [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapApplication(row: Record<string, unknown>): Application {
+  return {
+    id: String(row.id),
+    jobId: row.job_id as string | undefined,
+    company: String(row.company ?? ''),
+    role: String(row.role ?? ''),
+    resumeVersionId: row.resume_version_id as string | undefined,
+    coverLetterId: row.cover_letter_id as string | undefined,
+    applicationDate: (row.application_date as string) ?? (row.created_at as string),
+    recruiter: row.recruiter as string | undefined,
+    status: (row.status as Application['status']) ?? 'draft',
+    timeline: (row.application_events as Record<string, unknown>[])?.map((e) => ({
+      id: String(e.id),
+      type: e.type as Application['timeline'][number]['type'],
+      label: String(e.label ?? ''),
+      date: (e.event_date as string) ?? '',
+      description: e.description as string | undefined,
+    })) ?? [],
+    notes: String(row.notes ?? ''),
+    attachments: (row.attachments as string[]) ?? [],
+    createdAt: row.created_at as string,
+  };
+}
+
+function mapWorkflow(row: Record<string, unknown>): Workflow {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    description: String(row.description ?? ''),
+    active: Boolean(row.active),
+    nodes: (row.workflow_nodes as Record<string, unknown>[])?.map((n) => ({
+      id: String(n.id),
+      type: n.type as Workflow['nodes'][number]['type'],
+      name: String(n.name ?? ''),
+      position: { x: Number(n.position_x ?? 0), y: Number(n.position_y ?? 0) },
+      config: (n.config as Record<string, unknown>) ?? {},
+      status: 'idle' as const,
+    })) ?? [],
+    edges: (row.workflow_edges as Record<string, unknown>[])?.map((e) => ({
+      id: String(e.id),
+      source: String(e.source_id ?? ''),
+      target: String(e.target_id ?? ''),
+      label: e.label as string | undefined,
+    })) ?? [],
+    schedule: row.schedule as string | undefined,
+    lastRun: row.last_run as string | undefined,
+    nextRun: row.next_run as string | undefined,
+    runs: [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapAgent(row: Record<string, unknown>): Agent {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    type: (row.type as Agent['type']) ?? 'career_advisor',
+    description: String(row.description ?? ''),
+    prompt: String(row.prompt ?? ''),
+    model: (row.model as Agent['model']) ?? 'gemini',
+    temperature: Number(row.temperature ?? 0.3),
+    memory: Boolean(row.memory),
+    enabled: Boolean(row.enabled),
+    runs: (row.agent_runs as Record<string, unknown>[])?.map((r) => ({
+      id: String(r.id),
+      agentId: String(r.agent_id ?? row.id),
+      status: (r.status as AgentRun['status']) ?? 'success',
+      input: String(r.input ?? ''),
+      output: String(r.output ?? ''),
+      startedAt: (r.started_at as string) ?? (r.created_at as string),
+      duration: Number(r.duration_ms ?? 0),
+      cost: Number(r.cost ?? 0),
+      tokens: Number(r.tokens ?? 0),
+    })) ?? [],
+    metrics: (row.metrics as Agent['metrics']) ?? { runs: 0, successRate: 0, avgLatency: 0, totalCost: 0, tokens: 0 },
+    createdAt: row.created_at as string,
+  };
+}
+
+function mapDocument(row: Record<string, unknown>): Document {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    type: (row.type as Document['type']) ?? 'txt',
+    size: Number(row.size ?? 0),
+    folder: String(row.folder ?? ''),
+    tags: (row.tags as string[]) ?? [],
+    content: row.content as string | undefined,
+    versions: (row.document_versions as Record<string, unknown>[])?.map((v) => ({
+      id: String(v.id),
+      version: Number(v.version ?? 1),
+      createdAt: (v.created_at as string) ?? '',
+    })) ?? [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapNotification(row: Record<string, unknown>): Notification {
+  return {
+    id: String(row.id),
+    type: (row.type as Notification['type']) ?? 'in_app',
+    title: String(row.title ?? ''),
+    message: String(row.message ?? ''),
+    read: Boolean(row.read),
+    createdAt: row.created_at as string,
+  };
+}
+
+function mapIntegration(row: Record<string, unknown>): Integration {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    category: String(row.category ?? ''),
+    status: (row.status as Integration['status']) ?? 'disconnected',
+    description: String(row.description ?? ''),
+    icon: String(row.icon ?? ''),
+    lastSync: row.last_sync as string | undefined,
+    logs: (row.integration_logs as Record<string, unknown>[])?.map((l) => ({
+      id: String(l.id),
+      message: String(l.message ?? ''),
+      level: (l.level as 'info' | 'error') ?? 'info',
+      timestamp: (l.timestamp as string) ?? '',
+    })) ?? [],
+  };
+}
+
+function mapPrompt(row: Record<string, unknown>): Prompt {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    category: String(row.category ?? ''),
+    content: String(row.content ?? ''),
+    variables: (row.variables as string[]) ?? [],
+    version: Number(row.version ?? 1),
+    history: (row.prompt_versions as Record<string, unknown>[])?.map((v) => ({
+      id: String(v.id),
+      version: Number(v.version ?? 1),
+      content: String(v.content ?? ''),
+      createdAt: (v.created_at as string) ?? '',
+    })) ?? [],
+    createdAt: row.created_at as string,
+  };
+}
+
+function mapAutomation(row: Record<string, unknown>): Automation {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    workflowId: String(row.workflow_id ?? ''),
+    status: (row.status as Automation['status']) ?? 'paused',
+    schedule: String(row.schedule ?? ''),
+    trigger: String(row.trigger ?? ''),
+    lastRun: row.last_run as string | undefined,
+    nextRun: row.next_run as string | undefined,
+    retries: Number(row.retries ?? 0),
+    versions: [],
+    createdAt: row.created_at as string,
+  };
+}
+
+function mapConversation(row: Record<string, unknown>): ChatConversation {
+  return {
+    id: String(row.id),
+    title: String(row.title ?? ''),
+    messages: (row.chat_messages as Record<string, unknown>[])?.map((m) => ({
+      id: String(m.id),
+      role: (m.role as ChatMessage['role']) ?? 'user',
+      content: String(m.content ?? ''),
+      artifact: m.artifact_type ? {
+        type: m.artifact_type as ChatMessage['artifact'] extends infer A ? A extends { type: infer T } ? T : never : never,
+        title: String(m.artifact_title ?? ''),
+        content: String(m.artifact_content ?? ''),
+      } : undefined,
+      createdAt: (m.created_at as string) ?? '',
+      pinned: Boolean(m.pinned),
+    })) ?? [],
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+function mapProfile(row: Record<string, unknown>): UserProfile {
+  return {
+    id: String(row.id ?? row.user_id ?? ''),
+    email: String(row.email ?? ''),
+    fullName: String(row.full_name ?? ''),
+    title: String(row.title ?? ''),
+    avatarUrl: row.avatar_url as string | undefined,
+    plan: (row.plan as UserProfile['plan']) ?? 'free',
+    aiCreditsUsed: Number(row.ai_credits_used ?? 0),
+    aiCreditsTotal: Number(row.ai_credits_total ?? 0),
+  };
+}
+
+/* ── services ── */
 
 export class JobSearchService {
   async list(_config?: Partial<JobSearchConfig>): Promise<Job[]> {
-    await lat(250);
-    return [...seedJobs];
+    const { data, error } = await supabase.from('jobs').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapJob);
   }
   async search(config: Partial<JobSearchConfig>): Promise<Job[]> {
-    await lat(600);
-    let results = [...seedJobs];
+    let q = supabase.from('jobs').select('*');
+    if (config.remote) q = q.eq('remote', true);
+    if (config.hybrid) q = q.eq('hybrid', true);
+    if (config.salaryMin) q = q.gte('salary_min', config.salaryMin);
+    const { data, error } = await q.order('match_score', { ascending: false }).limit(config.maxJobs || 30);
+    if (error) throw error;
+    let results = (data || []).map(mapJob);
     if (config.keywords?.length) {
       results = results.filter((j) =>
         config.keywords!.some((k) =>
@@ -39,62 +293,45 @@ export class JobSearchService {
     if (config.locations?.length) {
       results = results.filter((j) => config.locations!.some((l) => j.location.includes(l)));
     }
-    if (config.remote) results = results.filter((j) => j.remote);
-    if (config.hybrid) results = results.filter((j) => j.hybrid);
-    if (config.salaryMin) results = results.filter((j) => (j.salaryMin || 0) >= config.salaryMin!);
     if (config.companies?.length) {
       results = results.filter((j) => config.companies!.some((c) => j.company.toLowerCase().includes(c.toLowerCase())));
     }
-    return results.slice(0, config.maxJobs || 30);
+    return results;
   }
   async updateStatus(id: string, status: Job['status']): Promise<void> {
-    await lat(150);
-    const job = seedJobs.find((j) => j.id === id);
-    if (job) job.status = status;
+    const { error } = await supabase.from('jobs').update({ status }).eq('id', id);
+    if (error) throw error;
   }
 }
 
 export class ResumeService {
   async list(): Promise<Resume[]> {
-    await lat();
-    return [...seedResumes];
+    const { data, error } = await supabase.from('resumes').select('*, resume_versions(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapResume);
   }
   async get(id: string): Promise<Resume | undefined> {
-    await lat();
-    return seedResumes.find((r) => r.id === id);
+    const { data, error } = await supabase.from('resumes').select('*, resume_versions(*)').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? mapResume(data) : undefined;
   }
   async create(name: string, type: Resume['type'], content: string): Promise<Resume> {
-    await lat(400);
-    const resume: Resume = {
-      id: uid('res'), name, type, content, atsScore: 0, versions: [],
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    seedResumes.unshift(resume);
-    return resume;
+    const { data, error } = await supabase.from('resumes').insert({ name, type, content, ats_score: 0 }).select('*, resume_versions(*)').single();
+    if (error) throw error;
+    return mapResume(data);
   }
   async update(id: string, content: string): Promise<void> {
-    await lat(200);
-    const r = seedResumes.find((x) => x.id === id);
-    if (r) { r.content = content; r.updatedAt = new Date().toISOString(); }
+    const { error } = await supabase.from('resumes').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
   }
-  async generateTailored(jobId: string, resumeId: string, style: 'technical' | 'executive' | 'general'): Promise<Resume> {
-    await lat(1200);
-    const base = seedResumes.find((r) => r.id === resumeId);
-    const job = seedJobs.find((j) => j.id === jobId);
-    const name = `${style.charAt(0).toUpperCase() + style.slice(1)} — ${job?.company || 'New'} Resume`;
-    const content = `# ${name}\n\nTailored for ${job?.role} at ${job?.company}.\n\n${base?.content || ''}`;
-    const resume: Resume = {
-      id: uid('res'), name, type: style, content, atsScore: 88 + Math.floor(Math.random() * 10),
-      versions: [{ id: uid('rv'), resumeId: '', version: 1, content, atsScore: 88, createdAt: new Date().toISOString(), note: 'AI generated' }],
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    seedResumes.unshift(resume);
-    return resume;
+  async generateTailored(_jobId: string, _resumeId: string, _style: 'technical' | 'executive' | 'general'): Promise<Resume> {
+    await sleep(1200);
+    throw new Error('AI resume generation requires an AI provider API key');
   }
   async compare(idA: string, idB: string): Promise<{ a: Resume; b: Resume; diff: string[] }> {
-    await lat(300);
-    const a = seedResumes.find((r) => r.id === idA)!;
-    const b = seedResumes.find((r) => r.id === idB)!;
+    const a = await this.get(idA);
+    const b = await this.get(idB);
+    if (!a || !b) throw new Error('Resume not found');
     return {
       a, b,
       diff: [
@@ -107,315 +344,307 @@ export class ResumeService {
 }
 
 export class ATSService {
-  async score(content: string): Promise<{ score: number; feedback: string[] }> {
-    await lat(800);
-    const score = 70 + Math.floor(Math.random() * 28);
-    const feedback = [
-      'Keywords matched well for target role',
-      'Consider quantifying more achievements',
-      'Contact section is complete',
-      'Skills section aligns with common ATS parsing',
-    ];
-    return { score, feedback };
+  async score(_content: string): Promise<{ score: number; feedback: string[] }> {
+    await sleep(800);
+    throw new Error('ATS scoring requires an AI provider API key');
   }
 }
 
 export class CoverLetterService {
   async list(): Promise<CoverLetter[]> {
-    await lat();
-    return [...seedCoverLetters];
+    const { data, error } = await supabase.from('cover_letters').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapCoverLetter);
   }
   async create(name: string, companyName: string, role: string, content: string): Promise<CoverLetter> {
-    await lat(400);
-    const cl: CoverLetter = {
-      id: uid('cl'), name, companyName, role, content,
-      versions: [{ id: uid('clv'), version: 1, content, createdAt: new Date().toISOString() }],
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    seedCoverLetters.unshift(cl);
-    return cl;
+    const { data, error } = await supabase.from('cover_letters').insert({ name, company_name: companyName, role, content }).select().single();
+    if (error) throw error;
+    return mapCoverLetter(data);
   }
-  async generate(jobId: string): Promise<CoverLetter> {
-    await lat(1000);
-    const job = seedJobs.find((j) => j.id === jobId);
-    const content = `Dear Hiring Manager,\n\nI'm excited to apply for the ${job?.role} position at ${job?.company}. My experience aligns strongly with your requirements...\n\nBest regards,\nAlex Morgan`;
-    return this.create(`Cover Letter — ${job?.company}`, job?.company || '', job?.role || '', content);
+  async generate(_jobId: string): Promise<CoverLetter> {
+    await sleep(1000);
+    throw new Error('AI cover letter generation requires an AI provider API key');
   }
   async update(id: string, content: string): Promise<void> {
-    await lat(200);
-    const cl = seedCoverLetters.find((c) => c.id === id);
-    if (cl) { cl.content = content; cl.updatedAt = new Date().toISOString(); }
+    const { error } = await supabase.from('cover_letters').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
   }
 }
 
 export class ApplicationService {
   async list(): Promise<Application[]> {
-    await lat();
-    return [...seedApplications];
+    const { data, error } = await supabase.from('applications').select('*, application_events(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapApplication);
   }
   async create(app: Partial<Application>): Promise<Application> {
-    await lat(300);
-    const newApp: Application = {
-      id: uid('app'),
+    const { data, error } = await supabase.from('applications').insert({
       company: app.company || '',
       role: app.role || '',
-      applicationDate: new Date().toISOString(),
       status: 'draft',
-      timeline: [{ id: uid('ev'), type: 'submitted', label: 'Application Created', date: new Date().toISOString() }],
-      notes: '', attachments: [],
-      createdAt: new Date().toISOString(),
-      ...app,
-    };
-    seedApplications.unshift(newApp);
-    return newApp;
+      notes: '',
+      attachments: [],
+    }).select('*, application_events(*)').single();
+    if (error) throw error;
+    return mapApplication(data);
   }
   async updateStatus(id: string, status: Application['status']): Promise<void> {
-    await lat(150);
-    const app = seedApplications.find((a) => a.id === id);
-    if (app) {
-      app.status = status;
-      app.timeline.push({ id: uid('ev'), type: status as Application['timeline'][number]['type'], label: status.charAt(0).toUpperCase() + status.slice(1), date: new Date().toISOString() });
-    }
+    const { error } = await supabase.from('applications').update({ status }).eq('id', id);
+    if (error) throw error;
+    await supabase.from('application_events').insert({
+      application_id: id,
+      type: status,
+      label: status.charAt(0).toUpperCase() + status.slice(1),
+    });
   }
 }
 
 export class WorkflowService {
   async list(): Promise<Workflow[]> {
-    await lat();
-    return [...seedWorkflows];
+    const { data, error } = await supabase.from('workflows').select('*, workflow_nodes(*), workflow_edges(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapWorkflow);
   }
   async get(id: string): Promise<Workflow | undefined> {
-    await lat();
-    return seedWorkflows.find((w) => w.id === id);
+    const { data, error } = await supabase.from('workflows').select('*, workflow_nodes(*), workflow_edges(*)').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? mapWorkflow(data) : undefined;
   }
   async create(name: string, description: string): Promise<Workflow> {
-    await lat(300);
-    const wf: Workflow = {
-      id: uid('wf'), name, description, active: false, nodes: [], edges: [],
-      runs: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    seedWorkflows.unshift(wf);
-    return wf;
+    const { data, error } = await supabase.from('workflows').insert({ name, description, active: false }).select('*, workflow_nodes(*), workflow_edges(*)').single();
+    if (error) throw error;
+    return mapWorkflow(data);
   }
   async update(id: string, patch: Partial<Workflow>): Promise<void> {
-    await lat(200);
-    const wf = seedWorkflows.find((w) => w.id === id);
-    if (wf) Object.assign(wf, patch, { updatedAt: new Date().toISOString() });
+    const { error } = await supabase.from('workflows').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
   }
   async toggle(id: string): Promise<void> {
-    await lat(150);
-    const wf = seedWorkflows.find((w) => w.id === id);
-    if (wf) wf.active = !wf.active;
+    const { data } = await supabase.from('workflows').select('active').eq('id', id).maybeSingle();
+    if (data) {
+      const { error } = await supabase.from('workflows').update({ active: !data.active }).eq('id', id);
+      if (error) throw error;
+    }
   }
   async delete(id: string): Promise<void> {
-    await lat(150);
-    const idx = seedWorkflows.findIndex((w) => w.id === id);
-    if (idx >= 0) seedWorkflows.splice(idx, 1);
+    const { error } = await supabase.from('workflows').delete().eq('id', id);
+    if (error) throw error;
   }
 }
 
 export class ExecutionService {
   async listRuns(): Promise<Workflow['runs']> {
-    await lat();
-    return seedWorkflows.flatMap((w) => w.runs.map((r) => ({ ...r, workflowId: w.id, workflowName: w.name } as Workflow['runs'][number] & { workflowName: string })));
+    const { data, error } = await supabase
+      .from('workflow_runs')
+      .select('*, workflow:workflows(name), workflow_run_nodes(*), workflow_logs(*)')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (error) throw error;
+    return (data || []).map((r) => ({
+      id: String(r.id),
+      workflowId: String(r.workflow_id),
+      status: (r.status as Workflow['runs'][number]['status']) ?? 'success',
+      startedAt: (r.started_at as string) ?? '',
+      finishedAt: r.finished_at as string | undefined,
+      duration: Number(r.duration_ms ?? 0),
+      nodeResults: ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
+        nodeId: String(n.node_id ?? ''),
+        status: (n.status as Workflow['runs'][number]['nodeResults'][number]['status']) ?? 'success',
+        duration: Number(n.duration_ms ?? 0),
+        output: n.output as string | undefined,
+      })),
+      logs: ((r.workflow_logs as Record<string, unknown>[]) ?? []).map((l) => ({
+        id: String(l.id),
+        level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',
+        message: String(l.message ?? ''),
+        timestamp: (l.timestamp as string) ?? '',
+        nodeId: l.node_id as string | undefined,
+      })),
+      workflowName: (r.workflow as Record<string, unknown>)?.name as string | undefined,
+    })) as unknown as Workflow['runs'];
   }
-  async runWorkflow(id: string): Promise<Workflow['runs'][number]> {
-    const wf = seedWorkflows.find((w) => w.id === id);
-    if (!wf) throw new Error('Workflow not found');
-    const run: Workflow['runs'][number] = {
-      id: uid('run'), workflowId: id, status: 'running', startedAt: new Date().toISOString(),
-      duration: 0, nodeResults: wf.nodes.map((n) => ({ nodeId: n.id, status: 'idle', duration: 0 })), logs: [],
-    };
-    wf.runs.unshift(run);
-    for (const n of wf.nodes) {
-      await sleep(300 + Math.random() * 400);
-      const nr = run.nodeResults.find((x) => x.nodeId === n.id);
-      if (nr) { nr.status = 'success'; nr.duration = 300 + Math.floor(Math.random() * 400); }
-      run.logs.push({ id: uid('log'), level: 'info', message: `Node ${n.name} executed`, timestamp: new Date().toISOString(), nodeId: n.id });
-    }
-    run.status = 'success';
-    run.finishedAt = new Date().toISOString();
-    run.duration = Date.now() - new Date(run.startedAt).getTime();
-    return run;
+  async runWorkflow(_id: string): Promise<Workflow['runs'][number]> {
+    throw new Error('Workflow execution requires a backend runner');
   }
 }
 
 export class AgentService {
   async list(): Promise<Agent[]> {
-    await lat();
-    return [...seedAgents];
+    const { data, error } = await supabase.from('agents').select('*, agent_runs(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapAgent);
   }
   async get(id: string): Promise<Agent | undefined> {
-    await lat();
-    return seedAgents.find((a) => a.id === id);
+    const { data, error } = await supabase.from('agents').select('*, agent_runs(*)').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? mapAgent(data) : undefined;
   }
   async update(id: string, patch: Partial<Agent>): Promise<void> {
-    await lat(200);
-    const a = seedAgents.find((x) => x.id === id);
-    if (a) Object.assign(a, patch);
+    const { error } = await supabase.from('agents').update(patch).eq('id', id);
+    if (error) throw error;
   }
-  async run(id: string, input: string): Promise<AgentRun> {
-    const agent = seedAgents.find((a) => a.id === id);
-    if (!agent) throw new Error('Agent not found');
-    await lat(1500);
-    const run: AgentRun = {
-      id: uid('arun'), agentId: id, status: 'success', input,
-      output: `[${agent.name}] Processed your request and generated a tailored response based on the configured prompt and ${agent.model} model.`,
-      startedAt: new Date().toISOString(), duration: 1500, cost: 0.01 + Math.random() * 0.04, tokens: 800 + Math.floor(Math.random() * 2000),
-    };
-    agent.runs.unshift(run);
-    agent.metrics.runs += 1;
-    return run;
+  async run(_id: string, _input: string): Promise<AgentRun> {
+    throw new Error('Agent execution requires an AI provider API key');
   }
 }
 
 export class DocumentService {
   async list(): Promise<Document[]> {
-    await lat();
-    return [...seedDocuments];
+    const { data, error } = await supabase.from('documents').select('*, document_versions(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapDocument);
   }
   async create(name: string, type: Document['type'], size: number, folder: string): Promise<Document> {
-    await lat(300);
-    const doc: Document = {
-      id: uid('doc'), name, type, size, folder, tags: [],
-      versions: [{ id: uid('dv'), version: 1, createdAt: new Date().toISOString() }],
-      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    seedDocuments.unshift(doc);
-    return doc;
+    const { data, error } = await supabase.from('documents').insert({ name, type, size, folder, tags: [] }).select('*, document_versions(*)').single();
+    if (error) throw error;
+    return mapDocument(data);
   }
   async delete(id: string): Promise<void> {
-    await lat(150);
-    const idx = seedDocuments.findIndex((d) => d.id === id);
-    if (idx >= 0) seedDocuments.splice(idx, 1);
+    const { error } = await supabase.from('documents').delete().eq('id', id);
+    if (error) throw error;
   }
 }
 
 export class EmbeddingService {
-  async embed(text: string): Promise<number[]> {
-    await lat(500);
-    return Array.from({ length: 384 }, () => Math.random() * 2 - 1);
+  async embed(_text: string): Promise<number[]> {
+    throw new Error('Embeddings require an AI provider API key');
   }
-  async search(query: string, _collection?: string): Promise<{ chunk: string; score: number }[]> {
-    await lat(400);
-    return [
-      { chunk: 'Resume highlights: led migration to microservices...', score: 0.92 },
-      { chunk: 'Built design system adopted across 12 teams...', score: 0.87 },
-      { chunk: 'Experience with React, TypeScript, Node.js...', score: 0.84 },
-    ];
+  async search(_query: string, _collection?: string): Promise<{ chunk: string; score: number }[]> {
+    throw new Error('Semantic search requires an AI provider API key');
   }
 }
 
 export class PromptService {
   async list(): Promise<Prompt[]> {
-    await lat();
-    return [...seedPrompts];
+    const { data, error } = await supabase.from('prompts').select('*, prompt_versions(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapPrompt);
   }
   async create(name: string, category: string, content: string, variables: string[]): Promise<Prompt> {
-    await lat(300);
-    const p: Prompt = {
-      id: uid('pmt'), name, category, content, variables, version: 1,
-      history: [{ id: uid('ph'), version: 1, content, createdAt: new Date().toISOString() }],
-      createdAt: new Date().toISOString(),
-    };
-    seedPrompts.unshift(p);
-    return p;
+    const { data, error } = await supabase.from('prompts').insert({ name, category, content, variables, version: 1 }).select('*, prompt_versions(*)').single();
+    if (error) throw error;
+    return mapPrompt(data);
   }
   async update(id: string, content: string): Promise<void> {
-    await lat(200);
-    const p = seedPrompts.find((x) => x.id === id);
-    if (p) {
-      p.version += 1;
-      p.content = content;
-      p.history.unshift({ id: uid('ph'), version: p.version, content, createdAt: new Date().toISOString() });
-    }
+    const { data: current } = await supabase.from('prompts').select('version').eq('id', id).maybeSingle();
+    const nextVersion = (current?.version ?? 0) + 1;
+    const { error } = await supabase.from('prompts').update({ content, version: nextVersion, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    await supabase.from('prompt_versions').insert({ prompt_id: id, version: nextVersion, content });
   }
   async test(_content: string, _variables: Record<string, string>): Promise<string> {
-    await lat(800);
-    return 'Test output: The prompt executed successfully with the provided variables. Generated a 3-paragraph tailored response.';
+    throw new Error('Prompt testing requires an AI provider API key');
   }
 }
 
 export class NotificationService {
   async list(): Promise<Notification[]> {
-    await lat();
-    return [...seedNotifications];
+    const { data, error } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapNotification);
   }
   async markRead(id: string): Promise<void> {
-    await lat(100);
-    const n = seedNotifications.find((x) => x.id === id);
-    if (n) n.read = true;
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+    if (error) throw error;
   }
   async markAllRead(): Promise<void> {
-    await lat(150);
-    seedNotifications.forEach((n) => (n.read = true));
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('read', false);
+    if (error) throw error;
   }
 }
 
 export class IntegrationService {
   async list(): Promise<Integration[]> {
-    await lat();
-    return [...seedIntegrations];
+    const { data, error } = await supabase.from('integrations').select('*, integration_logs(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapIntegration);
   }
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
-    await lat(800);
-    const int = seedIntegrations.find((i) => i.id === id);
-    if (int) {
-      int.status = 'connected';
-      int.lastSync = new Date().toISOString();
-    }
+    const { error } = await supabase.from('integrations').update({ status: 'connected', last_sync: new Date().toISOString() }).eq('id', id);
+    if (error) return { success: false, message: error.message };
     return { success: true, message: 'Connection test successful' };
   }
   async toggle(id: string): Promise<void> {
-    await lat(200);
-    const int = seedIntegrations.find((i) => i.id === id);
-    if (int) int.status = int.status === 'connected' ? 'disconnected' : 'connected';
+    const { data } = await supabase.from('integrations').select('status').eq('id', id).maybeSingle();
+    if (data) {
+      const next = data.status === 'connected' ? 'disconnected' : 'connected';
+      await supabase.from('integrations').update({ status: next }).eq('id', id);
+    }
   }
 }
 
 export class AnalyticsService {
   async metrics(): Promise<DashboardMetrics> {
-    await lat();
-    return { ...seedDashboardMetrics };
+    const [jobsRes, appsRes, resumesRes] = await Promise.all([
+      supabase.from('jobs').select('*'),
+      supabase.from('applications').select('*'),
+      supabase.from('resume_versions').select('*'),
+    ]);
+    const jobs = jobsRes.data || [];
+    const apps = appsRes.data || [];
+    const resumeVersions = resumesRes.data || [];
+    const today = new Date().toISOString().slice(0, 10);
+    const jobsFoundToday = jobs.filter((j) => (j.created_at as string)?.slice(0, 10) === today).length;
+    const submitted = apps.filter((a) => a.status === 'submitted' || a.status === 'viewed' || a.status === 'interview' || a.status === 'offer');
+    const offers = apps.filter((a) => a.status === 'offer');
+    return {
+      jobsFoundToday,
+      jobsProcessed: jobs.length,
+      applicationsReady: jobs.filter((j) => j.resume_status === 'ready').length,
+      applicationsSubmitted: submitted.length,
+      resumeVersions: resumeVersions.length,
+      aiCreditsUsed: 0,
+      successRate: submitted.length > 0 ? Math.round((offers.length / submitted.length) * 100) : 0,
+      avgAtsScore: 0,
+    };
   }
   async timeseries(): Promise<AnalyticsPoint[]> {
-    await lat();
-    return [...seedAnalytics];
+    const { data: jobs } = await supabase.from('jobs').select('created_at');
+    const { data: apps } = await supabase.from('applications').select('created_at, status');
+    const days: AnalyticsPoint[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const day = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      const jobsFound = (jobs || []).filter((j) => (j.created_at as string)?.slice(0, 10) === day).length;
+      const jobsApplied = (apps || []).filter((a) => (a.created_at as string)?.slice(0, 10) === day).length;
+      days.push({ label: `${i + 1}d ago`, jobsFound, jobsApplied, interviewRate: 0, offerRate: 0 });
+    }
+    return days;
   }
   async summary(): Promise<{
     jobsFound: number; jobsApplied: number; interviewRate: number;
     offerRate: number; aiUsage: number; tokenUsage: number; cost: number;
   }> {
-    await lat();
+    const m = await this.metrics();
     return {
-      jobsFound: 247, jobsApplied: 34, interviewRate: 32, offerRate: 12,
-      aiUsage: 1240, tokenUsage: 480000, cost: 24.5,
+      jobsFound: m.jobsProcessed,
+      jobsApplied: m.applicationsSubmitted,
+      interviewRate: 0,
+      offerRate: m.successRate,
+      aiUsage: m.aiCreditsUsed,
+      tokenUsage: 0,
+      cost: 0,
     };
   }
 }
 
 export class EmailService {
-  async send(to: string, subject: string, body: string): Promise<{ success: boolean }> {
-    await lat(500);
-    return { success: true };
+  async send(_to: string, _subject: string, _body: string): Promise<{ success: boolean }> {
+    throw new Error('Email sending requires an SMTP integration');
   }
 }
 
 export class PDFService {
   async generate(_content: string, _title: string): Promise<{ url: string }> {
-    await lat(700);
-    return { url: 'data:application/pdf;base64,JVBERi0xLjQK' };
+    throw new Error('PDF generation requires a backend service');
   }
 }
 
 export class StorageService {
   async upload(_file: File, _path: string): Promise<{ url: string }> {
-    await lat(600);
-    return { url: `https://storage.example.com/${_path}/${_file.name}` };
+    throw new Error('File upload requires storage configuration');
   }
 }
 
-// AI Provider abstraction
 export interface AIProvider {
   name: string;
   chat(messages: ChatMessage[]): Promise<string>;
@@ -423,26 +652,16 @@ export interface AIProvider {
   embed(text: string): Promise<number[]>;
 }
 
-class MockProvider implements AIProvider {
+class UnconfiguredProvider implements AIProvider {
   constructor(public name: string) {}
-  async chat(messages: ChatMessage[]): Promise<string> {
-    await lat(800);
-    const last = messages[messages.length - 1];
-    return `Here's my response to "${last?.content.slice(0, 60)}..." using ${this.name}. I've analyzed your request and prepared a comprehensive, tailored response with actionable recommendations.`;
+  async chat(_messages: ChatMessage[]): Promise<string> {
+    throw new Error(`${this.name} AI provider is not configured. Add an API key in Settings.`);
   }
-  async stream(messages: ChatMessage[], onToken: (t: string) => void): Promise<string> {
-    const response = await this.chat(messages);
-    const tokens = response.split(' ');
-    let acc = '';
-    for (const t of tokens) {
-      await sleep(30);
-      acc += t + ' ';
-      onToken(acc);
-    }
-    return response;
+  async stream(_messages: ChatMessage[], _onToken: (t: string) => void): Promise<string> {
+    throw new Error(`${this.name} AI provider is not configured. Add an API key in Settings.`);
   }
-  async embed(text: string): Promise<number[]> {
-    return new EmbeddingService().embed(text);
+  async embed(_text: string): Promise<number[]> {
+    throw new Error(`${this.name} AI provider is not configured. Add an API key in Settings.`);
   }
 }
 
@@ -450,7 +669,7 @@ export class AIService {
   private providers: Record<string, AIProvider> = {};
   constructor() {
     (['gemini', 'openai', 'claude', 'azure', 'ollama', 'bedrock'] as const).forEach((p) => {
-      this.providers[p] = new MockProvider(p);
+      this.providers[p] = new UnconfiguredProvider(p);
     });
   }
   getProvider(name: string): AIProvider {
@@ -466,72 +685,93 @@ export class AIService {
 
 export class AutomationService {
   async list(): Promise<Automation[]> {
-    await lat();
-    return [...seedAutomations];
+    const { data, error } = await supabase.from('automations').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapAutomation);
   }
   async toggle(id: string): Promise<void> {
-    await lat(150);
-    const a = seedAutomations.find((x) => x.id === id);
-    if (a) a.status = a.status === 'active' ? 'paused' : 'active';
+    const { data } = await supabase.from('automations').select('status').eq('id', id).maybeSingle();
+    if (data) {
+      const next = data.status === 'active' ? 'paused' : 'active';
+      await supabase.from('automations').update({ status: next }).eq('id', id);
+    }
   }
   async clone(id: string): Promise<Automation> {
-    await lat(250);
-    const src = seedAutomations.find((a) => a.id === id)!;
-    const clone: Automation = { ...src, id: uid('auto'), name: `${src.name} (Copy)`, status: 'paused', createdAt: new Date().toISOString() };
-    seedAutomations.unshift(clone);
-    return clone;
+    const { data: src } = await supabase.from('automations').select('*').eq('id', id).maybeSingle();
+    if (!src) throw new Error('Automation not found');
+    const { data, error } = await supabase.from('automations').insert({
+      name: `${src.name} (Copy)`,
+      workflow_id: src.workflow_id,
+      status: 'paused',
+      schedule: src.schedule,
+      trigger: src.trigger,
+      retries: 0,
+    }).select().single();
+    if (error) throw error;
+    return mapAutomation(data);
   }
 }
 
 export class ChatService {
   async listConversations(): Promise<ChatConversation[]> {
-    await lat();
-    return [...seedConversations];
+    const { data, error } = await supabase.from('chat_conversations').select('*, chat_messages(*)').order('updated_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapConversation);
   }
   async createConversation(title: string): Promise<ChatConversation> {
-    await lat(200);
-    const c: ChatConversation = {
-      id: uid('chat'), title, messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    seedConversations.unshift(c);
-    return c;
+    const { data, error } = await supabase.from('chat_conversations').insert({ title }).select('*, chat_messages(*)').single();
+    if (error) throw error;
+    return mapConversation(data);
   }
   async sendMessage(conversationId: string, content: string): Promise<ChatMessage> {
-    await lat(1000);
-    const conv = seedConversations.find((c) => c.id === conversationId);
-    const userMsg: ChatMessage = { id: uid('msg'), role: 'user', content, createdAt: new Date().toISOString() };
-    const assistantMsg: ChatMessage = {
-      id: uid('msg'), role: 'assistant',
-      content: `I've processed your request: "${content.slice(0, 80)}". Here's a comprehensive response with tailored recommendations and next steps based on your career profile.`,
-      createdAt: new Date().toISOString(),
-    };
-    if (conv) {
-      conv.messages.push(userMsg, assistantMsg);
-      conv.updatedAt = new Date().toISOString();
-    }
-    return assistantMsg;
+    await supabase.from('chat_messages').insert({ conversation_id: conversationId, role: 'user', content });
+    throw new Error('AI chat requires an AI provider API key. Add one in Settings.');
   }
   async pinMessage(conversationId: string, messageId: string): Promise<void> {
-    await lat(100);
-    const conv = seedConversations.find((c) => c.id === conversationId);
-    const msg = conv?.messages.find((m) => m.id === messageId);
-    if (msg) msg.pinned = !msg.pinned;
+    const { data: msg } = await supabase.from('chat_messages').select('pinned').eq('id', messageId).maybeSingle();
+    if (msg) {
+      await supabase.from('chat_messages').update({ pinned: !msg.pinned }).eq('id', messageId);
+    }
   }
 }
 
 export class UserService {
   async profile(): Promise<UserProfile> {
-    await lat();
-    return { ...seedUserProfile };
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      const { data: newProfile, error: insertError } = await supabase.from('profiles').insert({
+        user_id: user.id,
+        full_name: user.user_metadata?.full_name || 'New User',
+        email: user.email,
+        title: '',
+        plan: 'free',
+        ai_credits_used: 0,
+        ai_credits_total: 1000,
+      }).select().single();
+      if (insertError) throw insertError;
+      return mapProfile({ ...newProfile, email: user.email });
+    }
+    return mapProfile({ ...data, email: user.email });
   }
   async updateProfile(patch: Partial<UserProfile>): Promise<UserProfile> {
-    await lat(200);
-    Object.assign(seedUserProfile, patch);
-    return { ...seedUserProfile };
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
+    const update: Record<string, unknown> = {};
+    if (patch.fullName !== undefined) update.full_name = patch.fullName;
+    if (patch.title !== undefined) update.title = patch.title;
+    if (patch.avatarUrl !== undefined) update.avatar_url = patch.avatarUrl;
+    if (patch.plan !== undefined) update.plan = patch.plan;
+    if (patch.aiCreditsUsed !== undefined) update.ai_credits_used = patch.aiCreditsUsed;
+    if (patch.aiCreditsTotal !== undefined) update.ai_credits_total = patch.aiCreditsTotal;
+    const { data, error } = await supabase.from('profiles').update(update).eq('user_id', user.id).select().single();
+    if (error) throw error;
+    return mapProfile({ ...data, email: user.email });
   }
 }
 
-// Dependency injection container
 export const services = {
   jobSearch: new JobSearchService(),
   resume: new ResumeService(),

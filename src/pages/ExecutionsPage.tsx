@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Play, Clock, CheckCircle2, XCircle, AlertCircle, Activity,
-  ChevronRight,
+  ChevronRight, Inbox,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useState } from 'react';
 import { services } from '@/services';
 import { timeAgo } from '@/utils';
+import { EmptyState } from '@/components/shared/EmptyState';
 import type { Workflow } from '@/types';
 
 export function ExecutionsPage() {
@@ -28,11 +29,13 @@ export function ExecutionsPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><CheckCircle2 className="h-5 w-5 text-success" /></div><div><p className="text-xs text-muted-foreground">Successful</p><p className="text-xl font-semibold">{allRuns.filter((r) => r.status === 'success').length}</p></div></div></CardContent></Card>
         <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10"><XCircle className="h-5 w-5 text-destructive" /></div><div><p className="text-xs text-muted-foreground">Failed</p><p className="text-xl font-semibold">{allRuns.filter((r) => r.status === 'failed').length}</p></div></div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Activity className="h-5 w-5 text-primary" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-semibold">{(allRuns.reduce((a, r) => a + r.duration, 0) / allRuns.length / 1000).toFixed(1)}s</p></div></div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Activity className="h-5 w-5 text-primary" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-semibold">{allRuns.length > 0 ? (allRuns.reduce((a, r) => a + r.duration, 0) / allRuns.length / 1000).toFixed(1) : '0.0'}s</p></div></div></CardContent></Card>
       </div>
 
       <div className="space-y-2">
-        {allRuns.map((run, i) => (
+        {allRuns.length === 0 ? (
+          <Card><CardContent><EmptyState icon={Inbox} title="No executions yet" description="Workflow runs will appear here once you execute them." /></CardContent></Card>
+        ) : allRuns.map((run, i) => (
           <motion.div key={run.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(run)}>
               <CardContent className="flex items-center gap-4 py-3">

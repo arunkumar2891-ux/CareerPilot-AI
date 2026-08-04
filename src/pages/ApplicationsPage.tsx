@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Plus, FileText, Building2, Calendar, User, StickyNote,
-  Paperclip, ChevronRight, Filter,
+  Paperclip, ChevronRight, Filter, Inbox,
 } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { services } from '@/services';
 import { APPLICATION_STATUSES } from '@/constants';
 import { formatDate, timeAgo } from '@/utils';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 import type { Application } from '@/types';
 
@@ -84,7 +85,9 @@ export function ApplicationsPage() {
         </TabsList>
 
         <TabsContent value="list" className="space-y-2">
-          {apps?.map((app, i) => (
+          {(!apps || apps.length === 0) ? (
+            <Card><CardContent><EmptyState icon={Inbox} title="No applications yet" description="Add your first application to start tracking your job search progress." /></CardContent></Card>
+          ) : apps.map((app, i) => (
             <motion.div key={app.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
               <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(app)}>
                 <CardContent className="flex items-center gap-4 py-4">
@@ -112,6 +115,9 @@ export function ApplicationsPage() {
         </TabsContent>
 
         <TabsContent value="board" className="overflow-x-auto">
+          {(!apps || apps.length === 0) ? (
+            <Card><CardContent><EmptyState icon={Inbox} title="No applications yet" description="Add an application to see it on the board." /></CardContent></Card>
+          ) : (
           <div className="flex gap-4">
             {APPLICATION_STATUSES.slice(0, 6).map((status) => (
               <div key={status} className="w-64 shrink-0">
@@ -131,6 +137,7 @@ export function ApplicationsPage() {
               </div>
             ))}
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="stats">

@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { services } from '@/services';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { NODE_CATEGORIES } from '@/constants';
 import { uid, timeAgo } from '@/utils';
 import { toast } from 'sonner';
@@ -50,8 +51,11 @@ export function WorkflowsPage() {
         }
       />
 
+      {(!workflows || workflows.length === 0) ? (
+        <Card><CardContent><EmptyState icon={WorkflowIcon} title="No workflows yet" description="Create your first workflow to start automating your job search." action={<Button onClick={async () => { const wf = await services.workflow.create('New Workflow', 'Describe your automation'); qc.invalidateQueries({ queryKey: ['workflows'] }); setSelected(wf); toast.success('Workflow created'); }} className="gap-2"><Plus className="h-4 w-4" /> New Workflow</Button>} /></CardContent></Card>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {workflows?.map((wf, i) => (
+        {workflows.map((wf, i) => (
           <motion.div key={wf.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(wf)}>
               <CardContent className="pt-6">
@@ -73,6 +77,7 @@ export function WorkflowsPage() {
           </motion.div>
         ))}
       </div>
+      )}
 
       {selected && <WorkflowEditor workflow={selected} onClose={() => setSelected(null)} />}
     </div>

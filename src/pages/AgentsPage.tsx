@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { services } from '@/services';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { AI_PROVIDERS } from '@/constants';
 import { timeAgo, formatCurrency } from '@/utils';
 import { toast } from 'sonner';
@@ -40,8 +41,11 @@ export function AgentsPage() {
         }
       />
 
+      {(!agents || agents.length === 0) ? (
+        <Card><CardContent><EmptyState icon={Bot} title="No agents yet" description="Create an AI agent to automate your job search tasks." action={<Button className="gap-2"><Plus className="h-4 w-4" /> Create Agent</Button>} /></CardContent></Card>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {agents?.map((agent, i) => (
+        {agents.map((agent, i) => (
           <motion.div key={agent.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(agent)}>
               <CardContent className="pt-6">
@@ -67,6 +71,7 @@ export function AgentsPage() {
           </motion.div>
         ))}
       </div>
+      )}
 
       {selected && <AgentEditor agent={selected} onClose={() => setSelected(null)} />}
     </div>
@@ -138,7 +143,9 @@ function AgentEditor({ agent, onClose }: { agent: Agent; onClose: () => void }) 
 
           <TabsContent value="history" className="space-y-2">
             <ScrollArea className="h-[50vh] pr-3">
-              {agent.runs.map((run) => (
+              {agent.runs.length === 0 ? (
+                <EmptyState icon={Activity} title="No runs yet" description="Execute this agent to see run history here." className="py-8" />
+              ) : agent.runs.map((run) => (
                 <div key={run.id} className="rounded-lg border border-border p-3">
                   <div className="flex items-center justify-between">
                     <StatusBadge status={run.status} />

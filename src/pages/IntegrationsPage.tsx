@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Plug, CheckCircle2, XCircle, RefreshCw, Settings } from 'lucide-react';
+import { Plug, CheckCircle2, XCircle, RefreshCw, Settings, PlugZap } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useState } from 'react';
 import { services } from '@/services';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { timeAgo } from '@/utils';
 import { toast } from 'sonner';
 import type { Integration } from '@/types';
@@ -39,7 +40,9 @@ export function IntegrationsPage() {
     <div className="space-y-6 p-6">
       <PageHeader title="Integrations" description="Connect external services and APIs" />
 
-      {categories.map((cat) => (
+      {categories.length === 0 ? (
+        <Card><CardContent><EmptyState icon={PlugZap} title="No integrations yet" description="Connect external services and APIs to enhance your workflow." /></CardContent></Card>
+      ) : categories.map((cat) => (
         <div key={cat} className="space-y-3">
           <p className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{cat}</p>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

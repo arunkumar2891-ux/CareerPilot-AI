@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Play, Pause, Copy, Download, Upload, Clock, RefreshCw,
-  Zap, History,
+  Zap, History, ZapOff,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { services } from '@/services';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { timeAgo } from '@/utils';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -43,8 +44,11 @@ export function AutomationsPage() {
         }
       />
 
+      {(!automations || automations.length === 0) ? (
+        <Card><CardContent><EmptyState icon={ZapOff} title="No automations yet" description="Create an automation to schedule and trigger your workflows." action={<Button className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>} /></CardContent></Card>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {automations?.map((auto, i) => (
+        {automations.map((auto, i) => (
           <motion.div key={auto.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
             <Card>
               <CardContent className="pt-6">
@@ -74,6 +78,7 @@ export function AutomationsPage() {
           </motion.div>
         ))}
       </div>
+      )}
     </div>
   );
 }

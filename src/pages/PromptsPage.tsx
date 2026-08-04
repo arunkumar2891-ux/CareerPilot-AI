@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Plus, FileText, Play, History, Tag, Variable } from 'lucide-react';
+import { Plus, FileText, Play, History, Tag, Variable, FileX } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
 import { services } from '@/services';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { timeAgo } from '@/utils';
 import { toast } from 'sonner';
 import type { Prompt } from '@/types';
@@ -55,8 +56,11 @@ export function PromptsPage() {
         }
       />
 
+      {(!prompts || prompts.length === 0) ? (
+        <Card><CardContent><EmptyState icon={FileX} title="No prompts yet" description="Create your first AI prompt to start building your library." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Plus className="h-4 w-4" /> New Prompt</Button>} /></CardContent></Card>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {prompts?.map((p, i) => (
+        {prompts.map((p, i) => (
           <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(p)}>
               <CardContent className="pt-6">
@@ -78,6 +82,7 @@ export function PromptsPage() {
           </motion.div>
         ))}
       </div>
+      )}
 
       {selected && <PromptEditor prompt={selected} onClose={() => setSelected(null)} />}
     </div>
@@ -120,7 +125,9 @@ function PromptEditor({ prompt, onClose }: { prompt: Prompt; onClose: () => void
             <Textarea rows={12} value={content} onChange={(e) => setContent(e.target.value)} className="font-mono text-sm scrollbar-thin" />
           </TabsContent>
           <TabsContent value="history" className="space-y-2">
-            {prompt.history.map((h) => (
+            {prompt.history.length === 0 ? (
+              <EmptyState icon={History} title="No history yet" description="Save a new version to start tracking prompt history." className="py-8" />
+            ) : prompt.history.map((h) => (
               <Card key={h.id}><CardContent className="pt-4">
                 <div className="flex items-center justify-between"><Badge variant="secondary">v{h.version}</Badge><span className="text-xs text-muted-foreground">{timeAgo(h.createdAt)}</span></div>
                 <p className="mt-2 line-clamp-3 font-mono text-xs text-muted-foreground">{h.content}</p>

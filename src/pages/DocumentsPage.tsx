@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Plus, FileText, Download, Upload, Search, FolderOpen, Tag,
-  Eye, Trash2, File as FileIcon, Image, FileType,
+  Eye, Trash2, File as FileIcon, Image, FileType, FileX,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { services } from '@/services';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { formatBytes, timeAgo } from '@/utils';
 import { toast } from 'sonner';
 import type { Document } from '@/types';
@@ -66,6 +67,9 @@ export function DocumentsPage() {
         </div>
       </div>
 
+      {filtered.length === 0 ? (
+        <Card><CardContent><EmptyState icon={FileX} title="No documents found" description={search || folder !== 'all' ? "Try adjusting your filters." : "Upload your first document to get started."} action={<Button onClick={upload} className="gap-2"><Upload className="h-4 w-4" /> Upload</Button>} /></CardContent></Card>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {filtered.map((doc, i) => {
           const Icon = FILE_ICONS[doc.type] || FileIcon;
@@ -91,6 +95,7 @@ export function DocumentsPage() {
           );
         })}
       </div>
+      )}
 
       {selected && (
         <Dialog open onOpenChange={(o) => !o && setSelected(null)}>

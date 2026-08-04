@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   BookOpen, Upload, Search, FileText, Sparkles, Database,
-  Layers, Tag,
+  Layers, Tag, SearchX,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { services } from '@/services';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 
 const COLLECTIONS = ['Resumes', 'Job Descriptions', 'Cover Letters', 'Interview Notes', 'Career Strategy', 'Industry Research'];
@@ -77,7 +78,9 @@ export function KnowledgeBasePage() {
 
           {results && (
             <div className="space-y-3">
-              {results.map((r, i) => (
+              {results.length === 0 ? (
+                <Card><CardContent><EmptyState icon={SearchX} title="No results found" description="Try a different search query or collection." /></CardContent></Card>
+              ) : results.map((r, i) => (
                 <motion.div key={r.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                   <Card>
                     <CardContent className="pt-6">

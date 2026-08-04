@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Briefcase, MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
-  Table as TableIcon, Zap, RefreshCw, ExternalLink, Copy, FileText,
+  Table as TableIcon, Zap, RefreshCw, ExternalLink, Copy, FileText, SearchX,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -21,6 +21,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { services } from '@/services';
 import { JOB_BOARDS, EXPERIENCE_LEVELS } from '@/constants';
 import { formatCurrency, formatDate, timeAgo } from '@/utils';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 import type { Job } from '@/types';
 
@@ -151,62 +152,76 @@ export function JobsPage() {
       </Card>
 
       {view === 'kanban' ? (
-        <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
-          {columns.map((col) => {
-            const colJobs = filtered.filter((j) => j.status === col.status);
-            return (
-              <div key={col.key} className="w-72 shrink-0">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-medium">{col.label}</span>
-                  <Badge variant="secondary">{colJobs.length}</Badge>
-                </div>
-                <ScrollArea className="h-[calc(100vh-340px)]">
-                  <div className="space-y-2 pr-2">
-                    {colJobs.map((job) => (
-                      <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />
-                    ))}
+        filtered.length === 0 ? (
+          <Card>
+            <CardContent>
+              <EmptyState icon={SearchX} title="No jobs found" description="Run a search or adjust your filters to discover jobs." action={<Button onClick={runSearch} className="gap-2"><Zap className="h-4 w-4" /> Run Search</Button>} />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
+            {columns.map((col) => {
+              const colJobs = filtered.filter((j) => j.status === col.status);
+              return (
+                <div key={col.key} className="w-72 shrink-0">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium">{col.label}</span>
+                    <Badge variant="secondary">{colJobs.length}</Badge>
                   </div>
-                </ScrollArea>
-              </div>
-            );
-          })}
-        </div>
+                  <ScrollArea className="h-[calc(100vh-340px)]">
+                    <div className="space-y-2 pr-2">
+                      {colJobs.map((job) => (
+                        <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : (
         <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Company</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Match</TableHead>
-                <TableHead>Salary</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Posted</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((job) => (
-                <TableRow key={job.id} className="cursor-pointer" onClick={() => setSelectedJob(job)}>
-                  <TableCell className="font-medium">{job.company}</TableCell>
-                  <TableCell>{job.role}</TableCell>
-                  <TableCell>
-                    <span className={`font-semibold ${job.matchScore >= 85 ? 'text-success' : job.matchScore >= 70 ? 'text-warning' : 'text-muted-foreground'}`}>
-                      {job.matchScore}%
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{job.salaryMin ? `${formatCurrency(job.salaryMin)}+` : '—'}</TableCell>
-                  <TableCell className="text-xs">{job.location}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{job.source}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{timeAgo(job.postingDate)}</TableCell>
-                  <TableCell><StatusBadge status={job.status} /></TableCell>
-                  <TableCell><ExternalLink className="h-3.5 w-3.5 text-muted-foreground" /></TableCell>
+          {filtered.length === 0 ? (
+            <CardContent>
+              <EmptyState icon={SearchX} title="No jobs found" description="Run a search or adjust your filters to discover jobs." />
+            </CardContent>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Match</TableHead>
+                  <TableHead>Salary</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Posted</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((job) => (
+                  <TableRow key={job.id} className="cursor-pointer" onClick={() => setSelectedJob(job)}>
+                    <TableCell className="font-medium">{job.company}</TableCell>
+                    <TableCell>{job.role}</TableCell>
+                    <TableCell>
+                      <span className={`font-semibold ${job.matchScore >= 85 ? 'text-success' : job.matchScore >= 70 ? 'text-warning' : 'text-muted-foreground'}`}>
+                        {job.matchScore}%
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{job.salaryMin ? `${formatCurrency(job.salaryMin)}+` : '—'}</TableCell>
+                    <TableCell className="text-xs">{job.location}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{job.source}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{timeAgo(job.postingDate)}</TableCell>
+                    <TableCell><StatusBadge status={job.status} /></TableCell>
+                    <TableCell><ExternalLink className="h-3.5 w-3.5 text-muted-foreground" /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Card>
       )}
 

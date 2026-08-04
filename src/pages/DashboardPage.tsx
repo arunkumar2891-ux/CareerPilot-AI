@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Briefcase, FileCheck, Send, FileText, Sparkles, Activity,
   TrendingUp, Target, Zap, ArrowRight, Play, Clock, CheckCircle2,
-  XCircle, AlertCircle,
+  XCircle, AlertCircle, Inbox, Bot,
 } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -22,6 +22,7 @@ import { timeAgo } from '@/utils';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '@/store';
 import type { Workflow } from '@/types';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -115,7 +116,9 @@ export function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-2">
-            {recentRuns.map((run) => (
+            {recentRuns.length === 0 ? (
+              <EmptyState icon={Activity} title="No executions yet" description="Workflow runs will appear here once you execute them." />
+            ) : recentRuns.map((run) => (
               <div key={run.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
                 {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 text-success" />
                   : run.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" />
@@ -137,7 +140,9 @@ export function DashboardPage() {
           <CardContent>
             <ScrollArea className="h-[240px] pr-3">
               <div className="space-y-3">
-                {notifications.map((n) => (
+                {notifications.length === 0 ? (
+                  <EmptyState icon={Inbox} title="No notifications" description="You're all caught up." className="py-8" />
+                ) : notifications.map((n) => (
                   <div key={n.id} className="flex gap-3">
                     <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${n.type === 'failure' ? 'bg-destructive/10 text-destructive' : n.type === 'reminder' ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`}>
                       {n.type === 'failure' ? <AlertCircle className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
@@ -164,7 +169,9 @@ export function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-2">
-            {activeAgents.map((agent) => (
+            {activeAgents.length === 0 ? (
+              <EmptyState icon={Bot} title="No active agents" description="Enable AI agents from the Agents page to see them here." />
+            ) : activeAgents.map((agent) => (
               <div key={agent.id} className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
                   <Sparkles className="h-4 w-4 text-primary" />

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Plus, FileText, Upload, Download, GitCompare, Eye, Star,
-  TrendingUp, Clock, Sparkles, FileCheck,
+  TrendingUp, Clock, Sparkles, FileCheck, FileX,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { services } from '@/services';
 import { formatDate, timeAgo } from '@/utils';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 import type { Resume } from '@/types';
 
@@ -93,8 +94,11 @@ export function ResumesPage() {
         </TabsList>
 
         <TabsContent value="resumes" className="space-y-4">
+          {(!resumes || resumes.length === 0) ? (
+            <Card><CardContent><EmptyState icon={FileX} title="No resumes yet" description="Create your first resume to start tailoring and optimizing with AI." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Plus className="h-4 w-4" /> New Resume</Button>} /></CardContent></Card>
+          ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {resumes?.map((r, i) => (
+            {resumes.map((r, i) => (
               <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(r)}>
                   <CardContent className="pt-6">
@@ -123,6 +127,7 @@ export function ResumesPage() {
               </motion.div>
             ))}
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="compare" className="space-y-4">
@@ -162,7 +167,9 @@ export function ResumesPage() {
         </TabsContent>
 
         <TabsContent value="versions" className="space-y-4">
-          {resumes?.map((r) => (
+          {(!resumes || resumes.length === 0) ? (
+            <Card><CardContent><EmptyState icon={FileX} title="No versions yet" description="Create a resume to start tracking version history." /></CardContent></Card>
+          ) : resumes.map((r) => (
             <Card key={r.id}>
               <CardHeader><CardTitle className="text-base">{r.name}</CardTitle></CardHeader>
               <CardContent className="space-y-2">

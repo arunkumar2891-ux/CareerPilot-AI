@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Plus, Mail, Sparkles, Download, Eye, Clock, FileText } from 'lucide-react';
+import { Plus, Mail, Sparkles, Download, Eye, Clock, FileText, FileX } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { services } from '@/services';
 import { timeAgo } from '@/utils';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 import type { CoverLetter } from '@/types';
 
@@ -36,8 +37,11 @@ export function CoverLettersPage() {
         }
       />
 
+      {(!letters || letters.length === 0) ? (
+        <Card><CardContent><EmptyState icon={FileX} title="No cover letters yet" description="Generate a cover letter to get started with your applications." action={<Button onClick={generate} className="gap-2"><Sparkles className="h-4 w-4" /> Generate</Button>} /></CardContent></Card>
+      ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {letters?.map((cl, i) => (
+        {letters.map((cl, i) => (
           <motion.div key={cl.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(cl)}>
               <CardContent className="pt-6">
@@ -58,6 +62,7 @@ export function CoverLettersPage() {
           </motion.div>
         ))}
       </div>
+      )}
 
       <CoverLetterEditor letter={selected} onClose={() => setSelected(null)} />
     </div>
