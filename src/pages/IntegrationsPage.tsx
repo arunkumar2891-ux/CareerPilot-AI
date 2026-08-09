@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog';
 import { useState } from 'react';
 import { services } from '@/services';
+import { requireUserId } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { timeAgo } from '@/utils';
 import { toast } from 'sonner';
@@ -180,15 +181,31 @@ export function IntegrationsPage() {
     setCredentials({});
   };
 
+  const connectGoogle = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-oauth-start`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      const json = await res.json();
+      if (json.url) window.location.href = json.url;
+      else toast.error(json.error || 'Failed to start Google OAuth');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'OAuth failed');
+    }
+  };
+
   const confirmAdd = async () => {
     if (!addEntry) return;
     try {
+      const userId = await requireUserId();
       const { error } = await supabase.from('integrations').insert({
+        user_id: userId,
         name: addEntry.name,
         category: addEntry.category,
         description: addEntry.description,
         icon: addEntry.icon.name,
-        status: 'disconnected',
+        status: addEntry.name === 'Apify' && credentials.token ? 'connected' : 'disconnected',
         credentials: credentials,
       });
       if (error) throw error;
@@ -196,8 +213,8 @@ export function IntegrationsPage() {
       setShowAdd(false);
       setAddEntry(null);
       qc.invalidateQueries({ queryKey: ['integrations'] });
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to add integration');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add integration');
     }
   };
 
@@ -207,9 +224,12 @@ export function IntegrationsPage() {
         title="Integrations"
         description="Connect external services and APIs"
         actions={
-          <Button onClick={() => setShowAdd(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Add Integration
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={connectGoogle} className="gap-2">Connect Google</Button>
+            <Button onClick={() => setShowAdd(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Add Integration
+            </Button>
+          </div>
         }
       />
 

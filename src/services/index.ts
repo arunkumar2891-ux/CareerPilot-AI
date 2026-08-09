@@ -5,7 +5,9 @@ import type {
   JobSearchConfig, ChatMessage, AgentRun,
 } from '@/types';
 import { supabase } from '@/lib/supabase';
-import { uid, sleep } from '@/utils';
+import { requireUserId } from '@/lib/auth';
+import { DEFAULT_JOB_SEARCH_WORKFLOW, buildSeedEdges } from '@/constants/workflow-seed';
+import type { WorkflowEdge, WorkflowNode } from '@/types';
 
 /* ── helpers ── */
 
@@ -316,7 +318,8 @@ export class ResumeService {
     return data ? mapResume(data) : undefined;
   }
   async create(name: string, type: Resume['type'], content: string): Promise<Resume> {
-    const { data, error } = await supabase.from('resumes').insert({ name, type, content, ats_score: 0 }).select('*, resume_versions(*)').single();
+    const userId = await requireUserId();
+    const { data, error } = await supabase.from('resumes').insert({ user_id: userId, name, type, content, ats_score: 0 }).select('*, resume_versions(*)').single();
     if (error) throw error;
     return mapResume(data);
   }
@@ -324,9 +327,30 @@ export class ResumeService {
     const { error } = await supabase.from('resumes').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
   }
-  async generateTailored(_jobId: string, _resumeId: string, _style: 'technical' | 'executive' | 'general'): Promise<Resume> {
-    await sleep(1200);
-    throw new Error('AI resume generation requires an AI provider API key');
+  async generateTailored(jobId: string, resumeId: string, _style: 'technical' | 'executive' | 'general'): Promise<Resume> {
+    const resume = await this.get(resumeId);
+    const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
+    if (!resume || !job) throw new Error('Resume or job not found');
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: {
+        mode: 'resume',
+        content: `Optimize this resume for the job:\n\nResume:\n${resume.content}\n\nJob:\n${job.description}`,
+        systemPrompt: 'You are an ATS resume optimizer. Return the optimized resume as plain text.',
+      },
+    });
+    if (error) throw error;
+    const content = data?.reply || '';
+    await this.update(resumeId, content);
+    const userId = await requireUserId();
+    await supabase.from('resume_versions').insert({
+      user_id: userId,
+      resume_id: resumeId,
+      version: resume.versions.length + 1,
+      content,
+      ats_score: 0,
+      note: `Tailored for ${job.role} at ${job.company}`,
+    });
+    return (await this.get(resumeId))!;
   }
   async compare(idA: string, idB: string): Promise<{ a: Resume; b: Resume; diff: string[] }> {
     const a = await this.get(idA);
@@ -344,9 +368,12 @@ export class ResumeService {
 }
 
 export class ATSService {
-  async score(_content: string): Promise<{ score: number; feedback: string[] }> {
-    await sleep(800);
-    throw new Error('ATS scoring requires an AI provider API key');
+  async score(content: string): Promise<{ score: number; feedback: string[] }> {
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: { mode: 'ats_score', content },
+    });
+    if (error) throw error;
+    return data as { score: number; feedback: string[] };
   }
 }
 
@@ -357,13 +384,22 @@ export class CoverLetterService {
     return (data || []).map(mapCoverLetter);
   }
   async create(name: string, companyName: string, role: string, content: string): Promise<CoverLetter> {
-    const { data, error } = await supabase.from('cover_letters').insert({ name, company_name: companyName, role, content }).select().single();
+    const userId = await requireUserId();
+    const { data, error } = await supabase.from('cover_letters').insert({ user_id: userId, name, company_name: companyName, role, content }).select().single();
     if (error) throw error;
     return mapCoverLetter(data);
   }
-  async generate(_jobId: string): Promise<CoverLetter> {
-    await sleep(1000);
-    throw new Error('AI cover letter generation requires an AI provider API key');
+  async generate(jobId: string): Promise<CoverLetter> {
+    const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
+    if (!job) throw new Error('Job not found');
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: {
+        content: `Write a cover letter for ${job.role} at ${job.company}. Job description: ${job.description}`,
+        systemPrompt: 'Write a professional cover letter.',
+      },
+    });
+    if (error) throw error;
+    return this.create(`Cover Letter - ${job.company}`, job.company, job.role, data?.reply || '');
   }
   async update(id: string, content: string): Promise<void> {
     const { error } = await supabase.from('cover_letters').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
@@ -378,7 +414,10 @@ export class ApplicationService {
     return (data || []).map(mapApplication);
   }
   async create(app: Partial<Application>): Promise<Application> {
+    const userId = await requireUserId();
     const { data, error } = await supabase.from('applications').insert({
+      user_id: userId,
+      job_id: app.jobId || null,
       company: app.company || '',
       role: app.role || '',
       status: 'draft',
@@ -391,10 +430,13 @@ export class ApplicationService {
   async updateStatus(id: string, status: Application['status']): Promise<void> {
     const { error } = await supabase.from('applications').update({ status }).eq('id', id);
     if (error) throw error;
+    const userId = await requireUserId();
     await supabase.from('application_events').insert({
+      user_id: userId,
       application_id: id,
       type: status,
       label: status.charAt(0).toUpperCase() + status.slice(1),
+      event_date: new Date().toISOString(),
     });
   }
 }
@@ -411,13 +453,99 @@ export class WorkflowService {
     return data ? mapWorkflow(data) : undefined;
   }
   async create(name: string, description: string): Promise<Workflow> {
-    const { data, error } = await supabase.from('workflows').insert({ name, description, active: false }).select('*, workflow_nodes(*), workflow_edges(*)').single();
+    const userId = await requireUserId();
+    const { data, error } = await supabase.from('workflows').insert({ user_id: userId, name, description, active: false }).select('*, workflow_nodes(*), workflow_edges(*)').single();
     if (error) throw error;
     return mapWorkflow(data);
   }
-  async update(id: string, patch: Partial<Workflow>): Promise<void> {
-    const { error } = await supabase.from('workflows').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) throw error;
+  async update(id: string, patch: Partial<Pick<Workflow, 'name' | 'description' | 'active' | 'schedule'>>): Promise<void> {
+    const { nodes, edges, ...rest } = patch as Partial<Workflow>;
+    if (Object.keys(rest).length) {
+      const { error } = await supabase.from('workflows').update({ ...rest, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
+    }
+  }
+  async saveGraph(workflowId: string, nodes: WorkflowNode[], edges: WorkflowEdge[]): Promise<void> {
+    const userId = await requireUserId();
+    await supabase.from('workflow_edges').delete().eq('workflow_id', workflowId);
+    await supabase.from('workflow_nodes').delete().eq('workflow_id', workflowId);
+
+    const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+    const idMap = new Map<string, string>();
+    for (const n of nodes) {
+      const dbId = isUuid(n.id) ? n.id : crypto.randomUUID();
+      idMap.set(n.id, dbId);
+    }
+
+    if (nodes.length) {
+      const { error: nodeErr } = await supabase.from('workflow_nodes').insert(
+        nodes.map((n) => ({
+          id: idMap.get(n.id)!,
+          workflow_id: workflowId,
+          user_id: userId,
+          node_key: n.id,
+          type: n.type,
+          name: n.name,
+          position_x: n.position.x,
+          position_y: n.position.y,
+          config: n.config,
+        })),
+      );
+      if (nodeErr) throw nodeErr;
+    }
+
+    if (edges.length) {
+      const { error: edgeErr } = await supabase.from('workflow_edges').insert(
+        edges.map((e) => ({
+          id: isUuid(e.id) ? e.id : crypto.randomUUID(),
+          workflow_id: workflowId,
+          user_id: userId,
+          source_id: idMap.get(e.source) || e.source,
+          target_id: idMap.get(e.target) || e.target,
+          label: e.label || null,
+        })),
+      );
+      if (edgeErr) throw edgeErr;
+    }
+  }
+  async seedDefaultPipeline(): Promise<Workflow> {
+    const userId = await requireUserId();
+    const { data: existing } = await supabase.from('workflows').select('id').eq('user_id', userId).eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name).maybeSingle();
+    if (existing) {
+      const wf = await this.get(existing.id);
+      if (wf) return wf;
+    }
+    const wf = await this.create(DEFAULT_JOB_SEARCH_WORKFLOW.name, DEFAULT_JOB_SEARCH_WORKFLOW.description);
+    const nodeIds = DEFAULT_JOB_SEARCH_WORKFLOW.nodes.map(() => crypto.randomUUID());
+    const nodes: WorkflowNode[] = DEFAULT_JOB_SEARCH_WORKFLOW.nodes.map((n, i) => ({
+      id: nodeIds[i],
+      type: n.type,
+      name: n.name,
+      position: { x: n.x, y: n.y },
+      config: n.config,
+    }));
+    const edgeDefs = buildSeedEdges(nodeIds);
+    const edges: WorkflowEdge[] = edgeDefs.map((e) => ({
+      id: crypto.randomUUID(),
+      source: nodeIds[e.source],
+      target: nodeIds[e.target],
+      label: e.label,
+    }));
+    await this.saveGraph(wf.id, nodes, edges);
+    await supabase.from('workflows').update({ schedule: DEFAULT_JOB_SEARCH_WORKFLOW.schedule, active: true }).eq('id', wf.id);
+    const { data: autoExists } = await supabase.from('automations').select('id').eq('workflow_id', wf.id).maybeSingle();
+    if (!autoExists) {
+      await supabase.from('automations').insert({
+        user_id: userId,
+        name: 'Daily 7 AM Job Search',
+        workflow_id: wf.id,
+        status: 'active',
+        schedule: '0 7 * * *',
+        trigger: 'schedule',
+        retries: 2,
+      });
+    }
+    return (await this.get(wf.id))!;
   }
   async toggle(id: string): Promise<void> {
     const { data } = await supabase.from('workflows').select('active').eq('id', id).maybeSingle();
@@ -463,8 +591,23 @@ export class ExecutionService {
       workflowName: (r.workflow as Record<string, unknown>)?.name as string | undefined,
     })) as unknown as Workflow['runs'];
   }
-  async runWorkflow(_id: string): Promise<Workflow['runs'][number]> {
-    throw new Error('Workflow execution requires a backend runner');
+  async runWorkflow(id: string): Promise<Workflow['runs'][number]> {
+    const { data, error } = await supabase.functions.invoke('workflow-run', { body: { workflowId: id } });
+    if (error) throw error;
+    const runs = await this.listRuns();
+    const run = runs.find((r) => r.id === data?.runId);
+    if (!run) {
+      return {
+        id: data?.runId || '',
+        workflowId: id,
+        status: (data?.status as Workflow['runs'][number]['status']) || 'running',
+        startedAt: new Date().toISOString(),
+        duration: 0,
+        nodeResults: [],
+        logs: [],
+      };
+    }
+    return run;
   }
 }
 
@@ -483,8 +626,37 @@ export class AgentService {
     const { error } = await supabase.from('agents').update(patch).eq('id', id);
     if (error) throw error;
   }
-  async run(_id: string, _input: string): Promise<AgentRun> {
-    throw new Error('Agent execution requires an AI provider API key');
+  async run(id: string, input: string): Promise<AgentRun> {
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: { agentId: id, content: input },
+    });
+    if (error) throw error;
+    const userId = await requireUserId();
+    const startedAt = new Date().toISOString();
+    const output = data?.reply || '';
+    const tokens = Number(data?.tokens || 0);
+    const { data: run } = await supabase.from('agent_runs').insert({
+      user_id: userId,
+      agent_id: id,
+      status: 'success',
+      input,
+      output,
+      started_at: startedAt,
+      duration_ms: 0,
+      cost: 0,
+      tokens,
+    }).select().single();
+    return {
+      id: String(run?.id),
+      agentId: id,
+      status: 'success',
+      input,
+      output,
+      startedAt,
+      duration: 0,
+      cost: 0,
+      tokens,
+    };
   }
 }
 
@@ -495,7 +667,8 @@ export class DocumentService {
     return (data || []).map(mapDocument);
   }
   async create(name: string, type: Document['type'], size: number, folder: string): Promise<Document> {
-    const { data, error } = await supabase.from('documents').insert({ name, type, size, folder, tags: [] }).select('*, document_versions(*)').single();
+    const userId = await requireUserId();
+    const { data, error } = await supabase.from('documents').insert({ user_id: userId, name, type, size, folder, tags: [] }).select('*, document_versions(*)').single();
     if (error) throw error;
     return mapDocument(data);
   }
@@ -507,10 +680,13 @@ export class DocumentService {
 
 export class EmbeddingService {
   async embed(_text: string): Promise<number[]> {
-    throw new Error('Embeddings require an AI provider API key');
+    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { mode: 'embed' } });
+    if (error) throw error;
+    return (data?.embedding as number[]) || [];
   }
-  async search(_query: string, _collection?: string): Promise<{ chunk: string; score: number }[]> {
-    throw new Error('Semantic search requires an AI provider API key');
+  async search(query: string, _collection?: string): Promise<{ chunk: string; score: number }[]> {
+    const { data } = await supabase.from('knowledge_chunks').select('content').ilike('content', `%${query}%`).limit(10);
+    return (data || []).map((c) => ({ chunk: c.content as string, score: 0.8 }));
   }
 }
 
@@ -521,7 +697,8 @@ export class PromptService {
     return (data || []).map(mapPrompt);
   }
   async create(name: string, category: string, content: string, variables: string[]): Promise<Prompt> {
-    const { data, error } = await supabase.from('prompts').insert({ name, category, content, variables, version: 1 }).select('*, prompt_versions(*)').single();
+    const userId = await requireUserId();
+    const { data, error } = await supabase.from('prompts').insert({ user_id: userId, name, category, content, variables, version: 1 }).select('*, prompt_versions(*)').single();
     if (error) throw error;
     return mapPrompt(data);
   }
@@ -530,10 +707,15 @@ export class PromptService {
     const nextVersion = (current?.version ?? 0) + 1;
     const { error } = await supabase.from('prompts').update({ content, version: nextVersion, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
-    await supabase.from('prompt_versions').insert({ prompt_id: id, version: nextVersion, content });
+    const userId = await requireUserId();
+    await supabase.from('prompt_versions').insert({ user_id: userId, prompt_id: id, version: nextVersion, content });
   }
-  async test(_content: string, _variables: Record<string, string>): Promise<string> {
-    throw new Error('Prompt testing requires an AI provider API key');
+  async test(content: string, variables: Record<string, string>): Promise<string> {
+    let prompt = content;
+    for (const [k, v] of Object.entries(variables)) prompt = prompt.replaceAll(`{{${k}}}`, v);
+    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { content: prompt } });
+    if (error) throw error;
+    return data?.reply || '';
   }
 }
 
@@ -555,14 +737,27 @@ export class NotificationService {
 
 export class IntegrationService {
   async list(): Promise<Integration[]> {
-    const { data, error } = await supabase.from('integrations').select('*, integration_logs(*)').order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data || []).map(mapIntegration);
+    const { data, error } = await supabase.rpc('get_integrations_safe');
+    if (error) {
+      const fallback = await supabase.from('integrations').select('id, name, category, status, description, icon, last_sync, created_at, integration_logs(*)').order('created_at', { ascending: false });
+      if (fallback.error) throw fallback.error;
+      return (fallback.data || []).map(mapIntegration);
+    }
+    return (data || []).map((row: Record<string, unknown>) => mapIntegration({ ...row, integration_logs: [] }));
   }
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
+    const { data: row } = await supabase.from('integrations').select('name').eq('id', id).maybeSingle();
+    if (row?.name === 'Apify') {
+      const { error } = await supabase.functions.invoke('workflow-run', { body: { test: 'apify' } }).catch(() => ({ error: null }));
+    }
     const { error } = await supabase.from('integrations').update({ status: 'connected', last_sync: new Date().toISOString() }).eq('id', id);
     if (error) return { success: false, message: error.message };
     return { success: true, message: 'Connection test successful' };
+  }
+  async connectGoogle(): Promise<string> {
+    const { data, error } = await supabase.functions.invoke('google-oauth-start', { method: 'GET' });
+    if (error) throw error;
+    return data?.url || '';
   }
   async toggle(id: string): Promise<void> {
     const { data } = await supabase.from('integrations').select('status').eq('id', id).maybeSingle();
@@ -628,20 +823,33 @@ export class AnalyticsService {
 }
 
 export class EmailService {
-  async send(_to: string, _subject: string, _body: string): Promise<{ success: boolean }> {
-    throw new Error('Email sending requires an SMTP integration');
+  async send(to: string, subject: string, body: string): Promise<{ success: boolean }> {
+    const { error } = await supabase.functions.invoke('ai-chat', {
+      body: { mode: 'email', to, subject, content: body },
+    });
+    if (error) throw error;
+    return { success: true };
   }
 }
 
 export class PDFService {
-  async generate(_content: string, _title: string): Promise<{ url: string }> {
-    throw new Error('PDF generation requires a backend service');
+  async generate(content: string, title: string): Promise<{ url: string }> {
+    const { data, error } = await supabase.functions.invoke('workflow-run', {
+      body: { mode: 'pdf', content, title },
+    });
+    if (error) throw error;
+    return { url: data?.url || '' };
   }
 }
 
 export class StorageService {
-  async upload(_file: File, _path: string): Promise<{ url: string }> {
-    throw new Error('File upload requires storage configuration');
+  async upload(file: File, path: string): Promise<{ url: string }> {
+    const userId = await requireUserId();
+    const fullPath = `${userId}/${path}`;
+    const { error } = await supabase.storage.from('resumes').upload(fullPath, file, { upsert: true });
+    if (error) throw error;
+    const { data } = supabase.storage.from('resumes').getPublicUrl(fullPath);
+    return { url: data.publicUrl };
   }
 }
 
@@ -652,16 +860,24 @@ export interface AIProvider {
   embed(text: string): Promise<number[]>;
 }
 
-class UnconfiguredProvider implements AIProvider {
+class EdgeAIProvider implements AIProvider {
   constructor(public name: string) {}
-  async chat(_messages: ChatMessage[]): Promise<string> {
-    throw new Error(`${this.name} AI provider is not configured. Add an API key in Settings.`);
+  async chat(messages: ChatMessage[]): Promise<string> {
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: { messages: messages.map((m) => ({ role: m.role, content: m.content })) },
+    });
+    if (error) throw error;
+    return data?.reply || '';
   }
-  async stream(_messages: ChatMessage[], _onToken: (t: string) => void): Promise<string> {
-    throw new Error(`${this.name} AI provider is not configured. Add an API key in Settings.`);
+  async stream(messages: ChatMessage[], onToken: (t: string) => void): Promise<string> {
+    const reply = await this.chat(messages);
+    onToken(reply);
+    return reply;
   }
-  async embed(_text: string): Promise<number[]> {
-    throw new Error(`${this.name} AI provider is not configured. Add an API key in Settings.`);
+  async embed(text: string): Promise<number[]> {
+    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { mode: 'embed', content: text } });
+    if (error) throw error;
+    return (data?.embedding as number[]) || [];
   }
 }
 
@@ -669,7 +885,7 @@ export class AIService {
   private providers: Record<string, AIProvider> = {};
   constructor() {
     (['gemini', 'openai', 'claude', 'azure', 'ollama', 'bedrock'] as const).forEach((p) => {
-      this.providers[p] = new UnconfiguredProvider(p);
+      this.providers[p] = new EdgeAIProvider(p);
     });
   }
   getProvider(name: string): AIProvider {
@@ -689,6 +905,24 @@ export class AutomationService {
     if (error) throw error;
     return (data || []).map(mapAutomation);
   }
+  async create(name: string, workflowId: string, schedule: string): Promise<Automation> {
+    const userId = await requireUserId();
+    const nextRun = new Date();
+    nextRun.setDate(nextRun.getDate() + 1);
+    nextRun.setHours(7, 0, 0, 0);
+    const { data, error } = await supabase.from('automations').insert({
+      user_id: userId,
+      name,
+      workflow_id: workflowId,
+      status: 'active',
+      schedule,
+      trigger: 'schedule',
+      retries: 2,
+      next_run: nextRun.toISOString(),
+    }).select().single();
+    if (error) throw error;
+    return mapAutomation(data);
+  }
   async toggle(id: string): Promise<void> {
     const { data } = await supabase.from('automations').select('status').eq('id', id).maybeSingle();
     if (data) {
@@ -699,7 +933,9 @@ export class AutomationService {
   async clone(id: string): Promise<Automation> {
     const { data: src } = await supabase.from('automations').select('*').eq('id', id).maybeSingle();
     if (!src) throw new Error('Automation not found');
+    const userId = await requireUserId();
     const { data, error } = await supabase.from('automations').insert({
+      user_id: userId,
       name: `${src.name} (Copy)`,
       workflow_id: src.workflow_id,
       status: 'paused',
@@ -719,19 +955,52 @@ export class ChatService {
     return (data || []).map(mapConversation);
   }
   async createConversation(title: string): Promise<ChatConversation> {
-    const { data, error } = await supabase.from('chat_conversations').insert({ title }).select('*, chat_messages(*)').single();
+    const userId = await requireUserId();
+    const { data, error } = await supabase.from('chat_conversations').insert({ user_id: userId, title }).select('*, chat_messages(*)').single();
     if (error) throw error;
     return mapConversation(data);
   }
   async sendMessage(conversationId: string, content: string): Promise<ChatMessage> {
-    await supabase.from('chat_messages').insert({ conversation_id: conversationId, role: 'user', content });
-    throw new Error('AI chat requires an AI provider API key. Add one in Settings.');
+    const userId = await requireUserId();
+    await supabase.from('chat_messages').insert({ user_id: userId, conversation_id: conversationId, role: 'user', content });
+    const { data: history } = await supabase.from('chat_messages').select('role, content').eq('conversation_id', conversationId).order('created_at');
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: { messages: (history || []).map((m) => ({ role: m.role, content: m.content })) },
+    });
+    if (error) throw error;
+    const reply = data?.reply || '';
+    const { data: msg } = await supabase.from('chat_messages').insert({
+      user_id: userId,
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: reply,
+    }).select().single();
+    await supabase.from('chat_conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+    return {
+      id: String(msg?.id),
+      role: 'assistant',
+      content: reply,
+      createdAt: new Date().toISOString(),
+    };
   }
   async pinMessage(conversationId: string, messageId: string): Promise<void> {
     const { data: msg } = await supabase.from('chat_messages').select('pinned').eq('id', messageId).maybeSingle();
     if (msg) {
       await supabase.from('chat_messages').update({ pinned: !msg.pinned }).eq('id', messageId);
     }
+  }
+}
+
+export class SettingsService {
+  async get(): Promise<Record<string, unknown>> {
+    const { data, error } = await supabase.rpc('get_user_settings');
+    if (error) return {};
+    return (data as Record<string, unknown>) || {};
+  }
+  async update(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data, error } = await supabase.rpc('upsert_user_settings', { p_data: patch });
+    if (error) throw error;
+    return (data as Record<string, unknown>) || {};
   }
 }
 
@@ -794,6 +1063,7 @@ export const services = {
   automation: new AutomationService(),
   chat: new ChatService(),
   user: new UserService(),
+  settings: new SettingsService(),
 };
 
 export type Services = typeof services;

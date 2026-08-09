@@ -1,14 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import {
-  Play, Pause, Copy, Download, Upload, Clock, RefreshCw,
-  Zap, History, ZapOff,
-} from 'lucide-react';
+import { Play, Pause, Copy, Clock, Zap, ZapOff } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { services } from '@/services';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { timeAgo } from '@/utils';
@@ -18,6 +19,11 @@ import { useState } from 'react';
 export function AutomationsPage() {
   const qc = useQueryClient();
   const { data: automations } = useQuery({ queryKey: ['automations'], queryFn: () => services.automation.list() });
+  const { data: workflows } = useQuery({ queryKey: ['workflows'], queryFn: () => services.workflow.list() });
+  const [showCreate, setShowCreate] = useState(false);
+  const [name, setName] = useState('Daily Job Search');
+  const [workflowId, setWorkflowId] = useState('');
+  const [schedule, setSchedule] = useState('0 7 * * *');
 
   const toggle = async (id: string) => {
     await services.automation.toggle(id);
@@ -31,6 +37,21 @@ export function AutomationsPage() {
     qc.invalidateQueries({ queryKey: ['automations'] });
   };
 
+  const create = async () => {
+    if (!workflowId) { toast.error('Select a workflow'); return; }
+    await services.automation.create(name, workflowId, schedule);
+    toast.success('Automation created');
+    setShowCreate(false);
+    qc.invalidateQueries({ queryKey: ['automations'] });
+  };
+
+  const runNow = async (workflowId: string) => {
+    toast.success('Starting workflow...');
+    await services.execution.runWorkflow(workflowId);
+    toast.success('Workflow started');
+    qc.invalidateQueries({ queryKey: ['runs'] });
+  };
+
   return (
     <div className="space-y-6 p-6">
       <PageHeader
@@ -38,14 +59,18 @@ export function AutomationsPage() {
         description="Schedule, trigger, and manage your automated workflows"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2"><Upload className="h-4 w-4" /> Import</Button>
-            <Button className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>
+            <Button variant="outline" onClick={async () => {
+              const wf = await services.workflow.seedDefaultPipeline();
+              qc.invalidateQueries({ queryKey: ['workflows', 'automations'] });
+              toast.success(`Pipeline ready: ${wf.name}`);
+            }} className="gap-2">Setup Default Pipeline</Button>
+            <Button onClick={() => setShowCreate(true)} className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>
           </div>
         }
       />
 
       {(!automations || automations.length === 0) ? (
-        <Card><CardContent><EmptyState icon={ZapOff} title="No automations yet" description="Create an automation to schedule and trigger your workflows." action={<Button className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>} /></CardContent></Card>
+        <Card><CardContent><EmptyState icon={ZapOff} title="No automations yet" description="Create an automation to schedule and trigger your workflows." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>} /></CardContent></Card>
       ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {automations.map((auto, i) => (
@@ -66,12 +91,12 @@ export function AutomationsPage() {
                   {auto.nextRun && <p>Next run: {timeAgo(auto.nextRun)}</p>}
                 </div>
                 {auto.retries > 0 && <Badge variant="secondary" className="mt-2 text-[10px]">{auto.retries} retries</Badge>}
-                <div className="mt-3 flex items-center gap-1">
+                <div className="mt-3 flex flex-wrap items-center gap-1">
                   <Button variant="ghost" size="sm" onClick={() => toggle(auto.id)} className="gap-1.5">
                     {auto.status === 'active' ? <><Pause className="h-3.5 w-3.5" /> Pause</> : <><Play className="h-3.5 w-3.5" /> Resume</>}
                   </Button>
+                  <Button variant="ghost" size="sm" onClick={() => runNow(auto.workflowId)} className="gap-1.5"><Play className="h-3.5 w-3.5" /> Run Now</Button>
                   <Button variant="ghost" size="sm" onClick={() => clone(auto.id)} className="gap-1.5"><Copy className="h-3.5 w-3.5" /> Clone</Button>
-                  <Button variant="ghost" size="sm" className="gap-1.5"><Download className="h-3.5 w-3.5" /> Export</Button>
                 </div>
               </CardContent>
             </Card>
@@ -79,6 +104,29 @@ export function AutomationsPage() {
         ))}
       </div>
       )}
+
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>New Automation</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
+            <div className="space-y-1.5">
+              <Label>Workflow</Label>
+              <Select value={workflowId} onValueChange={setWorkflowId}>
+                <SelectTrigger><SelectValue placeholder="Select workflow" /></SelectTrigger>
+                <SelectContent>
+                  {(workflows || []).map((w) => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label>Cron Schedule</Label><Input value={schedule} onChange={(e) => setSchedule(e.target.value)} placeholder="0 7 * * *" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button onClick={create}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

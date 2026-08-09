@@ -55,18 +55,15 @@ export function JobsPage() {
   });
 
   const runSearch = async () => {
-    toast.success('Job search started — scanning 8 boards...');
-    await services.jobSearch.search({
-      keywords: filters.keywords.split(',').map((s) => s.trim()).filter(Boolean),
-      locations: filters.location ? [filters.location] : [],
-      remote: filters.remote, hybrid: filters.hybrid,
-      experience: filters.experience,
-      salaryMin: filters.salaryMin ? parseInt(filters.salaryMin) : undefined,
-      companies: filters.companies.split(',').map((s) => s.trim()).filter(Boolean),
-      maxJobs: parseInt(filters.maxJobs) || 30,
-    });
-    await qc.invalidateQueries({ queryKey: ['jobs'] });
-    toast.success(`Found ${filtered.length} matching jobs`);
+    try {
+      toast.success('Starting job search pipeline...');
+      const wf = await services.workflow.seedDefaultPipeline();
+      await services.execution.runWorkflow(wf.id);
+      await qc.invalidateQueries({ queryKey: ['jobs', 'runs', 'workflows'] });
+      toast.success('Job search pipeline started — check Executions for progress');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Pipeline failed to start');
+    }
   };
 
   const columns = [

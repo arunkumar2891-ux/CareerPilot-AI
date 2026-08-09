@@ -42,12 +42,20 @@ export function WorkflowsPage() {
         title="Workflow Studio"
         description="Visual automation builder — drag, connect, automate"
         actions={
-          <Button onClick={async () => {
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={async () => {
+              const wf = await services.workflow.seedDefaultPipeline();
+              qc.invalidateQueries({ queryKey: ['workflows'] });
+              setSelected(wf);
+              toast.success('Default pipeline imported');
+            }} className="gap-2">Import n8n Template</Button>
+            <Button onClick={async () => {
             const wf = await services.workflow.create('New Workflow', 'Describe your automation');
             qc.invalidateQueries({ queryKey: ['workflows'] });
             setSelected(wf);
             toast.success('Workflow created');
           }} className="gap-2"><Plus className="h-4 w-4" /> New Workflow</Button>
+          </div>
         }
       />
 
@@ -101,7 +109,7 @@ function WorkflowEditor({ workflow, onClose }: { workflow: Workflow; onClose: ()
 
   const addNode = (type: WorkflowNodeType) => {
     const newNode: WorkflowNode = {
-      id: uid('n'), type, name: type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      id: crypto.randomUUID(), type, name: type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
       position: { x: 100 + Math.random() * 200, y: 100 + Math.random() * 200 }, config: {},
     };
     setNodes((n) => [...n, newNode]);
@@ -116,20 +124,26 @@ function WorkflowEditor({ workflow, onClose }: { workflow: Workflow; onClose: ()
   const startConnect = (id: string) => setConnecting(id);
   const finishConnect = (id: string) => {
     if (connecting && connecting !== id) {
-      setEdges((e) => [...e, { id: uid('e'), source: connecting, target: id }]);
+      setEdges((e) => [...e, { id: crypto.randomUUID(), source: connecting, target: id }]);
     }
     setConnecting(null);
   };
 
   const run = async () => {
-    toast.success('Running workflow...');
-    await services.execution.runWorkflow(workflow.id);
-    qc.invalidateQueries({ queryKey: ['workflows'] });
-    toast.success('Workflow completed');
+    try {
+      toast.success('Running workflow...');
+      await services.workflow.saveGraph(workflow.id, nodes, edges);
+      const result = await services.execution.runWorkflow(workflow.id);
+      qc.invalidateQueries({ queryKey: ['workflows'] });
+      qc.invalidateQueries({ queryKey: ['runs'] });
+      toast.success(`Workflow ${result.status}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Workflow failed');
+    }
   };
 
   const save = async () => {
-    await services.workflow.update(workflow.id, { nodes, edges });
+    await services.workflow.saveGraph(workflow.id, nodes, edges);
     toast.success('Workflow saved');
     qc.invalidateQueries({ queryKey: ['workflows'] });
   };
