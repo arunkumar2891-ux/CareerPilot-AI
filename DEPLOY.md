@@ -10,11 +10,49 @@
 
 In Supabase SQL Editor, run in order:
 
-- `supabase/migrations/001_workflow_engine.sql`
-- `supabase/migrations/002_storage.sql`
-- `supabase/migrations/003_cron.sql`
+1. `supabase/migrations/001_workflow_engine.sql`
+2. `supabase/migrations/002_storage.sql`
+3. **Enable extensions first** (see below)
+4. `supabase/migrations/003_cron.sql` (edit placeholders first)
 
-Enable extensions: **pg_cron**, **pg_net** (Dashboard → Database → Extensions).
+### Enable pg_cron and pg_net (required before 003)
+
+**Option A — Dashboard (recommended):**
+
+1. Open [Supabase Dashboard](https://supabase.com/dashboard) → your project
+2. Go to **Database** → **Extensions**
+3. Search and enable **`pg_cron`**
+4. Search and enable **`pg_net`**
+5. Wait a few seconds, then run `003_cron.sql`
+
+**Option B — SQL:**
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+```
+
+If you get `schema "cron" does not exist`, the extension is not enabled yet — use Option A.
+
+### Edit 003 before running
+
+In `003_cron.sql`, replace:
+
+- `YOUR_PROJECT_REF` → your project ref (from the Supabase URL, e.g. `abcdefghijklmnop`)
+- `YOUR_SCHEDULER_SECRET` → same value you set in `WORKFLOW_SCHEDULER_SECRET` Edge Function secret
+
+### Alternative if pg_cron is unavailable
+
+Use a free external cron (e.g. [cron-job.org](https://cron-job.org)) to POST every minute:
+
+```
+POST https://YOUR_PROJECT_REF.supabase.co/functions/v1/workflow-scheduler
+Authorization: Bearer YOUR_SCHEDULER_SECRET
+Content-Type: application/json
+Body: {}
+```
+
+Manual workflow runs still work without cron — only scheduled automations and Apify wait/resume need the scheduler.
 
 ## 2. Deploy Edge Functions
 
