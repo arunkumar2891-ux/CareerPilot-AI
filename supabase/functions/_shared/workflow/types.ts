@@ -49,4 +49,4 @@ export interface NodeExecutor {
   ): Promise<NodeResult>;
 }
 
-export type SupabaseAdmin = ReturnType<typeof import('./supabase-admin.ts').createAdminClient>;
+export type SupabaseAdmin = ReturnType<typeof import('../supabase-admin.ts').createAdminClient>;

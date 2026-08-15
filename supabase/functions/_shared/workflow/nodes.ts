@@ -151,8 +151,13 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const actorId = String(node.config.actorId || 'curious_coder~linkedin-jobs-scraper');
 
       if (action === 'start_run') {
-        const linkedinUrl = (input as Record<string, unknown>)?.linkedinUrl
-          || ctx.nodeOutputs[Object.keys(ctx.nodeOutputs).find((k) => (ctx.nodeOutputs[k] as Record<string, unknown>)?.linkedinUrl) || ''] as Record<string, unknown>)?.linkedinUrl;
+        let linkedinUrl = (input as Record<string, unknown>)?.linkedinUrl as string | undefined;
+        if (!linkedinUrl) {
+          for (const out of Object.values(ctx.nodeOutputs)) {
+            const o = out as Record<string, unknown>;
+            if (o?.linkedinUrl) { linkedinUrl = String(o.linkedinUrl); break; }
+          }
+        }
         const res = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
