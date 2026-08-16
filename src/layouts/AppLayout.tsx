@@ -1,15 +1,28 @@
 import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { useUIStore } from '@/store';
+import { services } from '@/services';
 
 export function AppLayout() {
   const { commandOpen, setCommandOpen } = useUIStore();
   const location = useLocation();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    services.bootstrap.ensure()
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ['workflows'] });
+        qc.invalidateQueries({ queryKey: ['automations'] });
+        qc.invalidateQueries({ queryKey: ['settings'] });
+      })
+      .catch(() => { /* non-blocking */ });
+  }, [qc]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

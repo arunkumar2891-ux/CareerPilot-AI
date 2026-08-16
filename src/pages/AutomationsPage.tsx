@@ -58,19 +58,12 @@ export function AutomationsPage() {
         title="Automations"
         description="Schedule, trigger, and manage your automated workflows"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={async () => {
-              const wf = await services.workflow.seedDefaultPipeline();
-              qc.invalidateQueries({ queryKey: ['workflows', 'automations'] });
-              toast.success(`Pipeline ready: ${wf.name}`);
-            }} className="gap-2">Setup Default Pipeline</Button>
-            <Button onClick={() => setShowCreate(true)} className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>
-          </div>
+          <Button onClick={() => setShowCreate(true)} className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>
         }
       />
 
       {(!automations || automations.length === 0) ? (
-        <Card><CardContent><EmptyState icon={ZapOff} title="No automations yet" description="Create an automation to schedule and trigger your workflows." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>} /></CardContent></Card>
+        <Card><CardContent><EmptyState icon={ZapOff} title="No automations yet" description="Your daily 7 AM job search automation is provisioned automatically. It should appear shortly, or create a custom automation." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>} /></CardContent></Card>
       ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {automations.map((auto, i) => (

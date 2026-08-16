@@ -57,7 +57,7 @@ export function JobsPage() {
   const runSearch = async () => {
     try {
       toast.success('Starting job search pipeline...');
-      const wf = await services.workflow.seedDefaultPipeline();
+      const wf = await services.workflow.ensureDefaultPipeline();
       await services.execution.runWorkflow(wf.id);
       await qc.invalidateQueries({ queryKey: ['jobs', 'runs', 'workflows'] });
       toast.success('Job search pipeline started — check Executions for progress');

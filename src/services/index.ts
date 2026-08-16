@@ -508,7 +508,7 @@ export class WorkflowService {
       if (edgeErr) throw edgeErr;
     }
   }
-  async seedDefaultPipeline(): Promise<Workflow> {
+  async ensureDefaultPipeline(): Promise<Workflow> {
     const userId = await requireUserId();
     const { data: existing } = await supabase.from('workflows').select('id').eq('user_id', userId).eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name).maybeSingle();
     if (existing) {
@@ -1041,7 +1041,36 @@ export class UserService {
   }
 }
 
+export class BootstrapService {
+  private workflow = new WorkflowService();
+  private settings = new SettingsService();
+
+  /** Provision built-in job search workflow, automation, and default settings for new users. */
+  async ensure(): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await this.workflow.ensureDefaultPipeline();
+
+    const settings = await this.settings.get();
+    const jobSearch = settings.jobSearch as Record<string, string> | undefined;
+    if (!jobSearch?.query) {
+      await this.settings.update({
+        jobSearch: {
+          query: 'AI Product Manager',
+          location: 'San Francisco, CA',
+          maxJobs: '5',
+          resumeFileId: jobSearch?.resumeFileId ?? '',
+        },
+        notifications: { email: user.email ?? '' },
+        userEmail: user.email ?? '',
+      });
+    }
+  }
+}
+
 export const services = {
+  bootstrap: new BootstrapService(),
   jobSearch: new JobSearchService(),
   resume: new ResumeService(),
   ats: new ATSService(),

@@ -42,25 +42,17 @@ export function WorkflowsPage() {
         title="Workflow Studio"
         description="Visual automation builder — drag, connect, automate"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={async () => {
-              const wf = await services.workflow.seedDefaultPipeline();
-              qc.invalidateQueries({ queryKey: ['workflows'] });
-              setSelected(wf);
-              toast.success('Default pipeline imported');
-            }} className="gap-2">Import n8n Template</Button>
-            <Button onClick={async () => {
+          <Button onClick={async () => {
             const wf = await services.workflow.create('New Workflow', 'Describe your automation');
             qc.invalidateQueries({ queryKey: ['workflows'] });
             setSelected(wf);
             toast.success('Workflow created');
           }} className="gap-2"><Plus className="h-4 w-4" /> New Workflow</Button>
-          </div>
         }
       />
 
       {(!workflows || workflows.length === 0) ? (
-        <Card><CardContent><EmptyState icon={WorkflowIcon} title="No workflows yet" description="Create your first workflow to start automating your job search." action={<Button onClick={async () => { const wf = await services.workflow.create('New Workflow', 'Describe your automation'); qc.invalidateQueries({ queryKey: ['workflows'] }); setSelected(wf); toast.success('Workflow created'); }} className="gap-2"><Plus className="h-4 w-4" /> New Workflow</Button>} /></CardContent></Card>
+        <Card><CardContent><EmptyState icon={WorkflowIcon} title="Setting up your pipeline" description="Your built-in job search workflow (LinkedIn scrape → ATS optimize → PDF → email) is being provisioned. Refresh in a moment, or create a custom workflow." action={<Button onClick={async () => { const wf = await services.workflow.create('New Workflow', 'Describe your automation'); qc.invalidateQueries({ queryKey: ['workflows'] }); setSelected(wf); toast.success('Workflow created'); }} className="gap-2"><Plus className="h-4 w-4" /> New Workflow</Button>} /></CardContent></Card>
       ) : (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {workflows.map((wf, i) => (

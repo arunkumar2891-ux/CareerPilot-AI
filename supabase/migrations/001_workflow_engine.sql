@@ -36,21 +36,31 @@ CREATE POLICY update_own_step_queue ON workflow_step_queue
 CREATE POLICY delete_own_step_queue ON workflow_step_queue
   FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
--- Safe integrations view (no credentials exposed to client)
-CREATE OR REPLACE VIEW integrations_safe AS
-SELECT id, user_id, name, category, status, description, icon, last_sync, created_at, updated_at
-FROM integrations;
+-- Safe integrations access (no credentials exposed to client)
+-- See migration 004 for security_invoker RPC + column-level grants
 
-GRANT SELECT ON integrations_safe TO authenticated;
-
--- RPC to list integrations without credentials
 CREATE OR REPLACE FUNCTION get_integrations_safe()
-RETURNS SETOF integrations_safe
+RETURNS TABLE (
+  id uuid,
+  user_id uuid,
+  name text,
+  category text,
+  status text,
+  description text,
+  icon text,
+  last_sync timestamptz,
+  created_at timestamptz,
+  updated_at timestamptz
+)
 LANGUAGE sql
-SECURITY DEFINER
+STABLE
+SECURITY INVOKER
 SET search_path = public
 AS $$
-  SELECT * FROM integrations_safe WHERE user_id = auth.uid();
+  SELECT
+    i.id, i.user_id, i.name, i.category, i.status, i.description, i.icon, i.last_sync, i.created_at, i.updated_at
+  FROM integrations i
+  WHERE i.user_id = auth.uid();
 $$;
 
 GRANT EXECUTE ON FUNCTION get_integrations_safe() TO authenticated;
