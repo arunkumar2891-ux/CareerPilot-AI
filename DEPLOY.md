@@ -119,7 +119,47 @@ After running `003_cron.sql`, the scheduler calls `workflow-scheduler` every min
 - Process due automations (e.g. daily 7 AM job search)
 - Resume workflows waiting on Apify polls or wait nodes
 
-## 4. Deploy frontend
+## 4. Deploy frontend (Render)
+
+CareerPilot is a static Vite SPA. Use a **Render Static Site** (not a Web Service).
+
+### Option A — Blueprint (recommended)
+
+1. Push this repo to GitHub
+2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
+3. Connect the `CareerPilot-AI` repository
+4. Render reads `render.yaml` automatically
+5. When prompted, set environment variables:
+   - `VITE_SUPABASE_URL` = `https://qcywswnrknzwovvaixjl.supabase.co`
+   - `VITE_SUPABASE_ANON_KEY` = your anon key (Supabase → Settings → API)
+6. Click **Apply** — Render builds and deploys
+
+Your URL will be `https://careerpilot-ai.onrender.com` (or similar).
+
+### Option B — Manual static site
+
+1. **New** → **Static Site** → connect GitHub repo
+2. Settings:
+   - **Build Command:** `npm install && npm run build`
+   - **Publish Directory:** `dist`
+3. **Environment** → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
+4. **Redirects/Rewrites** → add rewrite: `/*` → `/index.html` (or rely on `public/_redirects` copied into `dist`)
+5. **Create Static Site**
+
+### After Render deploy
+
+Update Supabase and secrets with your live URL (e.g. `https://careerpilot-ai.onrender.com`):
+
+```bash
+supabase secrets set APP_URL=https://careerpilot-ai.onrender.com --project-ref qcywswnrknzwovvaixjl
+```
+
+**Supabase Dashboard → Authentication → URL Configuration:**
+
+- **Site URL:** `https://careerpilot-ai.onrender.com`
+- **Redirect URLs:** `https://careerpilot-ai.onrender.com/**` and `http://localhost:5173/**`
+
+### Local build (optional)
 
 ```bash
 cp .env.example .env
@@ -129,9 +169,7 @@ npm install
 npm run build
 ```
 
-Deploy `dist/` to Vercel or Netlify. Set the same `VITE_*` env vars in the hosting dashboard.
-
-`vercel.json` is included for SPA routing (all paths → `index.html`).
+`render.yaml` and `public/_redirects` handle SPA routing (`/*` → `index.html`).
 
 ## 5. First run
 
@@ -158,8 +196,8 @@ Open **Workflow Studio** to inspect or edit the built-in graph. The source defin
 ```
 ┌─────────────┐     ┌──────────────────────────────────────┐
 │  React SPA  │────▶│  Supabase (Auth, DB, Storage, RLS)   │
-│  Vercel/    │     └──────────────────────────────────────┘
-│  Netlify    │                        ▲
+│  Render     │     └──────────────────────────────────────┘
+│  (static)   │                        ▲
 └──────┬──────┘                        │
        │ invoke                        │ service role
        ▼                               │
@@ -177,7 +215,7 @@ Open **Workflow Studio** to inspect or edit the built-in graph. The source defin
 └──────────────────────────────────────────────┘
 ```
 
-- **Frontend**: React SPA (Vercel/Netlify)
+- **Frontend**: React SPA on Render Static Site
 - **Backend**: Supabase Edge Functions + PostgreSQL + Storage
 - **Scheduler**: pg_cron → `workflow-scheduler`
 - **Bootstrap**: `BootstrapService` provisions workflow + automation on login
