@@ -11,7 +11,17 @@ node_modules
 dist
 dist-ssr
 *.local
+
+# Secrets (keep .env.example tracked as the template)
 .env
+.env.local
+.env.*.local
+
+# Build artifacts
+*.tsbuildinfo
+
+# Supabase CLI local state
+supabase/.temp/
 
 # Editor directories and files
 .vscode/*
@@ -23,7 +33,4 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env.example
-.env.example
-.env.example
-.env.example
+.cursor/
