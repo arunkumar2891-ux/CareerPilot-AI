@@ -96,7 +96,7 @@ function StepCard({
                 <li key={i} className="flex gap-3 text-sm">
                   <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" />
                   <div className="space-y-2">
-                    <span>{sub.text}</span>
+                    {sub.text && <span>{sub.text}</span>}
                     {sub.link && (
                       <div>
                         <a

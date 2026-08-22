@@ -1,5 +1,5 @@
 export interface SetupSubstep {
-  text: string;
+  text?: string;
   link?: { label: string; href: string; external?: boolean };
   code?: string;
 }
