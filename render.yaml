@@ -1,0 +1,17 @@
+# Render Blueprint — Static Site (Vite React SPA)
+# Dashboard: New → Blueprint → connect this repo, or New → Static Site manually.
+services:
+  - type: web
+    name: careerpilot-ai
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
