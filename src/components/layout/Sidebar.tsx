@@ -1,16 +1,31 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Rocket, ChevronLeft } from 'lucide-react';
+import { Rocket, ChevronLeft, Settings, LogOut } from 'lucide-react';
 import { NAV_ITEMS } from '@/constants';
 import { useUIStore, useAuthStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export function Sidebar() {
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   const groups = Array.from(new Set(NAV_ITEMS.map((i) => i.group)));
 
@@ -74,19 +89,44 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-border p-3">
-        <div className={cn('flex items-center gap-3 rounded-lg p-2', sidebarCollapsed && 'justify-center')}>
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
-              {user?.fullName?.split(' ').map((n) => n[0]).join('') || 'AM'}
-            </AvatarFallback>
-          </Avatar>
-          {!sidebarCollapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium">{user?.fullName}</p>
-              <p className="truncate text-[10px] text-muted-foreground capitalize">{user?.plan} plan</p>
-            </div>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent/50',
+                sidebarCollapsed && 'justify-center',
+              )}
+            >
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
+                  {user?.fullName?.split(' ').map((n) => n[0]).join('') || 'AM'}
+                </AvatarFallback>
+              </Avatar>
+              {!sidebarCollapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium">{user?.fullName}</p>
+                  <p className="truncate text-[10px] text-muted-foreground capitalize">{user?.plan} plan</p>
+                </div>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align={sidebarCollapsed ? 'center' : 'start'} className="w-56">
+            <DropdownMenuLabel className="font-normal">
+              <p className="text-sm font-medium">{user?.fullName}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate('/settings')}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <Button

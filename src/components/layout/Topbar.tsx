@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Bell, Sun, Moon, Command, Plus } from 'lucide-react';
+import { Search, Bell, Sun, Moon, Command, Plus, LogOut } from 'lucide-react';
 import { useUIStore, useNotificationStore, useAuthStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,8 +15,14 @@ export function Topbar() {
   const { theme, toggleTheme, setCommandOpen } = useUIStore();
   const { notifications, unread, markAllRead, markRead } = useNotificationStore();
   const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
   const navigate = useNavigate();
   const [bellOpen, setBellOpen] = useState(false);
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-border bg-background/70 px-6 backdrop-blur-xl">
@@ -85,6 +91,17 @@ export function Topbar() {
           </Badge>
           <span className="text-xs text-muted-foreground">credits</span>
         </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleLogout}
+          className="gap-1.5 text-muted-foreground hover:text-destructive"
+          title="Log out"
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="hidden sm:inline">Log out</span>
+        </Button>
       </div>
     </header>
   );
