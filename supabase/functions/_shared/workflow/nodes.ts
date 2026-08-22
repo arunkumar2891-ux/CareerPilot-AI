@@ -233,23 +233,20 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(ctx, node) {
       const fileId = resolveTemplate(String(node.config.fileId || ''), ctx);
       const accessToken = await refreshGoogleToken(ctx.userId);
-      const res = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const doc = await res.json();
-      if (!res.ok) throw new Error(doc.error?.message || 'Google Docs fetch failed');
-      const content = doc?.body?.content || [];
-      let fullText = '';
-      for (const el of content) {
-        const p = el.paragraph;
-        if (!p?.elements) continue;
-        for (const pe of p.elements) {
-          const t = pe.textRun?.content;
-          if (t) fullText += t;
-        }
+      const res = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(
+          (err as { error?: { message?: string } }).error?.message
+            || 'Google Docs fetch failed — pick your resume in Settings after connecting Google',
+        );
       }
+      const fullText = await res.text();
       ctx.variables.resumeText = fullText;
-      return { output: { docId: doc.documentId, fullText }, status: 'success' };
+      return { output: { docId: fileId, fullText }, status: 'success' };
     },
   },
   gdrive: {

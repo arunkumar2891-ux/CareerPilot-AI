@@ -17,9 +17,11 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const state = btoa(JSON.stringify({ userId: user.id }));
+      // drive.readonly: read resume by Doc ID (Drive export API in gdocs node)
+      // drive.file: upload PDFs created by the workflow
       const scopes = [
+        'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/drive.file',
-        'https://www.googleapis.com/auth/documents.readonly',
       ].join(' ');
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
         client_id: clientId,
@@ -27,7 +29,8 @@ Deno.serve(async (req) => {
         response_type: 'code',
         scope: scopes,
         access_type: 'offline',
-        prompt: 'consent',
+        include_granted_scopes: 'true',
+        prompt: 'select_account consent',
         state,
       })}`;
       return jsonResponse({ url: authUrl });

@@ -23,6 +23,7 @@ import { ExecutionsPage } from '@/pages/ExecutionsPage';
 import { IntegrationsPage } from '@/pages/IntegrationsPage';
 import { PromptsPage } from '@/pages/PromptsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { SetupPage } from '@/pages/SetupPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, refetchOnWindowFocus: false, retry: 1 } },
@@ -97,6 +98,7 @@ function App() {
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/executions" element={<ExecutionsPage />} />
               <Route path="/integrations" element={<IntegrationsPage />} />
+              <Route path="/setup" element={<SetupPage />} />
               <Route path="/prompts" element={<PromptsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>

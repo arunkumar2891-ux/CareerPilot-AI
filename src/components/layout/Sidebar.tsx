@@ -6,6 +6,7 @@ import { useUIStore, useAuthStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,7 +80,14 @@ export function Sidebar() {
                       />
                     )}
                     <Icon className="relative h-4 w-4 shrink-0" />
-                    {!sidebarCollapsed && <span className="relative">{item.label}</span>}
+                    {!sidebarCollapsed && (
+                      <span className="relative flex flex-1 items-center justify-between gap-2">
+                        <span>{item.label}</span>
+                        {item.badge && (
+                          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{item.badge}</Badge>
+                        )}
+                      </span>
+                    )}
                   </NavLink>
                 );
               })}

@@ -18,7 +18,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { services } from '@/services';
 import { requireUserId } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
@@ -152,11 +153,25 @@ const CATALOG: CatalogEntry[] = [
 
 export function IntegrationsPage() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: integrations } = useQuery({ queryKey: ['integrations'], queryFn: () => services.integration.list() });
   const [selected, setSelected] = useState<Integration | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [addEntry, setAddEntry] = useState<CatalogEntry | null>(null);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const connected = searchParams.get('connected');
+    const error = searchParams.get('error');
+    if (connected === 'google') {
+      toast.success('Google Drive connected');
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+      setSearchParams({}, { replace: true });
+    } else if (error) {
+      toast.error(decodeURIComponent(error));
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, qc]);
 
   const categories = Array.from(new Set(integrations?.map((i) => i.category) || []));
 

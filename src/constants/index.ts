@@ -11,6 +11,7 @@ import {
   Plug,
   Settings,
   LayoutDashboard,
+  ListChecks,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,6 +38,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Analytics', path: '/analytics', icon: BarChart3, group: 'Insights' },
   { label: 'Execution History', path: '/executions', icon: History, group: 'Insights' },
   { label: 'Integrations', path: '/integrations', icon: Plug, group: 'Configure' },
+  { label: 'Setup Guide', path: '/setup', icon: ListChecks, group: 'Configure', badge: 'Start' },
   { label: 'Prompt Library', path: '/prompts', icon: FileText, group: 'Configure' },
   { label: 'Settings', path: '/settings', icon: Settings, group: 'Configure' },
 ];

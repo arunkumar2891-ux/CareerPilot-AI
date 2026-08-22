@@ -416,3 +416,9 @@ enabled = true
 # Cron calls workflow-scheduler with Bearer token, not user JWT
 [functions.workflow-scheduler]
 verify_jwt = false
+
+[functions.google-oauth-callback]
+verify_jwt = false
+
+[functions.google-access-token]
+verify_jwt = true
