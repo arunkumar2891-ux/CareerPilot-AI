@@ -56,7 +56,7 @@ export function AutomationsPage() {
     <div className="space-y-6 p-6">
       <PageHeader
         title="Automations"
-        description="Schedule, trigger, and manage your automated workflows"
+        description="Your daily job search runs automatically — manage schedules and triggers"
         actions={
           <Button onClick={() => setShowCreate(true)} className="gap-2"><Zap className="h-4 w-4" /> New Automation</Button>
         }

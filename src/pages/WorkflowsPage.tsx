@@ -40,7 +40,7 @@ export function WorkflowsPage() {
     <div className="space-y-6 p-6">
       <PageHeader
         title="Workflow Studio"
-        description="Visual automation builder — drag, connect, automate"
+        description="Built-in job search pipeline + custom workflows — drag, connect, automate"
         actions={
           <Button onClick={async () => {
             const wf = await services.workflow.create('New Workflow', 'Describe your automation');

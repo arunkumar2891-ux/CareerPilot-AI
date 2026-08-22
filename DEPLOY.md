@@ -1,19 +1,24 @@
 # Deployment Guide
 
+End-to-end setup for CareerPilot AI: database, Edge Functions, scheduler, and frontend.
+
 ## Prerequisites
 
-1. Supabase project with schema applied (run migrations in `supabase/migrations/`)
+1. Supabase project
 2. API keys: Apify, Gemini, Resend (optional: Google OAuth)
 3. Node.js 18+
 
-## 1. Apply Database Migrations
+## 1. Apply database migrations
 
-In Supabase SQL Editor, run in order:
+In the Supabase SQL Editor, run **in order**:
 
-1. `supabase/migrations/001_workflow_engine.sql`
-2. `supabase/migrations/002_storage.sql`
-3. **Enable extensions first** (see below)
-4. `supabase/migrations/003_cron.sql` (edit placeholders first)
+| # | File | Purpose |
+|---|------|---------|
+| 1 | `supabase/migrations/001_workflow_engine.sql` | Workflow engine tables, settings RPCs, integrations |
+| 2 | `supabase/migrations/002_storage.sql` | `resumes` storage bucket + RLS |
+| 3 | Enable extensions (see below) | Required before cron migration |
+| 4 | `supabase/migrations/003_cron.sql` | pg_cron scheduler (edit placeholders first) |
+| 5 | `supabase/migrations/004_fix_integrations_security.sql` | SECURITY INVOKER integrations RPC |
 
 ### Enable pg_cron and pg_net (required before 003)
 
@@ -41,6 +46,16 @@ In `003_cron.sql`, replace:
 - `YOUR_PROJECT_REF` → your project ref (from the Supabase URL, e.g. `abcdefghijklmnop`)
 - `YOUR_SCHEDULER_SECRET` → same value you set in `WORKFLOW_SCHEDULER_SECRET` Edge Function secret
 
+### Migration 004 note
+
+If you previously ran an older version of `004` and see:
+
+```
+cannot drop view integrations_safe because other objects depend on it
+```
+
+The current migration drops `get_integrations_safe()` **before** the view. Re-run the updated `004_fix_integrations_security.sql`.
+
 ### Alternative if pg_cron is unavailable
 
 Use a free external cron (e.g. [cron-job.org](https://cron-job.org)) to POST every minute:
@@ -62,12 +77,17 @@ supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 
 supabase secrets set \
-  APIFY_TOKEN=your_token \
-  GEMINI_API_KEY=your_key \
-  RESEND_API_KEY=your_key \
+  APIFY_TOKEN=your_apify_token \
+  GEMINI_API_KEY=your_gemini_key \
+  RESEND_API_KEY=your_resend_key \
+  RESEND_FROM_EMAIL="CareerPilot <onboarding@resend.dev>" \
   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key \
-  WORKFLOW_SCHEDULER_SECRET=random_secret_string \
-  APP_URL=https://your-app.vercel.app
+  WORKFLOW_SCHEDULER_SECRET=your_random_secret_string \
+  GOOGLE_CLIENT_ID=your_google_client_id \
+  GOOGLE_CLIENT_SECRET=your_google_client_secret \
+  GOOGLE_REDIRECT_URI=https://YOUR_PROJECT_REF.supabase.co/functions/v1/google-oauth-callback \
+  APP_URL=https://your-app.vercel.app \
+  LATEX_COMPILER_URL=https://latex.ytotech.com/builds/sync
 
 supabase functions deploy workflow-run
 supabase functions deploy workflow-step
@@ -77,33 +97,99 @@ supabase functions deploy google-oauth-start
 supabase functions deploy google-oauth-callback
 ```
 
-## 3. Schedule Cron (pg_cron)
+Or deploy all at once:
 
-After running `003_cron.sql`, the scheduler calls `workflow-scheduler` every minute to process wait queues and due automations.
+```bash
+supabase functions deploy --project-ref YOUR_PROJECT_REF
+```
 
-## 4. Deploy Frontend
+> Run `supabase functions deploy` in your **terminal**, not the Supabase SQL Editor.
+
+### Google OAuth (Supabase Auth + Drive/Docs)
+
+1. Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com/)
+2. Enable Google provider in Supabase Dashboard → Authentication → Providers
+3. Set redirect URI: `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback`
+4. Set Edge Function redirect: `https://YOUR_PROJECT_REF.supabase.co/functions/v1/google-oauth-callback`
+
+## 3. Scheduler (pg_cron)
+
+After running `003_cron.sql`, the scheduler calls `workflow-scheduler` every minute to:
+
+- Process due automations (e.g. daily 7 AM job search)
+- Resume workflows waiting on Apify polls or wait nodes
+
+## 4. Deploy frontend
 
 ```bash
 cp .env.example .env
-# Fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+# Fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY only
 
 npm install
 npm run build
 ```
 
-Deploy `dist/` to Vercel or Netlify. Set the same env vars in the hosting dashboard.
+Deploy `dist/` to Vercel or Netlify. Set the same `VITE_*` env vars in the hosting dashboard.
 
-## 5. First Run
+`vercel.json` is included for SPA routing (all paths → `index.html`).
 
-1. Sign up / log in
-2. Go to **Settings → Job Search** — set query, location, Google Doc resume ID, email
-3. Go to **Integrations** — add Apify token (or use server secret)
-4. Go to **Workflows** — click **Import n8n Template**
-5. Click **Run** or use **Jobs → Run Search**
+## 5. First run
+
+After signing up or logging in, the app **automatically provisions**:
+
+- **Daily Job Search Pipeline** workflow (18 nodes)
+- **Daily 7 AM Job Search** automation (active)
+- Default job search settings (if none exist)
+
+No import or manual setup is required. Then:
+
+1. **Settings → Job Search** — set search query, location, Google Doc resume ID, notification email
+2. **Integrations** — connect Google; verify Apify (uses `APIFY_TOKEN` secret if not stored per-user)
+3. **Jobs → Run Search** — run the pipeline immediately
+4. **Executions** — watch per-node progress
+5. **Automations** — confirm daily schedule; use **Run Now** anytime
+
+### Optional: customize the pipeline
+
+Open **Workflow Studio** to inspect or edit the built-in graph. The source definition is in `src/constants/workflow-seed.ts`.
 
 ## Architecture
 
-- **Frontend**: React SPA on Vercel/Netlify (free)
+```
+┌─────────────┐     ┌──────────────────────────────────────┐
+│  React SPA  │────▶│  Supabase (Auth, DB, Storage, RLS)   │
+│  Vercel/    │     └──────────────────────────────────────┘
+│  Netlify    │                        ▲
+└──────┬──────┘                        │
+       │ invoke                        │ service role
+       ▼                               │
+┌──────────────────────────────────────┴───────┐
+│  Edge Functions (Deno)                       │
+│  workflow-run → workflow-step (resumable)  │
+│  workflow-scheduler ← pg_cron (every minute) │
+│  ai-chat, google-oauth-*                     │
+└────────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────┐
+│  External APIs                               │
+│  Apify · Gemini · Resend · Google · LaTeX    │
+└──────────────────────────────────────────────┘
+```
+
+- **Frontend**: React SPA (Vercel/Netlify)
 - **Backend**: Supabase Edge Functions + PostgreSQL + Storage
-- **Scheduler**: pg_cron → workflow-scheduler function
-- **No n8n required**
+- **Scheduler**: pg_cron → `workflow-scheduler`
+- **Bootstrap**: `BootstrapService` provisions workflow + automation on login
+- **No n8n or external workflow tool required**
+
+## Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `schema "cron" does not exist` | Enable `pg_cron` extension in Dashboard |
+| Workflow run fails immediately | Check Edge Function logs; verify secrets are set |
+| Google Docs node fails | Connect Google in Integrations; set resume Doc ID in Settings |
+| Apify hangs | Ensure `workflow-scheduler` is running (cron or external) |
+| No jobs after run | Check Executions for node errors; verify Apify actor + token |
+| Integrations migration error | Run updated `004` (drops function before view) |

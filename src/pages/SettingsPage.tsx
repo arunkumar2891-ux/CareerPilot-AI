@@ -85,7 +85,10 @@ export function SettingsPage() {
 
         <TabsContent value="jobsearch" className="space-y-4">
           <Card>
-            <CardHeader><CardTitle className="text-base">Job Search Pipeline Config</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base">Job Search Pipeline Config</CardTitle>
+              <p className="text-sm text-muted-foreground">Used by the built-in Daily Job Search Pipeline (auto-provisioned on login).</p>
+            </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5"><Label>Search Query</Label><Input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="AI Product Manager" /></div>
               <div className="space-y-1.5"><Label>Location</Label><Input value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="San Francisco, CA" /></div>

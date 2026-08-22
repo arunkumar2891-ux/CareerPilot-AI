@@ -8,18 +8,50 @@ An autonomous AI-powered job search platform that helps you discover roles, tail
 
 CareerPilot AI is a full-featured React SPA that acts as a **command center for your job search**. It combines job discovery, application tracking, AI-assisted document creation, workflow automation, and conversational AI into one cohesive product.
 
-The app is backed by **Supabase** for authentication, data persistence, and **Edge Functions** that execute workflows server-side (replacing n8n).
+The app is backed by **Supabase** for authentication, data persistence, storage, and **Edge Functions** that execute workflows server-side. No external workflow tools (n8n, Zapier, etc.) are required.
+
+## Built-in Job Search Pipeline
+
+Every user gets a **pre-provisioned workflow** on first login — no import or setup step required.
+
+On sign-in, the app automatically creates:
+
+| Resource | Details |
+|----------|---------|
+| **Daily Job Search Pipeline** | Full workflow in Workflow Studio |
+| **Daily 7 AM Job Search** | Active automation (`0 7 * * *`) |
+| **Default settings** | Job query, location, max jobs, notification email |
+
+### Pipeline steps
+
+```
+Schedule (7 AM)
+  → Google Docs (resume)
+  → Build LinkedIn search URL
+  → Apify scrape (poll + wait)
+  → Parse & limit jobs
+  → Duplicate filter
+  → Gemini ATS optimization
+  → Store in Supabase
+  → LaTeX → PDF compile
+  → Upload (Storage + Google Drive)
+  → Email summary (Resend)
+```
+
+Configure the pipeline in **Settings → Job Search** (resume Google Doc ID, query, location). Connect Google in **Integrations**. Run immediately via **Jobs → Run Search** or wait for the daily schedule.
+
+The workflow definition lives in `src/constants/workflow-seed.ts` and is provisioned by `BootstrapService` in `src/services/index.ts`.
 
 ## Standalone Workflow Engine
 
-CareerPilot includes a **generic workflow executor** that runs entirely on Supabase Edge Functions:
+CareerPilot includes a **generic workflow executor** on Supabase Edge Functions:
 
 - Visual Workflow Studio saves graphs to `workflow_nodes` / `workflow_edges`
-- **Import n8n Template** seeds the full Apify → Gemini → PDF → email pipeline
 - Resumable execution via `workflow_step_queue` (Apify polling, wait nodes)
 - Scheduled automations via pg_cron → `workflow-scheduler`
+- 25+ node types: triggers, AI, integrations, logic, and data transforms
 
-See **[DEPLOY.md](DEPLOY.md)** for setup, API keys, and deployment steps.
+See **[DEPLOY.md](DEPLOY.md)** for migrations, API keys, Edge Function secrets, and deployment.
 
 ## Features
 
@@ -27,7 +59,7 @@ See **[DEPLOY.md](DEPLOY.md)** for setup, API keys, and deployment steps.
 | Module | Description |
 |--------|-------------|
 | **Dashboard** | Real-time metrics, 14-day job/application charts, workflow run history, active agents, and notifications |
-| **Job Discovery** | Search and filter jobs with kanban/table views, match scores, salary filters, and job board integration |
+| **Job Discovery** | Search and filter jobs with kanban/table views; **Run Search** triggers the built-in pipeline |
 | **Applications** | Track application status, timelines, recruiters, notes, and attachments |
 
 ### Studio
@@ -40,8 +72,8 @@ See **[DEPLOY.md](DEPLOY.md)** for setup, API keys, and deployment steps.
 ### Automate
 | Module | Description |
 |--------|-------------|
-| **Automations** | Schedule and manage recurring workflow automations with retry support |
-| **Workflow Studio** | Visual drag-and-connect builder with 25+ node types (triggers, AI, integrations, logic, data) |
+| **Automations** | Manage scheduled workflow runs (daily job search is pre-created) |
+| **Workflow Studio** | Visual drag-and-connect builder; inspect or customize the built-in pipeline |
 | **AI Agents** | Configure autonomous agents (resume optimizer, ATS analyzer, job matcher, interview coach, etc.) |
 
 ### Resources & Insights
@@ -55,9 +87,9 @@ See **[DEPLOY.md](DEPLOY.md)** for setup, API keys, and deployment steps.
 ### Configure
 | Module | Description |
 |--------|-------------|
-| **Integrations** | Connect LinkedIn, Google Drive/Docs, Apify, email, Slack, and more |
+| **Integrations** | Connect Google Drive/Docs, Apify, email, and more |
 | **Prompt Library** | Versioned prompt templates with variable substitution |
-| **Settings** | Profile, appearance (light/dark), notifications, billing, security, and API keys |
+| **Settings** | Profile, job search config, appearance (light/dark), notifications, and API keys |
 
 ## Tech Stack
 
@@ -69,7 +101,9 @@ See **[DEPLOY.md](DEPLOY.md)** for setup, API keys, and deployment steps.
 | Styling | Tailwind CSS 3 + shadcn/ui (New York style) |
 | State | Zustand (UI, auth, notifications) |
 | Data fetching | TanStack React Query |
-| Backend / Auth | Supabase (PostgreSQL + Auth) |
+| Backend / Auth | Supabase (PostgreSQL + Auth + Storage) |
+| Workflow runtime | Supabase Edge Functions (Deno) |
+| Scheduler | pg_cron + pg_net |
 | Forms | React Hook Form + Zod |
 | Charts | Recharts |
 | Animation | Framer Motion |
@@ -79,34 +113,45 @@ See **[DEPLOY.md](DEPLOY.md)** for setup, API keys, and deployment steps.
 
 ```
 src/
-├── App.tsx                 # Root router, auth guard, providers
-├── layouts/
-│   └── AppLayout.tsx       # Sidebar + topbar + command palette shell
-├── pages/                  # 17 feature pages (one per route)
+├── App.tsx                     # Root router, auth guard, providers
+├── layouts/AppLayout.tsx       # Shell + auto-bootstrap on login
+├── pages/                      # Feature pages (one per route)
 ├── components/
-│   ├── ui/                 # shadcn/ui primitives
-│   ├── layout/             # Sidebar, Topbar, CommandPalette
-│   └── shared/             # PageHeader, MetricCard, StatusBadge, EmptyState
-├── services/index.ts       # Supabase-backed service layer (all CRUD + AI stubs)
-├── store/index.ts          # Zustand stores (UI, auth, notifications)
-├── types/index.ts          # Domain TypeScript interfaces
-├── constants/index.ts      # Nav items, AI providers, workflow nodes, statuses
-├── lib/
-│   ├── supabase.ts         # Supabase client
-│   └── utils.ts            # cn() helper (tailwind-merge)
-└── utils/index.ts          # Formatting, uid, sleep helpers
+│   ├── ui/                     # shadcn/ui primitives
+│   ├── layout/                 # Sidebar, Topbar, CommandPalette
+│   └── shared/                 # PageHeader, MetricCard, StatusBadge, EmptyState
+├── services/index.ts           # Supabase service layer + BootstrapService
+├── constants/workflow-seed.ts  # Built-in job search pipeline definition
+├── store/index.ts              # Zustand stores (UI, auth, notifications)
+├── types/index.ts              # Domain TypeScript interfaces
+└── lib/                        # Supabase client, auth helpers
+
+supabase/
+├── migrations/                 # SQL schema (001–004)
+├── functions/
+│   ├── workflow-run/           # Start a workflow run
+│   ├── workflow-step/          # Execute/resume a single step
+│   ├── workflow-scheduler/     # Cron: due automations + wait queue
+│   ├── ai-chat/                # Copilot streaming chat
+│   ├── google-oauth-start/     # Google OAuth flow
+│   ├── google-oauth-callback/
+│   └── _shared/workflow/       # Executor, node registry, graph traversal
+└── config.toml
 ```
 
-### Data Flow
+### Data flow
 
 1. **Pages** fetch data via TanStack Query, calling methods on the `services` object.
 2. **Services** map Supabase rows to typed domain objects and handle business logic.
-3. **Zustand** manages client-side state: theme, sidebar, auth session, and notifications.
-4. **Protected routes** redirect unauthenticated users to `/auth`.
+3. **BootstrapService** runs on login to ensure workflow, automation, and default settings exist.
+4. **Edge Functions** execute workflow nodes server-side with user credentials from integrations.
+5. **Zustand** manages client-side state: theme, sidebar, auth session, and notifications.
+6. **Protected routes** redirect unauthenticated users to `/auth`.
 
 ### Authentication
 
 Supports multiple sign-in methods via Supabase Auth:
+
 - Email + password (sign up / sign in)
 - OAuth (Google, GitHub)
 - Magic link (OTP)
@@ -118,7 +163,7 @@ User profiles are stored in a `profiles` table and auto-created on first login.
 ### Prerequisites
 
 - Node.js 18+
-- A [Supabase](https://supabase.com) project with the required database tables
+- A [Supabase](https://supabase.com) project with migrations applied (see [DEPLOY.md](DEPLOY.md))
 
 ### Installation
 
@@ -128,37 +173,26 @@ cd CareerPilot-AI
 npm install
 ```
 
-### Environment Variables
+### Environment variables
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and fill in your Supabase project values:
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-Without these variables the app falls back to placeholder values and database operations will fail.
+> **Important:** API keys for Apify, Gemini, Resend, and Google OAuth belong in **Supabase Edge Function secrets**, not in the frontend `.env`. See [DEPLOY.md](DEPLOY.md).
 
-### Database Schema
+### Database migrations
 
-The service layer expects the following Supabase tables (with Row Level Security enabled per user):
+Run in the Supabase SQL Editor, in order:
 
-| Table | Purpose |
-|-------|---------|
-| `profiles` | User profile, plan, AI credits |
-| `jobs` | Discovered job listings with match scores and status |
-| `resumes` / `resume_versions` | Resume content and version history |
-| `cover_letters` | Cover letter drafts |
-| `applications` / `application_events` | Application tracking and timeline |
-| `workflows` / `workflow_nodes` / `workflow_edges` | Workflow definitions |
-| `workflow_runs` / `workflow_run_nodes` / `workflow_logs` | Execution history |
-| `agents` / `agent_runs` | AI agent configs and run logs |
-| `documents` / `document_versions` | File storage metadata |
-| `prompts` / `prompt_versions` | Prompt templates |
-| `notifications` | In-app notifications |
-| `integrations` / `integration_logs` | Third-party connections |
-| `automations` | Scheduled workflow triggers |
-| `chat_conversations` / `chat_messages` | AI Copilot chat history |
+1. `supabase/migrations/001_workflow_engine.sql`
+2. `supabase/migrations/002_storage.sql`
+3. Enable `pg_cron` and `pg_net` extensions (Dashboard → Database → Extensions)
+4. `supabase/migrations/003_cron.sql` (edit project ref and scheduler secret first)
+5. `supabase/migrations/004_fix_integrations_security.sql`
 
 ### Development
 
@@ -170,9 +204,32 @@ npm run lint       # ESLint
 npm run typecheck  # TypeScript check
 ```
 
-## AI Providers
+### First run (local)
 
-CareerPilot AI is designed to support multiple LLM backends. Configure API keys in **Settings → API Keys**:
+1. Sign up / log in — workflow and automation are created automatically
+2. **Settings → Job Search** — set query, location, Google Doc resume ID, notification email
+3. **Integrations** — connect Google; add Apify if not using server-side `APIFY_TOKEN` secret
+4. **Jobs → Run Search** — trigger the pipeline immediately
+5. **Executions** — monitor per-node progress
+
+## Edge Function secrets
+
+Set via `supabase secrets set` (see [DEPLOY.md](DEPLOY.md)):
+
+| Secret | Purpose |
+|--------|---------|
+| `APIFY_TOKEN` | LinkedIn job scraping |
+| `GEMINI_API_KEY` | ATS resume optimization |
+| `RESEND_API_KEY` | Email summaries |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Drive/Docs OAuth |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side DB access |
+| `WORKFLOW_SCHEDULER_SECRET` | Authenticate cron → scheduler |
+| `APP_URL` | OAuth redirect base URL |
+| `LATEX_COMPILER_URL` | PDF generation (default: latex.ytotech.com) |
+
+## AI providers
+
+CareerPilot AI supports multiple LLM backends. Configure API keys in **Settings → API Keys** or via Edge Function secrets:
 
 | Provider | Models |
 |----------|--------|
@@ -183,9 +240,7 @@ CareerPilot AI is designed to support multiple LLM backends. Configure API keys 
 | Ollama | llama3, mistral, phi3 |
 | Bedrock | anthropic.claude-3, amazon.titan |
 
-> **Note:** AI features (chat, resume generation, ATS scoring, embeddings, agent runs) require a configured provider. The service layer ships with `UnconfiguredProvider` stubs that throw helpful errors until keys are added.
-
-## Workflow Node Types
+## Workflow node types
 
 The Workflow Studio supports nodes across five categories:
 
@@ -195,18 +250,18 @@ The Workflow Studio supports nodes across five categories:
 - **Logic** — condition, loop, switch, merge, wait
 - **Data** — job_search, duplicate_checker, function, transform
 
-## Keyboard Shortcuts
+## Keyboard shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `Cmd/Ctrl + K` | Open command palette |
 
-## Current Limitations
+## Current limitations
 
 - **Google OAuth** requires Google Cloud OAuth client + Edge Function secrets
-- **LaTeX PDF** depends on `latex.ytotech.com` availability
-- **pg_cron** must be configured manually in Supabase (see `supabase/migrations/003_cron.sql`)
-- Edge Function timeout (~150s) — long runs use resumable step queue
+- **LaTeX PDF** depends on `latex.ytotech.com` availability (or your own `LATEX_COMPILER_URL`)
+- **pg_cron** must be enabled in Supabase before running `003_cron.sql`
+- Edge Function timeout (~150s) — long runs use the resumable step queue
 
 ## License
 

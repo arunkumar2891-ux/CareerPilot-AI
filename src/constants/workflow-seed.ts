@@ -8,6 +8,7 @@ export interface SeedNode {
   config: Record<string, unknown>;
 }
 
+/** Built-in job search pipeline — auto-provisioned for every user on login via BootstrapService */
 export const DEFAULT_JOB_SEARCH_WORKFLOW = {
   name: 'Daily Job Search Pipeline',
   description: 'Apify LinkedIn scrape → Gemini ATS optimize → LaTeX PDF → email summary',
