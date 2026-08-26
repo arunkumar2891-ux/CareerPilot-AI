@@ -82,6 +82,8 @@ function StepCard({
                 <div className="flex flex-wrap items-center gap-2">
                   <CardTitle className="text-base">{step.title}</CardTitle>
                   {completed && <Badge variant="secondary" className="bg-success/10 text-success">Done</Badge>}
+                  {step.optional && !completed && <Badge variant="outline">Optional</Badge>}
+                  {step.time && <span className="text-xs text-muted-foreground">{step.time}</span>}
                 </div>
                 <p className="mt-1 text-sm font-normal text-muted-foreground">{step.summary}</p>
               </div>
@@ -173,10 +175,10 @@ export function SetupPage() {
   const userCompletion = useMemo(() => {
     const map: Record<string, boolean> = {
       account: Boolean(user),
-      profile: Boolean(user?.fullName && user.fullName !== 'New User'),
-      'resume-doc': corpusSeeded && Boolean(contact?.phone || contact?.linkedin || contact?.location),
+      profile: Boolean(user?.fullName && user.fullName !== 'New User') && Boolean(contact?.phone || contact?.location || contact?.linkedin),
+      'resume-doc': corpusSeeded,
       'job-search': Boolean(jobSearch?.query && jobSearch?.location),
-      google: Boolean(googleConnected) || corpusSeeded,
+      google: Boolean(googleConnected),
       pipeline: Boolean(automations && automations.length > 0),
       'first-run': Boolean(runs && runs.length > 0),
     };
@@ -196,7 +198,7 @@ export function SetupPage() {
     <div className="space-y-6 p-6">
       <PageHeader
         title="Setup Guide"
-        description="Step-by-step checklist to get CareerPilot running — for new users and platform admins."
+        description="Do the required steps in order (~10 minutes). Optional steps are labeled. Green checks are detected from your account."
         actions={
           <Button asChild variant="outline" className="gap-2">
             <Link to="/jobs">
@@ -241,7 +243,8 @@ export function SetupPage() {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Complete these steps in order. Steps with a green check are detected automatically from your account.
+            Required path: sign in → contact → confirm Master ATS → job search query → tailor or Run Search.
+            Connecting Google is optional. Expand a step for exact clicks.
           </p>
 
           <div className="space-y-3">
