@@ -360,25 +360,42 @@ CUSTOMER/USER ENGAGEMENT:
 EARLIER EXPERIENCE
 ================================================================================
 
-[Previous Company Name]
-[Previous Role Title]
-[Start Date] - [End Date] | [Location]
+INFOSYS
+Senior Consultant
+Apr 2024 - Jul 2024 | India
 
-[Summarize earlier experience here - integration development, software engineering, etc.]
+- Continued enterprise SnapLogic and integration delivery for manufacturing and telecom clients during senior consulting tenure
+- Supported pipeline governance, automated error handling, and agile delivery in high-availability integration landscapes
 
-- [Achievement 1 with metrics]
-- [Achievement 2 with metrics]
-- [Achievement 3 with metrics]
-- [Achievement 4 with metrics]
-- [Achievement 5 with metrics]
+INFOSYS
+Consultant
+Mar 2023 - Mar 2024 | India
 
-[Previous Company Name]
-[Previous Role Title]
-[Start Date] - [End Date] | [Location]
+- Delivered SnapLogic integration solutions across GCP, Azure, Oracle, SAP, and Salesforce ecosystems for enterprise clients
+- Built scalable, secure integrations with API management, pipeline governance, and automated error handling
 
-- [Achievement 1 with metrics]
-- [Achievement 2 with metrics]
-- [Achievement 3 with metrics]
+INFOSYS
+Consultant
+Aug 2022 - Mar 2023 | India
+
+- Designed CI/CD deployment flow with rollback and smoke-testing reduction for NTT Ltd using SnapLogic and GitHub
+- Improved deployment reliability and reduced manual validation effort across integration release cycles
+
+INFOSYS
+Senior Associate Consultant
+Feb 2021 - Sep 2022 | India
+
+- Developed and deployed high-priority Dell Boomi B2B interfaces for ICHOR Systems with automated reprocessing and monitoring tools
+- Redesigned interfaces and improved stability across the Boomi landscape for Visteon Corporation by co-developing a common error/logging framework
+- Led integration delivery as Business Analyst and Scrum Master, driving requirement finalization and deployment excellence
+
+TATA CONSULTANCY SERVICES (TCS)
+Systems Engineer
+Jun 2016 - Feb 2021 | India
+
+- Built integration solutions across manufacturing, telecom, and enterprise domains using Dell Boomi and SnapLogic platforms
+- Developed B2B interfaces, persistent integration designs, and monitoring frameworks involving Kafka, GitHub, and Azure Functions
+- Demonstrated cross-functional leadership in requirement analysis, agile delivery, and production support in high-availability environments
 
 ================================================================================
 TECHNICAL SKILLS
@@ -386,13 +403,13 @@ TECHNICAL SKILLS
 
 Integration Platforms:
 - SnapLogic iPaaS (5+ years): Pipeline Design, Listener/Worker Patterns, Triggered Tasks, Common Pipeline Framework, Ultra Tasks, Error Handling, Snap Development
+- Dell Boomi: B2B Interfaces, Professional Developer certified, Common Error/Logging Frameworks, Automated Reprocessing
 - Salesforce (SFDC): Integration, OAuth Configuration, API Integration
-- MuleSoft: [If applicable - add experience level]
-- Dell Boomi: [If applicable - add experience level]
+- API & Middleware: Postman, SOAPUI, Azure APIM, Kafka
 
 Programming Languages:
-- TypeScript (Advanced) | JavaScript ES6+ (Advanced) | SQL (Advanced)
-- Python (Intermediate) | Java (Intermediate) | Shell/Bash (Intermediate)
+- TypeScript (Advanced) | JavaScript ES6+ (Advanced) | SQL / PL/SQL (Advanced)
+- Java (Intermediate) | Python (Intermediate) | Shell/Bash (Intermediate)
 - HTML5/CSS3 (Advanced)
 
 Frontend Technologies:
@@ -409,26 +426,24 @@ Backend Technologies:
 
 Databases & Data:
 - Google BigQuery: Schema Design, MERGE/DML, Partitioning, Clustering, ML
-- PostgreSQL | MySQL | MongoDB
+- Oracle SCM | Oracle OM | MySQL | PostgreSQL | MongoDB
 - SQL Optimization | Query Performance Tuning
 - Data Modeling: Star Schema, Snowflake, Normalization, Denormalization
 - ETL/ELT Pipeline Design | Data Quality | Data Governance
 
-Cloud Platforms (Google Cloud):
+Cloud Platforms:
+- Google Cloud Platform (GCP): Pub/Sub, BigQuery, Vertex AI, GKE, Cloud Functions, Cloud Storage, IAM
+- Microsoft Azure: Azure Functions, Azure APIM, Azure Application Insights
 - Pub/Sub: Event Streaming, Message Queuing, Dead-Letter Topics
-- BigQuery: Data Warehousing, Analytics, ML
-- Vertex AI: Gemini Model Deployment, Embeddings, RAG
-- Google Kubernetes Engine (GKE): Container Orchestration
-- Cloud Functions | Cloud Run | Cloud Storage
-- IAM | Service Accounts | Workload Identity
 
 DevOps & Infrastructure:
 - Kubernetes: Deployments, Services, HPA, ConfigMaps, Secrets, Helm
 - Docker: Multi-Stage Builds, Docker Compose, Registry Management
-- CI/CD: Harness Pipelines, Automated Testing, Security Gates
+- CI/CD: Harness Pipelines, GitHub Actions, Automated Testing, Security Gates
 - Vault (HashiCorp): Secret Injection, Dynamic Credentials, Rotation
-- Monitoring: Datadog APM, Chronosphere, Custom Metrics, Alerting
+- Monitoring: Datadog APM, Chronosphere, Azure Application Insights, JMeter, Custom Metrics, Alerting
 - IaC: Terraform, Helm Charts
+- Version Control: Git, GitHub
 
 AI/ML & LLM:
 - Google Gemini 2.5 Flash (Fast Inference, Story Generation)
@@ -448,20 +463,20 @@ Security:
 
 Tools & Platforms:
 - JIRA | Confluence | Slack | Git | GitHub
-- Postman | Swagger/OpenAPI | VS Code | IntelliJ
-- Datadog | Chronosphere | Looker Studio
+- Postman | SOAPUI | Swagger/OpenAPI | VS Code | IntelliJ
+- Datadog | Chronosphere | Azure Application Insights | Looker Studio
+- Microsoft Office | G Suite
 - Harness | Docker Hub | GCR (Google Container Registry)
 
 ================================================================================
 CERTIFICATIONS & TRAINING
 ================================================================================
 
-[Add certifications here - examples below]
-- Google Cloud Professional Data Engineer [If applicable]
-- Google Cloud Professional Cloud Architect [If applicable]
-- SnapLogic Certified Integration Architect [If applicable]
-- Kubernetes Administrator (CKA) [If applicable]
-- AWS Solutions Architect [If applicable]
+Certifications:
+- SnapLogic Certified Enterprise Automation Professional — Issued Mar 2024
+- SnapLogic Partner Integrator Library — Issued Feb 2024
+- Dell Boomi Professional Developer — Issued 2021
+- Dell Boomi Associate Developer — Issued 2020
 
 Professional Development:
 - Google Cloud Platform Architecture and Services
@@ -469,6 +484,8 @@ Professional Development:
 - Kubernetes Administration and Deployment
 - AI/LLM Integration and Prompt Engineering
 - Generative AI with Google Vertex AI
+- SnapLogic Enterprise Automation and Partner Integrator Library
+- Dell Boomi Professional Developer training and B2B integration patterns
 
 ================================================================================
 EDUCATION

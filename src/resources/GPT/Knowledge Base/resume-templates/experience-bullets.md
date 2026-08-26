@@ -65,27 +65,70 @@ Results-driven Integration Architect with 5+ years of experience designing and b
 
 ---
 
-## Skills Section
+## Earlier Experience
 
-**Technical Skills:**
-- Integration Architecture: SnapLogic, Listener/Worker Pattern, Common Pipeline Pattern, Error Handling
-- Cloud Platforms: Google Cloud Platform (Pub/Sub, BigQuery, Vertex AI, Kubernetes)
-- Full-Stack Development: React 18, TypeScript, Express.js, Node.js, REST APIs
-- Databases: BigQuery, SQL, Data Modeling, Query Optimization
-- AI/LLM: Gemini 2.5 Flash/Pro, RAG, Prompt Engineering
-- DevOps: Kubernetes, Helm, Docker, CI/CD (Harness)
-- Security: OAuth 2.0, JWT, RBAC, Input Validation, Vault
+**Infosys | Senior Consultant | Apr 2024 - Jul 2024**
+- Enterprise SnapLogic delivery for manufacturing and telecom clients with pipeline governance and automated error handling
+
+**Infosys | Consultant | Mar 2023 - Mar 2024**
+- Built scalable integrations across GCP, Azure, Oracle, SAP, and SFDC with API management and agile delivery
+
+**Infosys | Consultant | Aug 2022 - Mar 2023**
+- Designed CI/CD deployment flow with rollback and smoke-testing reduction for NTT Ltd using SnapLogic and GitHub
+
+**Infosys | Senior Associate Consultant | Feb 2021 - Sep 2022**
+- Deployed high-priority Dell Boomi B2B interfaces for ICHOR Systems with automated reprocessing and monitoring
+- Co-developed common error/logging framework improving stability across Boomi landscape for Visteon Corporation
+- Served as Business Analyst and Scrum Master driving requirement finalization and deployment excellence
+
+**Tata Consultancy Services | Systems Engineer | Jun 2016 - Feb 2021**
+- Delivered integration solutions in manufacturing, telecom, and enterprise domains using Dell Boomi and SnapLogic
+- Built persistent integration designs involving Kafka, GitHub, and Azure Functions in high-availability environments
+
+---
+
+## Technical Skills
+
+**Integration Platforms:**
+- SnapLogic, Dell Boomi
+
+**Programming / Scripting:**
+- Java, JavaScript, PL/SQL, TypeScript, SQL
+
+**API & Middleware:**
+- Postman, SOAPUI, Azure APIM, Kafka
+
+**Cloud Platforms:**
+- Google Cloud Platform (GCP), Microsoft Azure
+
+**Monitoring & DevOps:**
+- Azure Application Insights, Datadog, Chronosphere, JMeter, Git, GitHub, Harness, Kubernetes, Helm, Docker
+
+**Databases & SCM:**
+- Oracle SCM, Oracle OM, MySQL, BigQuery, PostgreSQL
+
+**Full-Stack & AI (Palo Alto Networks):**
+- React 18, TypeScript, Express.js, Node.js, Vertex AI (Gemini 2.5), RAG, Prompt Engineering
+
+**Other Tools:**
+- Microsoft Office, G Suite, JIRA, Confluence, Slack, Vault
 
 **Leadership Skills:**
-- Technical Leadership, Mentoring, Knowledge Sharing
-- Cross-Functional Collaboration, Stakeholder Management
-- Crisis Management, Problem-Solving
-- Communication, Presentation
+- Technical Leadership, Mentoring, Business Analysis, Scrum Master
+- Cross-Functional Collaboration, Stakeholder Management, Crisis Management
 
-**Tools & Platforms:**
-- SnapLogic, Google Cloud Platform, Datadog, Chronosphere
-- React, Express.js, BigQuery, Kubernetes
-- Git, GitHub, Vault, JIRA
+---
+
+## Certifications & Training
+
+- SnapLogic Certified Enterprise Automation Professional — Issued Mar 2024
+- SnapLogic Partner Integrator Library — Issued Feb 2024
+- Dell Boomi Professional Developer — Issued 2021
+- Dell Boomi Associate Developer — Issued 2020
+
+**Professional Development:**
+- Google Cloud Platform, BigQuery optimization, Kubernetes deployment
+- AI/LLM integration, Generative AI with Vertex AI, SnapLogic enterprise automation
 
 ---
 

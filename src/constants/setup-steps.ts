@@ -32,12 +32,13 @@ export const USER_SETUP_STEPS: SetupStep[] = [
   {
     id: 'profile',
     title: 'Name, title, and contact for resumes',
-    summary: 'These values replace [Email], [Phone], [Location] placeholders in every tailored resume. Do this before generating a PDF.',
+    summary: 'These values are written into the Master ATS and 2-page template headers. Do this before generating a PDF.',
     audience: 'user',
     time: '2 min',
     substeps: [
-      { text: 'Settings → Profile → Full Name and Title (e.g. Integration Architect). Click Save Profile.' },
-      { text: 'On the same page fill Phone, Location, LinkedIn URL, GitHub URL, and PANW start date. Click Save Contact for Resumes.' },
+      { text: 'Settings → Profile → Full Name and Title (e.g. Integration Architect).' },
+      { text: 'On the same page fill Phone, Location, LinkedIn URL, GitHub URL, and PANW start date.' },
+      { text: 'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Resume Studio — Master ATS should show real phone/LinkedIn/GitHub, not [Phone Number].' },
       { text: 'Skip any field you do not want on the resume; blank fields stay as placeholders.' },
     ],
     inAppLink: { label: 'Open Profile & Contact', path: '/settings' },

@@ -54,16 +54,24 @@ export function SettingsPage() {
 
   const saveProfile = async () => {
     await services.user.updateProfile({ fullName: name, title });
+    await services.settings.update({
+      contact: { phone, location, linkedin, github, startDate, email: user?.email || email },
+    });
+    await services.settings.applyContactToSeededResumes();
     qc.invalidateQueries({ queryKey: ['profile'] });
-    toast.success('Profile saved');
+    qc.invalidateQueries({ queryKey: ['settings'] });
+    qc.invalidateQueries({ queryKey: ['resumes'] });
+    toast.success('Profile and contact saved — Master ATS header updated');
   };
 
   const saveContact = async () => {
     await services.settings.update({
-      contact: { phone, location, linkedin, github, startDate, email: user?.email },
+      contact: { phone, location, linkedin, github, startDate, email: user?.email || email },
     });
-    toast.success('Contact details saved — used to fill resume placeholders');
+    await services.settings.applyContactToSeededResumes();
+    toast.success('Contact written into Master ATS and the 2-page template');
     qc.invalidateQueries({ queryKey: ['settings'] });
+    qc.invalidateQueries({ queryKey: ['resumes'] });
   };
 
   const saveJobSearch = async () => {
@@ -104,7 +112,7 @@ export function SettingsPage() {
                 <div className="space-y-1.5"><Label>GitHub URL</Label><Input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="https://github.com/…" /></div>
                 <div className="space-y-1.5"><Label>PANW start date</Label><Input value={startDate} onChange={(e) => setStartDate(e.target.value)} placeholder="e.g. Jan 2021" /></div>
               </div>
-              <p className="text-xs text-muted-foreground">These replace [Email], [Phone], [Location] tokens in the master resume when tailoring.</p>
+              <p className="text-xs text-muted-foreground">Save writes these into the Master ATS and 2-page template headers (phone, location, LinkedIn, GitHub, email). Empty fields stay as placeholders.</p>
               <div className="flex flex-wrap gap-2">
                 <Button onClick={saveProfile} className="gap-2"><Check className="h-4 w-4" /> Save Profile</Button>
                 <Button variant="outline" onClick={saveContact} className="gap-2"><Check className="h-4 w-4" /> Save Contact for Resumes</Button>

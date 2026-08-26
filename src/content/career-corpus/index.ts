@@ -59,6 +59,18 @@ export function applyContactOverlay(
   for (const [token, value] of replacements) {
     if (value) out = out.split(token).join(value);
   }
+  // Header lines (Master ATS is one field per line). Re-apply even after first seed.
+  const headerLines: [string, string | undefined][] = [
+    ['Location', contact.location],
+    ['Phone', contact.phone],
+    ['Email', contact.email],
+    ['LinkedIn', contact.linkedin],
+    ['GitHub', contact.github],
+  ];
+  for (const [label, value] of headerLines) {
+    if (!value) continue;
+    out = out.replace(new RegExp(`^${label}:.*$`, 'm'), `${label}: ${value}`);
+  }
   if (contact.fullName) {
     out = out.replace(/^ARUN KUMAR/m, contact.fullName.toUpperCase());
   }

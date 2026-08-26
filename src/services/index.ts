@@ -1050,6 +1050,56 @@ export class SettingsService {
     if (error) throw error;
     return (data as Record<string, unknown>) || {};
   }
+
+  async contactOverlay(): Promise<{
+    fullName?: string;
+    title?: string;
+    email?: string;
+    phone?: string;
+    location?: string;
+    linkedin?: string;
+    github?: string;
+    startDate?: string;
+  }> {
+    const { data: { user } } = await supabase.auth.getUser();
+    const data = await this.get();
+    const contact = (data.contact as Record<string, string> | undefined) || {};
+    let fullName: string | undefined;
+    let title: string | undefined;
+    if (user) {
+      const { data: profile } = await supabase.from('profiles').select('full_name, title').eq('user_id', user.id).maybeSingle();
+      fullName = profile?.full_name || undefined;
+      title = profile?.title || undefined;
+    }
+    return {
+      fullName,
+      title,
+      email: contact.email || user?.email || undefined,
+      phone: contact.phone || undefined,
+      location: contact.location || undefined,
+      linkedin: contact.linkedin || undefined,
+      github: contact.github || undefined,
+      startDate: contact.startDate || undefined,
+    };
+  }
+
+  /** Write current contact/profile into Master ATS and the 2-page template (keeps body text). */
+  async applyContactToSeededResumes(): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const overlay = await this.contactOverlay();
+    const { data: rows } = await supabase
+      .from('resumes')
+      .select('id, name, content')
+      .eq('user_id', user.id)
+      .in('name', [MASTER_RESUME_NAME, TWO_PAGE_RESUME_NAME]);
+    for (const row of rows || []) {
+      const next = applyContactOverlay(String(row.content || ''), overlay);
+      if (next !== row.content) {
+        await supabase.from('resumes').update({ content: next, updated_at: new Date().toISOString() }).eq('id', row.id);
+      }
+    }
+  }
 }
 
 export class UserService {
@@ -1118,16 +1168,8 @@ export class BootstrapService {
   }
 
   private async seedCareerCorpus(userId: string, email: string): Promise<void> {
-    const contact = ((await this.settings.get()).contact as Record<string, string> | undefined) || {};
-    const overlay = {
-      email: contact.email || email,
-      phone: contact.phone,
-      location: contact.location,
-      linkedin: contact.linkedin,
-      github: contact.github,
-      startDate: contact.startDate,
-    };
-
+    const overlay = await this.settings.contactOverlay();
+    if (!overlay.email) overlay.email = email;
     const { data: existingResumes } = await supabase.from('resumes').select('id, name').eq('user_id', userId);
     const names = new Set((existingResumes || []).map((r) => String(r.name)));
 
@@ -1149,6 +1191,7 @@ export class BootstrapService {
         ats_score: 0,
       });
     }
+    await this.settings.applyContactToSeededResumes();
 
     const { data: existingChunks } = await supabase
       .from('knowledge_chunks')
