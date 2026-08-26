@@ -46,3 +46,5 @@ src/resources/GPT/COACHING_GUIDE.md
 src/resources/GPT/PACKAGE_UPDATE*
 src/resources/GPT/Comprehensive_Summary.md
 src/resources/H1-FY27/
+TNYPL_Auction_Strategy.md
+.env.local.bak
