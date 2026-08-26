@@ -417,7 +417,12 @@ enabled = true
 [functions.workflow-scheduler]
 verify_jwt = false
 
+# Google's browser redirect has no Authorization header. Auth is the signed `state` param.
 [functions.google-oauth-callback]
+verify_jwt = false
+
+# Gateway JWT would reject CORS preflight and requests that only send apikey. Function still requires a user JWT.
+[functions.google-oauth-start]
 verify_jwt = false
 
 [functions.google-access-token]

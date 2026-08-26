@@ -799,9 +799,13 @@ export class IntegrationService {
     return { success: true, message: 'Connection test successful' };
   }
   async connectGoogle(): Promise<string> {
-    const { data, error } = await supabase.functions.invoke('google-oauth-start', { method: 'GET' });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Sign in first, then connect Google.');
+    const { data, error } = await supabase.functions.invoke('google-oauth-start');
     if (error) throw error;
-    return data?.url || '';
+    if (data?.error) throw new Error(String(data.error));
+    if (!data?.url) throw new Error('Failed to start Google OAuth');
+    return data.url;
   }
   async toggle(id: string): Promise<void> {
     const { data } = await supabase.from('integrations').select('status').eq('id', id).maybeSingle();

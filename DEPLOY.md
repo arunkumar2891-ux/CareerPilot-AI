@@ -94,8 +94,8 @@ supabase functions deploy workflow-run
 supabase functions deploy workflow-step
 supabase functions deploy workflow-scheduler
 supabase functions deploy ai-chat
-supabase functions deploy google-oauth-start
-supabase functions deploy google-oauth-callback
+supabase functions deploy google-oauth-start --no-verify-jwt
+supabase functions deploy google-oauth-callback --no-verify-jwt
 ```
 
 Or deploy all at once:

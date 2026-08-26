@@ -198,13 +198,8 @@ export function IntegrationsPage() {
 
   const connectGoogle = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-oauth-start`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      const json = await res.json();
-      if (json.url) window.location.href = json.url;
-      else toast.error(json.error || 'Failed to start Google OAuth');
+      const url = await services.integration.connectGoogle();
+      window.location.href = url;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'OAuth failed');
     }

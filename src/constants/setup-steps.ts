@@ -182,6 +182,8 @@ export const ADMIN_SETUP_STEPS: SetupStep[] = [
       { text: 'Authorized redirect URIs — add BOTH:' },
       { code: 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/google-oauth-callback\nhttps://YOUR_PROJECT_REF.supabase.co/auth/v1/callback' },
       { text: 'Set secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI' },
+      { text: 'Deploy OAuth functions with JWT verification off (Google’s redirect has no auth header). Use --no-verify-jwt, then Connect Google from the signed-in app — do not open the function URL in a new tab.' },
+      { code: 'supabase functions deploy google-oauth-start --no-verify-jwt --project-ref YOUR_REF\nsupabase functions deploy google-oauth-callback --no-verify-jwt --project-ref YOUR_REF' },
     ],
   },
   {
