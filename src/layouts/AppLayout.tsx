@@ -20,6 +20,8 @@ export function AppLayout() {
         qc.invalidateQueries({ queryKey: ['workflows'] });
         qc.invalidateQueries({ queryKey: ['automations'] });
         qc.invalidateQueries({ queryKey: ['settings'] });
+        qc.invalidateQueries({ queryKey: ['resumes'] });
+        qc.invalidateQueries({ queryKey: ['knowledge'] });
       })
       .catch(() => { /* non-blocking */ });
   }, [qc]);

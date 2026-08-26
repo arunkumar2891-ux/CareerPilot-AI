@@ -1,0 +1,56 @@
+[
+  {
+    "id": "integration_architect",
+    "title": "Integration Architect",
+    "matchKeywords": ["integration architect", "ipaas", "snaplogic", "mulesoft", "boomi", "middleware", "etl", "elt", "event-driven", "api design", "enterprise integration"],
+    "leadWith": ["FW_Flex Integration Pipeline Redesign & Standardization", "PC to CC Migration - Datadog to BigQuery State Management"],
+    "emphasize": ["SnapLogic", "iPaaS", "API design", "event-driven architecture", "standardization", "error handling"],
+    "highlight": ["66% snap reduction", "278 to 94 snaps", "Common Pipeline Framework", "3-tier acknowledgment"],
+    "deemphasize": ["personal projects unless the JD mentions full-stack or GenAI"]
+  },
+  {
+    "id": "genai_developer",
+    "title": "GenAI Developer",
+    "matchKeywords": ["genai", "generative ai", "prompt engineering", "cursor", "chatgpt", "llm developer", "ai-augmented", "ai native", "copilot"],
+    "leadWith": ["GenAI-Augmented Development Methodology", "SnapLogic Automations Portal"],
+    "emphasize": ["AI pair programming", "prompt engineering", "RAG optimization", "rapid prototyping"],
+    "highlight": ["4+ production apps using AI", "10x development speed", "RAG inconsistency 40% to <5%", "Pic-Reel", "IPL 2026", "PlanItX"],
+    "deemphasize": ["pure SnapLogic pipeline internals unless the JD also asks for iPaaS"]
+  },
+  {
+    "id": "forward_deployment",
+    "title": "Forward Deployment Engineer",
+    "matchKeywords": ["forward deployment", "fde", "solutions engineer", "customer engineer", "field engineer", "customer-facing", "rapid prototyping", "production debugging"],
+    "leadWith": ["Forward Deployment Engineering", "SnapLogic Automations Portal"],
+    "emphasize": ["problem identification", "rapid solution delivery", "production debugging", "customer engagement", "Kubernetes", "CI/CD"],
+    "highlight": ["real-world problem to working app", "user adoption 100+", "distributed systems debugging"],
+    "deemphasize": ["deep SnapLogic snap-count tables unless relevant"]
+  },
+  {
+    "id": "cloud_architect",
+    "title": "Cloud Architect",
+    "matchKeywords": ["cloud architect", "gcp", "google cloud", "kubernetes", "gke", "bigquery", "pub/sub", "terraform", "helm", "cloud native"],
+    "leadWith": ["PC to CC Migration - Datadog to BigQuery State Management", "SnapLogic Automations Portal"],
+    "emphasize": ["GCP", "BigQuery", "Pub/Sub", "Kubernetes", "Vertex AI", "zero-data-loss", "auto-scaling"],
+    "highlight": ["4-10x query latency", "10-80x cost reduction", "GKE HPA 3-10 pods", "99.95% uptime"],
+    "deemphasize": ["personal side projects unless cloud/DevOps is mentioned"]
+  },
+  {
+    "id": "ai_ml_engineer",
+    "title": "AI/ML Engineer",
+    "matchKeywords": ["ai engineer", "ml engineer", "machine learning", "vertex ai", "rag", "gemini", "ai agent", "nlp", "embeddings"],
+    "leadWith": ["SnapLogic Automations Portal AI features", "GenAI-Augmented Development Methodology"],
+    "emphasize": ["Gemini", "RAG", "prompt engineering", "AI agents", "Vertex AI", "multi-turn conversations"],
+    "highlight": ["2 AI agents", "multi-turn conversations", "<2s latency", "50+ pipeline metrics RAG corpus"],
+    "deemphasize": ["FW_Flex snap reduction details unless architecture is also required"]
+  },
+  {
+    "id": "engineering_manager",
+    "title": "Engineering Manager / Lead",
+    "matchKeywords": ["engineering manager", "engineering lead", "tech lead", "team lead", "people manager", "mentoring", "stakeholder"],
+    "leadWith": ["Leadership & Mentoring", "major initiatives as delivery proof"],
+    "emphasize": ["team mentoring", "cross-functional collaboration", "stakeholder management", "documentation", "standards"],
+    "highlight": ["5+ mentees", "30+ trained", "3 major initiatives", "3348 lines of documentation"],
+    "deemphasize": ["low-level snap/SQL implementation detail"]
+  }
+]

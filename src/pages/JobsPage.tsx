@@ -263,8 +263,8 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
   if (!job) return null;
 
   const generateResume = async () => {
-    toast.success('Generating tailored resume...');
-    await services.resume.generateTailored(job.id, job.id, 'technical');
+    toast.success('Generating tailored resume from Master ATS corpus...');
+    await services.resume.generateTailored(job.id);
     toast.success('Resume generated — check Resume Studio');
     await qc.invalidateQueries({ queryKey: ['resumes'] });
     onClose();

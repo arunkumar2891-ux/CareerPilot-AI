@@ -56,7 +56,7 @@ export function ResumesPage() {
     <div className="space-y-6 p-6">
       <PageHeader
         title="Resume Studio"
-        description="Create, tailor, and optimize resumes with AI"
+        description="Create, tailor, and optimize resumes from your Master ATS corpus"
         actions={
           <Dialog open={showCreate} onOpenChange={setShowCreate}>
             <DialogTrigger asChild>
@@ -95,7 +95,7 @@ export function ResumesPage() {
 
         <TabsContent value="resumes" className="space-y-4">
           {(!resumes || resumes.length === 0) ? (
-            <Card><CardContent><EmptyState icon={FileX} title="No resumes yet" description="Create your first resume to start tailoring and optimizing with AI." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Plus className="h-4 w-4" /> New Resume</Button>} /></CardContent></Card>
+            <Card><CardContent><EmptyState icon={FileX} title="Seeding your corpus" description="Master ATS and the 2-page template are created automatically on login. Refresh in a moment, or create a custom resume." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Plus className="h-4 w-4" /> New Resume</Button>} /></CardContent></Card>
           ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {resumes.map((r, i) => (

@@ -7,6 +7,12 @@ import type {
 import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/auth';
 import { DEFAULT_JOB_SEARCH_WORKFLOW, buildSeedEdges } from '@/constants/workflow-seed';
+import {
+  CAREER_CORPUS,
+  MASTER_RESUME_NAME,
+  TWO_PAGE_RESUME_NAME,
+  applyContactOverlay,
+} from '@/content/career-corpus';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
 /* ── helpers ── */
@@ -327,30 +333,45 @@ export class ResumeService {
     const { error } = await supabase.from('resumes').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
   }
-  async generateTailored(jobId: string, resumeId: string, _style: 'technical' | 'executive' | 'general'): Promise<Resume> {
-    const resume = await this.get(resumeId);
+  async generateTailored(jobId: string, resumeId?: string, _style?: 'technical' | 'executive' | 'general'): Promise<Resume> {
+    const userId = await requireUserId();
     const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
-    if (!resume || !job) throw new Error('Resume or job not found');
+    if (!job) throw new Error('Job not found');
+
     const { data, error } = await supabase.functions.invoke('ai-chat', {
       body: {
         mode: 'resume',
-        content: `Optimize this resume for the job:\n\nResume:\n${resume.content}\n\nJob:\n${job.description}`,
-        systemPrompt: 'You are an ATS resume optimizer. Return the optimized resume as plain text.',
+        jobId,
+        resumeId,
+        jobDescription: job.description,
+        jobTitle: job.role,
+        company: job.company,
       },
     });
     if (error) throw error;
-    const content = data?.reply || '';
-    await this.update(resumeId, content);
-    const userId = await requireUserId();
+    const content = String(data?.reply || '');
+    if (!content) throw new Error('Resume tailoring returned empty output');
+
+    const tailoredName = `Tailored: ${job.company} ${job.role}`.slice(0, 120);
+    const { data: existing } = await supabase.from('resumes').select('id').eq('user_id', userId).eq('name', tailoredName).maybeSingle();
+    let tailoredId = existing?.id as string | undefined;
+    if (tailoredId) {
+      await this.update(tailoredId, content);
+    } else {
+      const created = await this.create(tailoredName, 'technical', content);
+      tailoredId = created.id;
+    }
+    const latest = await this.get(tailoredId);
     await supabase.from('resume_versions').insert({
       user_id: userId,
-      resume_id: resumeId,
-      version: resume.versions.length + 1,
+      resume_id: tailoredId,
+      version: (latest?.versions.length ?? 0) + 1,
       content,
       ats_score: 0,
       note: `Tailored for ${job.role} at ${job.company}`,
     });
-    return (await this.get(resumeId))!;
+    await supabase.from('jobs').update({ resume_status: 'ready', status: 'resume_ready' }).eq('id', jobId);
+    return (await this.get(tailoredId))!;
   }
   async compare(idA: string, idB: string): Promise<{ a: Resume; b: Resume; diff: string[] }> {
     const a = await this.get(idA);
@@ -684,9 +705,32 @@ export class EmbeddingService {
     if (error) throw error;
     return (data?.embedding as number[]) || [];
   }
-  async search(query: string, _collection?: string): Promise<{ chunk: string; score: number }[]> {
-    const { data } = await supabase.from('knowledge_chunks').select('content').ilike('content', `%${query}%`).limit(10);
-    return (data || []).map((c) => ({ chunk: c.content as string, score: 0.8 }));
+  async search(query: string, collection?: string): Promise<{ chunk: string; score: number; collection: string; tags: string[] }[]> {
+    let q = supabase.from('knowledge_chunks').select('content, collection, tags').ilike('content', `%${query}%`).limit(20);
+    if (collection && collection !== 'all') q = q.eq('collection', collection);
+    const { data, error } = await q;
+    if (error) throw error;
+    const needle = query.toLowerCase();
+    return (data || []).map((c) => {
+      const text = String(c.content ?? '');
+      const hits = needle.split(/\s+/).filter((w) => w.length > 2 && text.toLowerCase().includes(w)).length;
+      return {
+        chunk: text,
+        score: Math.min(0.99, 0.55 + hits * 0.08),
+        collection: String(c.collection ?? 'career'),
+        tags: (c.tags as string[]) ?? [],
+      };
+    });
+  }
+  async collections(): Promise<{ collection: string; count: number }[]> {
+    const { data, error } = await supabase.from('knowledge_chunks').select('collection');
+    if (error) throw error;
+    const counts = new Map<string, number>();
+    for (const row of data || []) {
+      const key = String(row.collection || 'career');
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return [...counts.entries()].map(([collection, count]) => ({ collection, count }));
   }
 }
 
@@ -1045,19 +1089,20 @@ export class BootstrapService {
   private workflow = new WorkflowService();
   private settings = new SettingsService();
 
-  /** Provision built-in job search workflow, automation, and default settings for new users. */
+  /** Provision built-in job search workflow, automation, corpus, and default settings. */
   async ensure(): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     await this.workflow.ensureDefaultPipeline();
+    await this.seedCareerCorpus(user.id, user.email ?? '');
 
     const settings = await this.settings.get();
     const jobSearch = settings.jobSearch as Record<string, string> | undefined;
     if (!jobSearch?.query) {
       await this.settings.update({
         jobSearch: {
-          query: 'AI Product Manager',
+          query: 'Integration Architect',
           location: 'San Francisco, CA',
           maxJobs: '5',
           resumeFileId: jobSearch?.resumeFileId ?? '',
@@ -1065,6 +1110,59 @@ export class BootstrapService {
         notifications: { email: user.email ?? '' },
         userEmail: user.email ?? '',
       });
+    }
+  }
+
+  private async seedCareerCorpus(userId: string, email: string): Promise<void> {
+    const contact = ((await this.settings.get()).contact as Record<string, string> | undefined) || {};
+    const overlay = {
+      email: contact.email || email,
+      phone: contact.phone,
+      location: contact.location,
+      linkedin: contact.linkedin,
+      github: contact.github,
+      startDate: contact.startDate,
+    };
+
+    const { data: existingResumes } = await supabase.from('resumes').select('id, name').eq('user_id', userId);
+    const names = new Set((existingResumes || []).map((r) => String(r.name)));
+
+    if (!names.has(MASTER_RESUME_NAME)) {
+      await supabase.from('resumes').insert({
+        user_id: userId,
+        name: MASTER_RESUME_NAME,
+        type: 'technical',
+        content: applyContactOverlay(CAREER_CORPUS.masterResume, overlay),
+        ats_score: 0,
+      });
+    }
+    if (!names.has(TWO_PAGE_RESUME_NAME)) {
+      await supabase.from('resumes').insert({
+        user_id: userId,
+        name: TWO_PAGE_RESUME_NAME,
+        type: 'general',
+        content: applyContactOverlay(CAREER_CORPUS.twoPageTemplate, overlay),
+        ats_score: 0,
+      });
+    }
+
+    const { data: existingChunks } = await supabase
+      .from('knowledge_chunks')
+      .select('source_id')
+      .eq('user_id', userId)
+      .eq('collection', 'career');
+    const chunkIds = new Set((existingChunks || []).map((c) => String(c.source_id || '')));
+    const toInsert = CAREER_CORPUS.evidenceChunks
+      .filter((c) => !chunkIds.has(c.id))
+      .map((c) => ({
+        user_id: userId,
+        collection: 'career',
+        source_id: c.id,
+        tags: c.tags,
+        content: c.text,
+      }));
+    if (toInsert.length) {
+      await supabase.from('knowledge_chunks').insert(toInsert);
     }
   }
 }

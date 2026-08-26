@@ -19,6 +19,7 @@ In the Supabase SQL Editor, run **in order**:
 | 3 | Enable extensions (see below) | Required before cron migration |
 | 4 | `supabase/migrations/003_cron.sql` | pg_cron scheduler (edit placeholders first) |
 | 5 | `supabase/migrations/004_fix_integrations_security.sql` | SECURITY INVOKER integrations RPC |
+| 6 | `supabase/migrations/005_knowledge_chunks.sql` | Career evidence chunks for resume tailoring |
 
 ### Enable pg_cron and pg_net (required before 003)
 

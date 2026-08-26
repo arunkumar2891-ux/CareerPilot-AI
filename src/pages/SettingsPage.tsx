@@ -26,6 +26,11 @@ export function SettingsPage() {
   const [maxJobs, setMaxJobs] = useState('5');
   const [resumeFileId, setResumeFileId] = useState('');
   const [notifyEmail, setNotifyEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
+  const [linkedin, setLinkedin] = useState('');
+  const [github, setGithub] = useState('');
+  const [startDate, setStartDate] = useState('');
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
 
@@ -38,6 +43,12 @@ export function SettingsPage() {
       if (js?.maxJobs) setMaxJobs(js.maxJobs);
       if (js?.resumeFileId) setResumeFileId(js.resumeFileId);
       if (notif?.email) setNotifyEmail(notif.email);
+      const contact = settings.contact as Record<string, string> | undefined;
+      if (contact?.phone) setPhone(contact.phone);
+      if (contact?.location) setLocation(contact.location);
+      if (contact?.linkedin) setLinkedin(contact.linkedin);
+      if (contact?.github) setGithub(contact.github);
+      if (contact?.startDate) setStartDate(contact.startDate);
     }
   }, [settings]);
 
@@ -45,6 +56,14 @@ export function SettingsPage() {
     await services.user.updateProfile({ fullName: name, title });
     qc.invalidateQueries({ queryKey: ['profile'] });
     toast.success('Profile saved');
+  };
+
+  const saveContact = async () => {
+    await services.settings.update({
+      contact: { phone, location, linkedin, github, startDate, email: user?.email },
+    });
+    toast.success('Contact details saved — used to fill resume placeholders');
+    qc.invalidateQueries({ queryKey: ['settings'] });
   };
 
   const saveJobSearch = async () => {
@@ -78,7 +97,18 @@ export function SettingsPage() {
                 <div className="space-y-1.5"><Label>Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
               </div>
               <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={email} disabled /></div>
-              <Button onClick={saveProfile} className="gap-2"><Check className="h-4 w-4" /> Save Changes</Button>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5"><Label>Phone</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 …" /></div>
+                <div className="space-y-1.5"><Label>Location</Label><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City, State" /></div>
+                <div className="space-y-1.5"><Label>LinkedIn URL</Label><Input value={linkedin} onChange={(e) => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/…" /></div>
+                <div className="space-y-1.5"><Label>GitHub URL</Label><Input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="https://github.com/…" /></div>
+                <div className="space-y-1.5"><Label>PANW start date</Label><Input value={startDate} onChange={(e) => setStartDate(e.target.value)} placeholder="e.g. Jan 2021" /></div>
+              </div>
+              <p className="text-xs text-muted-foreground">These replace [Email], [Phone], [Location] tokens in the master resume when tailoring.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveProfile} className="gap-2"><Check className="h-4 w-4" /> Save Profile</Button>
+                <Button variant="outline" onClick={saveContact} className="gap-2"><Check className="h-4 w-4" /> Save Contact for Resumes</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -93,8 +123,8 @@ export function SettingsPage() {
               <div className="space-y-1.5"><Label>Search Query</Label><Input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="AI Product Manager" /></div>
               <div className="space-y-1.5"><Label>Location</Label><Input value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="San Francisco, CA" /></div>
               <div className="space-y-1.5"><Label>Max Jobs Per Run</Label><Input value={maxJobs} onChange={(e) => setMaxJobs(e.target.value)} type="number" /></div>
-              <div className="space-y-1.5"><Label>Google Doc Resume ID</Label><Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="YOUR_GOOGLE_DOC_RESUME_ID" /></div>
-              <p className="text-xs text-muted-foreground">API keys (Apify, Gemini, Resend) are configured as Supabase Edge Function secrets — not stored in the browser.</p>
+              <div className="space-y-1.5"><Label>Google Doc Resume ID (optional backup)</Label><Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="Optional — header override only" /></div>
+              <p className="text-xs text-muted-foreground">Tailoring uses the in-app Master ATS corpus. A Google Doc ID is optional (name/contact header only). API keys stay as Edge Function secrets.</p>
               <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save Job Search Settings</Button>
             </CardContent>
           </Card>

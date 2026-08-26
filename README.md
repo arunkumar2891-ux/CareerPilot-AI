@@ -20,25 +20,26 @@ On sign-in, the app automatically creates:
 |----------|---------|
 | **Daily Job Search Pipeline** | Full workflow in Workflow Studio |
 | **Daily 7 AM Job Search** | Active automation (`0 7 * * *`) |
+| **Master ATS (bullet bank)** + **2-page template** | Seeded from `src/content/career-corpus` |
 | **Default settings** | Job query, location, max jobs, notification email |
 
 ### Pipeline steps
 
 ```
 Schedule (7 AM)
-  → Google Docs (resume)
+  → Optional Google Doc header
   → Build LinkedIn search URL
   → Apify scrape (poll + wait)
   → Parse & limit jobs
   → Duplicate filter
-  → Gemini ATS optimization
+  → Gemini ATS (selects from Master ATS corpus + role playbook)
   → Store in Supabase
   → LaTeX → PDF compile
   → Upload (Storage + Google Drive)
   → Email summary (Resend)
 ```
 
-Configure the pipeline in **Settings → Job Search** (resume Google Doc ID, query, location). Connect Google in **Integrations**. Run immediately via **Jobs → Run Search** or wait for the daily schedule.
+Configure search in **Settings → Job Search**. Fill **Profile** contact fields so tailored resumes are not placeholders. Google Docs is optional. Run immediately via **Jobs → Run Search** or wait for the daily schedule. Tailoring **selects** bullets from the Master ATS corpus — it does not invent metrics.
 
 The workflow definition lives in `src/constants/workflow-seed.ts` and is provisioned by `BootstrapService` in `src/services/index.ts`.
 

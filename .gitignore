@@ -34,3 +34,15 @@ supabase/.temp/
 *.sln
 *.sw?
 .cursor/
+
+# Sensitive performance-review / incident dumps (use src/content/career-corpus instead)
+src/resources/GPT/Daily_Status*
+src/resources/GPT/INCIDENT_RCA*
+src/resources/GPT/SECURITY_ISSUES*
+src/resources/GPT/PERFORMANCE_REVIEW*
+src/resources/GPT/REVIEW_RESPONSE*
+src/resources/GPT/GOAL_BASED*
+src/resources/GPT/COACHING_GUIDE.md
+src/resources/GPT/PACKAGE_UPDATE*
+src/resources/GPT/Comprehensive_Summary.md
+src/resources/H1-FY27/

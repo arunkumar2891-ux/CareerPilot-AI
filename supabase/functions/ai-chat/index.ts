@@ -1,6 +1,6 @@
 import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
-
-const ATS_SYSTEM_PROMPT = `You are an expert ATS resume optimizer. Tailor resumes to job descriptions. Return plain text only.`;
+import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
+import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
 
 async function callGemini(messages: { role: string; content: string }[], systemPrompt?: string): Promise<string> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
@@ -52,6 +52,24 @@ Deno.serve(async (req) => {
 
     if (mode === 'embed') {
       return jsonResponse({ embedding: [] });
+    }
+
+    if (mode === 'resume') {
+      const jd = String(body.jobDescription || content || '');
+      const corpus = await loadCareerCorpus(user.id, jd);
+      const userPrompt = buildResumeUserPrompt({
+        jobTitle: String(body.jobTitle || ''),
+        company: String(body.company || ''),
+        jobDescription: jd,
+        playbookTitle: corpus.playbookTitle,
+        playbookInstructions: corpus.playbookInstructions,
+        masterResume: corpus.masterResume,
+        twoPageTemplate: corpus.twoPageTemplate,
+        evidence: corpus.evidence,
+        contactBlock: corpus.contactBlock,
+      });
+      const reply = await callGemini([{ role: 'user', content: userPrompt }], ATS_SYSTEM_PROMPT);
+      return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });
     }
 
     let prompt = systemPrompt || ATS_SYSTEM_PROMPT;

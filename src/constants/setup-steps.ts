@@ -39,16 +39,15 @@ export const USER_SETUP_STEPS: SetupStep[] = [
   },
   {
     id: 'resume-doc',
-    title: 'Prepare your Google Doc resume',
-    summary: 'The pipeline reads your resume from Google Docs to tailor it for each job.',
+    title: 'Fill contact details and confirm corpus',
+    summary: 'Your Master ATS bullet bank and 2-page template seed automatically. Add contact fields so tailored PDFs are not full of placeholders.',
     audience: 'user',
     substeps: [
-      { text: 'Create or open your resume in Google Docs.' },
-      { text: 'Share the doc with the same Gmail you will connect in Integrations (or set link sharing to "Anyone with the link").' },
-      { text: 'Copy the Document ID from the URL: docs.google.com/document/d/DOCUMENT_ID/edit' },
-      { text: 'Paste the ID in Settings → Job Search → Google Doc Resume ID.' },
+      { text: 'After login, Resume Studio should show "Master ATS (bullet bank)" and "2-page template".' },
+      { text: 'Open Settings → Profile and save phone, location, LinkedIn, GitHub, and PANW start date.' },
+      { text: 'Google Doc resume ID is optional — only used as a header override. The optimizer selects from the in-app corpus.' },
     ],
-    inAppLink: { label: 'Job Search Settings', path: '/settings' },
+    inAppLink: { label: 'Open Resume Studio', path: '/resumes' },
   },
   {
     id: 'job-search',
@@ -70,8 +69,8 @@ export const USER_SETUP_STEPS: SetupStep[] = [
     summary: 'Authorize CareerPilot to read your resume and upload tailored PDFs.',
     audience: 'user',
     substeps: [
-      { text: 'Go to Integrations and click Connect Google.' },
-      { text: 'Sign in with the Gmail that owns your resume doc.' },
+      { text: 'Go to Integrations and click Connect Google if you want tailored PDFs uploaded to Drive.' },
+      { text: 'Google Drive is optional for tailoring; required only for Drive upload in the pipeline.' },
       { text: 'If you see "Error 403: access_denied", the app admin must add your Gmail as a test user in Google Cloud OAuth (see Platform Setup below).' },
       { text: 'On the unverified-app warning, click Advanced → Go to CareerPilot (unsafe) — normal while the app is in Testing mode.' },
     ],

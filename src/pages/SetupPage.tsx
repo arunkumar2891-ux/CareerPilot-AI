@@ -163,22 +163,25 @@ export function SetupPage() {
   const { data: integrations } = useQuery({ queryKey: ['integrations'], queryFn: () => services.integration.list() });
   const { data: automations } = useQuery({ queryKey: ['automations'], queryFn: () => services.automation.list() });
   const { data: runs } = useQuery({ queryKey: ['runs'], queryFn: () => services.execution.listRuns() });
+  const { data: resumes } = useQuery({ queryKey: ['resumes'], queryFn: () => services.resume.list() });
 
   const jobSearch = settings?.jobSearch as Record<string, string> | undefined;
+  const contact = settings?.contact as Record<string, string> | undefined;
   const googleConnected = integrations?.some((i) => i.name === 'Google Drive' && i.status === 'connected');
+  const corpusSeeded = Boolean(resumes?.some((r) => r.name === 'Master ATS (bullet bank)'));
 
   const userCompletion = useMemo(() => {
     const map: Record<string, boolean> = {
       account: Boolean(user),
       profile: Boolean(user?.fullName && user.fullName !== 'New User'),
-      'resume-doc': Boolean(jobSearch?.resumeFileId),
+      'resume-doc': corpusSeeded && Boolean(contact?.phone || contact?.linkedin || contact?.location),
       'job-search': Boolean(jobSearch?.query && jobSearch?.location),
-      google: Boolean(googleConnected),
+      google: Boolean(googleConnected) || corpusSeeded,
       pipeline: Boolean(automations && automations.length > 0),
       'first-run': Boolean(runs && runs.length > 0),
     };
     return map;
-  }, [user, jobSearch, googleConnected, automations, runs]);
+  }, [user, jobSearch, contact, googleConnected, automations, runs, corpusSeeded]);
 
   const userDoneCount = USER_SETUP_STEPS.filter((s) => userCompletion[s.id]).length;
   const userProgress = Math.round((userDoneCount / USER_SETUP_STEPS.length) * 100);
