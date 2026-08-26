@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useEffect, type ReactNode } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
@@ -28,6 +28,17 @@ import { SetupPage } from '@/pages/SetupPage';
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, refetchOnWindowFocus: false, retry: 1 } },
 });
+
+/** OAuth returns to `/` so static hosts without SPA rewrites still load index.html. */
+function OAuthReturnRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const isOAuthReturn = params.get('connected') === 'google' || Boolean(params.get('error'));
+  if (isOAuthReturn && location.pathname !== '/integrations') {
+    return <Navigate to={`/integrations${location.search}`} replace />;
+  }
+  return null;
+}
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, initializing } = useAuthStore();
@@ -81,6 +92,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={200}>
         <BrowserRouter>
+          <OAuthReturnRedirect />
           <Routes>
             <Route path="/auth" element={<AuthPage />} />
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
@@ -101,6 +113,7 @@ function App() {
               <Route path="/setup" element={<SetupPage />} />
               <Route path="/prompts" element={<PromptsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
         </BrowserRouter>

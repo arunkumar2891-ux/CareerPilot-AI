@@ -9,11 +9,11 @@ Deno.serve(async (req) => {
 
   if (oauthError) {
     const detail = url.searchParams.get('error_description') || oauthError;
-    return Response.redirect(`${appUrl}/integrations?error=${encodeURIComponent(detail)}`);
+    return Response.redirect(`${appUrl}/?error=${encodeURIComponent(detail)}`);
   }
 
   if (!code || !state) {
-    return Response.redirect(`${appUrl}/integrations?error=${encodeURIComponent('oauth_failed')}`);
+    return Response.redirect(`${appUrl}/?error=${encodeURIComponent('oauth_failed')}`);
   }
 
   try {
@@ -59,9 +59,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    return Response.redirect(`${appUrl}/integrations?connected=google`);
+    return Response.redirect(`${appUrl}/?connected=google`);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'oauth_failed';
-    return Response.redirect(`${appUrl}/integrations?error=${encodeURIComponent(message)}`);
+    return Response.redirect(`${appUrl}/?error=${encodeURIComponent(message)}`);
   }
 });

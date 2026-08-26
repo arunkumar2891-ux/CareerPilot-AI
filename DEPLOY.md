@@ -144,7 +144,7 @@ Your URL will be `https://careerpilot-ai.onrender.com` (or similar).
    - **Build Command:** `npm install && npm run build`
    - **Publish Directory:** `dist`
 3. **Environment** → add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
-4. **Redirects/Rewrites** → add rewrite: `/*` → `/index.html` (or rely on `public/_redirects` copied into `dist`)
+4. **Redirects/Rewrites** → add a **Rewrite** (not a Redirect): Source `/*`, Destination `/index.html`. Render ignores Netlify-style `public/_redirects` unless this is set (or you used the Blueprint `render.yaml` routes). The build also copies `dist/404.html` from `index.html` as a fallback.
 5. **Create Static Site**
 
 ### After Render deploy
@@ -170,7 +170,7 @@ npm install
 npm run build
 ```
 
-`render.yaml` and `public/_redirects` handle SPA routing (`/*` → `index.html`).
+`render.yaml` rewrites `/*` → `index.html`. If the site was created manually, add that rewrite in the Render dashboard or the next build’s `404.html` fallback will serve the SPA for deep links like `/integrations`.
 
 ## 5. First run
 
