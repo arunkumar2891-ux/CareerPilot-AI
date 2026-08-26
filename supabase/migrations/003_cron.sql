@@ -33,7 +33,7 @@ SELECT cron.schedule(
     url := 'https://qcywswnrknzwovvaixjl.supabase.co/functions/v1/workflow-scheduler',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'Authorization', 'Bearer a3f8c2e91b4d7f6e8a0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1'
+      'Authorization', 'Bearer <YOUR_SCHEDULER_SECRET>'
     ),
     body := '{}'::jsonb
   ) AS request_id;
