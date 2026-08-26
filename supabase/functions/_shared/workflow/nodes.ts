@@ -2,21 +2,8 @@ import type { NodeExecutor, NodeResult, RunContext, WorkflowNodeRow, WorkflowEdg
 import { getSecretOrIntegration, getIntegrationCredentials, refreshGoogleToken, getUserSettings } from '../credentials.ts';
 import { resolveTemplate } from './graph.ts';
 import { createAdminClient } from '../supabase-admin.ts';
-
-const ATS_SYSTEM_PROMPT = `You are an expert ATS resume optimizer.
-
-Your task is to revise the resume so it is optimized for Applicant Tracking Systems (ATS) and tailored to the target job (JD).
-
-Keyword Optimization: Extract the most important hard skills, technical terms, tools, certifications, and role-specific keywords from the JD. Naturally integrate these throughout the resume.
-
-Role Alignment: Identify responsibilities and achievements from the current resume that most closely match the target role. Rewrite bullet points to highlight quantifiable achievements.
-
-Professional Voice: Use strong action verbs. Do NOT invent metrics.
-
-Final Output (STRICT):
-Return ONLY plain text. No Markdown.
-Use ONLY these section headers (ALL CAPS): NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, EDUCATION, SKILLS
-For bullets use: - (hyphen + space)`;
+import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/prompt.ts';
+import { loadCareerCorpus } from '../career-corpus/load.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -231,22 +218,30 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   gdocs: {
     async execute(ctx, node) {
-      const fileId = resolveTemplate(String(node.config.fileId || ''), ctx);
-      const accessToken = await refreshGoogleToken(ctx.userId);
-      const res = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(
-          (err as { error?: { message?: string } }).error?.message
-            || 'Google Docs fetch failed — pick your resume in Settings after connecting Google',
-        );
+      const fileId = resolveTemplate(String(node.config.fileId || ''), ctx).trim();
+      if (!fileId || fileId.includes('{{') || fileId.includes('YOUR_GOOGLE')) {
+        return { output: { skipped: true, reason: 'no_google_doc' }, status: 'success' };
       }
-      const fullText = await res.text();
-      ctx.variables.resumeText = fullText;
-      return { output: { docId: fileId, fullText }, status: 'success' };
+      try {
+        const accessToken = await refreshGoogleToken(ctx.userId);
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(
+            (err as { error?: { message?: string } }).error?.message
+              || 'Google Docs fetch failed',
+          );
+        }
+        const fullText = await res.text();
+        ctx.variables.googleHeader = fullText.split('\n').slice(0, 12).join('\n');
+        return { output: { docId: fileId, headerOnly: true }, status: 'success' };
+      } catch (err) {
+        ctx.variables.googleDocWarning = err instanceof Error ? err.message : String(err);
+        return { output: { skipped: true, reason: 'google_doc_optional' }, status: 'success' };
+      }
     },
   },
   gdrive: {
@@ -291,11 +286,24 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   gemini: {
     async execute(ctx, node, input) {
       const systemPrompt = String(node.config.systemPrompt || ATS_SYSTEM_PROMPT);
-      const resumeText = String(ctx.variables.resumeText || '');
       const job = input as Record<string, unknown>;
-      const userPrompt = `My current resume:\n${resumeText}\n\nTarget job description:\n${job.jobDescription || job.description}`;
+      const jd = String(job.jobDescription || job.description || '');
+      const corpus = await loadCareerCorpus(ctx.userId, jd);
+      const userPrompt = buildResumeUserPrompt({
+        jobTitle: String(job.title || job.role || ''),
+        company: String(job.company || ''),
+        jobDescription: jd,
+        playbookTitle: corpus.playbookTitle,
+        playbookInstructions: corpus.playbookInstructions,
+        masterResume: corpus.masterResume,
+        twoPageTemplate: corpus.twoPageTemplate,
+        evidence: corpus.evidence,
+        contactBlock: corpus.contactBlock,
+        googleHeader: String(ctx.variables.googleHeader || ''),
+      });
       const output = await callGemini(systemPrompt, userPrompt);
       ctx.variables.lastAgentOutput = output;
+      ctx.variables.playbook = corpus.playbookTitle;
       return { output: { ...job, output }, status: 'success' };
     },
   },
