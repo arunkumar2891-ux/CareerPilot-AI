@@ -88,7 +88,7 @@ See **[DEPLOY.md](DEPLOY.md)** for migrations, API keys, Edge Function secrets, 
 ### Configure
 | Module | Description |
 |--------|-------------|
-| **Integrations** | Connect Google Drive/Docs, Apify, email, and more |
+| **Integrations** | Apify (job scrape) and optional Google Drive (PDF upload). Gemini and email are Edge Function secrets. |
 | **Prompt Library** | Versioned prompt templates with variable substitution |
 | **Settings** | Profile, job search config, appearance (light/dark), notifications, and API keys |
 
