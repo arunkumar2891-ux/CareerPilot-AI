@@ -413,7 +413,6 @@
 - File: `Agents/__init__.py` (root_agent export)
 - File: `Agents/requirements.txt` (google-adk, google-genai, opentelemetry)
 - File: `Agents/.env.yaml` (deployment environment variables)
-- File: `Agents/Quote_Journey_Tracker_Agent_Design_Document.md` (reference architecture)
 - Deployed resource: `projects/894940444885/locations/us-west1/reasoningEngines/1267508208407150592`
 
 ---
