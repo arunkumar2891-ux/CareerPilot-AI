@@ -174,8 +174,12 @@
 | **AI Agents** | Annual Hours Saved | 540+ |
 | **AI Agents** | Productivity Dollar Value | ~$40,000+/year |
 | **AI Agents** | Annual ROI | 2,000-3,000% |
-| **AI Agents** | Pipeline Review Improvement | ~90% performance gain |
-| **AI Agents** | Rule Coverage | 100% (6 sub-agents) |
+| **AI Agents** | Pipeline Review Improvement | ~90% performance gain (ParallelAgent vs sequential) |
+| **AI Agents** | Rule Coverage | 100% (6 parallel sub-agents via Google ADK) |
+| **AI Agents** | Pipeline Review Architecture | ParallelAgent → SequentialAgent → Consolidator |
+| **AI Agents** | Development Method | AI-assisted (Cursor IDE + Claude) |
+| **AI Agents** | Production Tuning Cycles | 4 iterative refinements |
+| **AI Agents** | Deployment Issues Resolved (AI) | 5+ (file locks, model 404, API format, env vars, SSE) |
 | **AI Agents** | Evaluation Score (COSTS) | 4.5/5 |
 | **Scale** | Portal Users | 100+ |
 | **Scale** | API Endpoints | 35+ |

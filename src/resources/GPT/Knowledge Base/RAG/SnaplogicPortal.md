@@ -134,19 +134,36 @@ Outputs include:
 
 ## Pipeline Review Agent
 
-Automatically reviews SnapLogic pipelines against enterprise development standards.
+Automatically reviews SnapLogic pipelines against enterprise development standards using a multi-agent architecture built on Google ADK (Agent Development Kit).
 
-Validates:
+Architecture: ParallelAgent → SequentialAgent → Consolidator
+- 6 specialized sub-agents run concurrently via ParallelAgent
+- Results consolidated into structured JSON by a dedicated consolidator agent
+- Deployed to Google Cloud Agent Engine (Vertex AI Reasoning Engine) in us-west1
+- Custom GlobalGemini class routes model calls to global endpoint for gemini-3.5-flash
 
-- Pipeline structure
-- Design standards
-- Error handling
-- Naming conventions
-- Performance
-- Security
-- Maintainability
+Validates (6 parallel dimensions):
 
-Produces detailed review reports with recommendations.
+- Naming conventions (9 rules including INTnnnn/COEnnnn prefixes, snap naming format)
+- Best practices (6 rules including account expression enablement, PubSub snap packs)
+- Error handling (5 rules including error view on connectors, COM0005 routing)
+- Performance (8 rules including data validation, DB operations, aggregation)
+- Review conditions (8 critical + 18 warning conditions including snap count, retry, memory)
+- Security (hardcoded credentials, tokens, PII detection)
+
+Produces structured JSON review reports with:
+- Overall status (PASSED / PASSED_WITH_WARNINGS / FAILED)
+- Critical violations with snap labels and recommended fixes
+- Warnings and standard deviations
+- Category breakdown with per-dimension scoring
+- Prioritized action plan
+
+Key technical details:
+- Built using AI-assisted development (Cursor IDE with Claude)
+- ~90% performance improvement over sequential execution
+- 100% rule coverage across all review dimensions
+- Integrated with SnapLogic via streamQuery API with session management
+- OpenTelemetry tracing for full observability
 
 ---
 
@@ -478,7 +495,7 @@ Enterprise Integration
 
 # Related Achievements
 
-- AI Pipeline Review Agent (Multi-Agent, Google ADK, 6 sub-agents, ~90% improvement)
+- AI Pipeline Review Agent (Multi-Agent ParallelAgent, Google ADK, 6 concurrent sub-agents, ~90% improvement, built with Cursor AI)
 - Quote Journey Tracker Agent (GCP Agent Studio, Gemini 3.5 Flash, 85-90% faster, 540+ hrs/year, ~$40K)
 - Common Error Handling Framework
 - Pub/Sub Migration Framework

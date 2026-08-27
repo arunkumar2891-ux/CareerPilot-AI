@@ -12,7 +12,7 @@
 | **PC to CC Migration** | Eliminated data loss risk | 15-day retention→unlimited, 2-5s→<500ms latency, zero-loss migration |
 | **SnapLogic Portal** | Self-service developer platform with governed SDLC | 100+ users, 11-step SDLC workflow, 35+ APIs, 2 AI agents, RBAC, OTP auth, audit trail |
 | **Quote Journey Tracker Agent** | AI-powered diagnostics (GCP Agent Studio) | 85-90% faster (3-4 min→30-40 sec), 540+ hrs/year saved, ~$40K value, 2000-3000% ROI |
-| **Multi-Agent Pipeline Review** | Automated code review (Google ADK) | Root Agent + 6 sub-agents, 100% rule coverage, ~90% perf improvement |
+| **Multi-Agent Pipeline Review** | Automated code review (Google ADK, AI-built) | ParallelAgent + 6 sub-agents, 100% rule coverage, ~90% perf improvement, built with Cursor AI |
 | **LMS Enhancements** | Enterprise learning integrations | 5 initiatives, 22 JIRA tickets, 3 Prod CRs, zero incidents |
 | **Incident Response** | Prevented revenue impact during quarter-end | Resolved critical logging incident in <2 hours, zero business impact |
 
@@ -34,7 +34,7 @@
 **Strategic Value:**
 - Established reusable integration framework for future projects
 - Moved from reactive support to AI-powered intelligent operations
-- Deployed multi-agent architecture (Google ADK) for automated code review
+- Deployed multi-agent architecture (Google ADK ParallelAgent) for automated code review, built using AI-assisted development (Cursor + Claude)
 - Built governed SDLC with 11-step workflow and dependency gating
 - Enabled analytics via BigQuery (ML, Looker dashboards)
 - Implemented enterprise security (RBAC, OTP, audit trail, CORS protection)
@@ -58,7 +58,7 @@
 **Expertise Demonstrated:**
 - SnapLogic: Listener/worker patterns, common pipelines, error handling, logging frameworks
 - Cloud: GCP Pub/Sub, BigQuery (MERGE, DML, partitioning), Vertex AI (Gemini 2.5/3.5), GCP Agent Studio
-- AI/Agents: Google ADK (multi-agent orchestration), Vertex AI RAG Engine, Gemini function-calling, structured JSON output
+- AI/Agents: Google ADK (ParallelAgent multi-agent orchestration, built with Cursor AI), Vertex AI RAG Engine, Gemini function-calling, structured JSON output
 - Full-Stack: React 18 + TypeScript + Vite + Tailwind, Express.js + Node 22, 35+ APIs
 - DevOps: Kubernetes, Helm, Vault, Datadog APM, Harness CI (Blackduck, Checkmarx)
 - Security: RBAC (8 permissions), OTP auth, audit trail, CORS protection, cross-site mutation guard

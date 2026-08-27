@@ -178,19 +178,34 @@ Over the past eight months, Arun has delivered five major enterprise integration
 
 ## 5. Multi-Agent Pipeline Review System
 
-**What:** Deployed a multi-agent system using Google ADK (Agent Development Kit) with a Root Agent orchestrating 6 parallel sub-agents for automated SnapLogic pipeline code review.
+**What:** Designed, built, and deployed a production multi-agent system using Google ADK (Agent Development Kit) with a ParallelAgent orchestrating 6 concurrent sub-agents for automated SnapLogic pipeline code review. Built entirely using AI-assisted development (Cursor IDE with Claude), demonstrating how AI Agents can be used to build AI Agents.
 
 **Quantifiable Impact:**
-- **~90% performance improvement** in review execution
-- **100% rule coverage** across all review dimensions
-- **6 parallel sub-agents** (Naming, Best Practices, Error Handling, Performance, Review Conditions, Security)
-- **Structured JSON output** for consistent downstream processing
+- **~90% performance improvement** in review execution (parallel vs sequential)
+- **100% rule coverage** across all 6 review dimensions
+- **6 parallel sub-agents** executing concurrently (Naming, Best Practices, Error Handling, Performance, Review Conditions, Security)
+- **Structured JSON output** for consistent downstream SnapLogic pipeline processing
+- **Deployed to Google Cloud Agent Engine** (Vertex AI Reasoning Engine) in us-west1
+- **Session-based architecture** with OpenTelemetry tracing for full observability
 
-**How:**
-- Built Root Agent + 6 sub-agents using Python ADK with parallel execution and sequential consolidation
-- Implemented multi-pass analysis pipeline (4 passes: inventory, classification, error identification, rule cross-referencing)
-- Deployed to GCP Agent Studio with structured JSON output schemas
-- Optimized for parallel execution while maintaining consistency
+**Architecture:** ParallelAgent → SequentialAgent → Consolidator pattern:
+- `ParallelAgent` runs all 6 specialized sub-agents concurrently using `output_key` for session state
+- `SequentialAgent` wraps parallel execution followed by a consolidator that merges all results
+- Custom `GlobalGemini` class routes model calls to `global` endpoint (solving regional availability)
+- Root LlmAgent delegates to sequential pipeline and returns raw structured JSON
+
+**How (AI-Assisted Development with Cursor):**
+- Used Cursor IDE with Claude for architecture design, implementation, deployment debugging, and iterative production tuning
+- AI suggested `output_key` pattern, designed GlobalGemini class, diagnosed deployment errors (OneDrive file locks, model 404s, streamQuery payload format), and refined sub-agent rules based on production feedback
+- Iteratively fixed false positives: scoped retry rules to connector snaps only, switched to snap labels instead of UUIDs, recognized error routing patterns, accepted COEnnnn naming prefix
+- Integrated with SnapLogic via streamQuery API, resolving SSE streaming limitations
+
+**Capabilities Demonstrated:**
+- **Multi-Agent AI Architecture**: Google ADK ParallelAgent, SequentialAgent, LlmAgent orchestration
+- **AI-Assisted Development**: Used AI (Cursor/Claude) to build, deploy, debug, and tune a production AI system
+- **Cloud Deployment**: Google Cloud Agent Engine, `adk deploy`, OpenTelemetry, Cloud Trace
+- **API Integration**: SnapLogic HTTP Client → Agent Engine streamQuery with session management
+- **Iterative Production Tuning**: Refined agent instructions based on real-world pipeline review results
 
 ---
 
@@ -225,7 +240,7 @@ Throughout these projects, Arun leveraged AI tools to accelerate delivery and im
 
 6. **AI Agent Development**: Built production AI agents using GCP Agent Studio + Gemini 3.5 Flash + Vertex AI RAG Engine, achieving 85-90% response time improvement and 540+ hrs/year saved
 
-7. **Multi-Agent Orchestration**: Deployed Google ADK-based multi-agent system with 6 parallel sub-agents for automated pipeline code review (~90% performance improvement)
+7. **Multi-Agent Orchestration**: Deployed Google ADK-based multi-agent system with 6 parallel sub-agents for automated pipeline code review (~90% performance improvement). Built entirely using AI-assisted development (Cursor IDE with Claude)—from architecture design through deployment debugging and iterative production tuning—demonstrating the AI-building-AI pattern.
 
 **Impact**: Estimated 20-25% productivity improvement through AI-assisted development, plus 540+ hours/year saved through AI agent automation, allowing Arun to deliver five major initiatives in eight months while maintaining high quality standards.
 
@@ -337,4 +352,4 @@ The August 2026 expansion into AI agent development (GCP Agent Studio, Google AD
 ---
 
 *Document prepared for H1 2026 Performance Review*  
-*Last Updated: August 25, 2026*
+*Last Updated: August 27, 2026*

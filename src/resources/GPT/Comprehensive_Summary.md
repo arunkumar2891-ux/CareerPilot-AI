@@ -174,14 +174,27 @@ Capabilities:
 
 **Multi-Agent Pipeline Review System (Google ADK)**
 
+Architecture: ParallelAgent → SequentialAgent → Consolidator (built with AI-assisted development using Cursor IDE + Claude)
+
 Capabilities:
-* Root Agent + 6 parallel sub-agents (Python ADK)
+* Root LlmAgent → SequentialAgent → [ParallelAgent (6 concurrent sub-agents), Consolidator LlmAgent]
 * Sub-agents: Naming, Best Practices, Error Handling, Performance, Review Conditions, Security
-* ~90% performance improvement in review execution
-* 100% rule coverage across all dimensions
+* ~90% performance improvement in review execution (parallel vs sequential)
+* 100% rule coverage across all 6 dimensions
 * Multi-pass analysis (4 passes: inventory, classification, error ID, rule cross-reference)
-* Structured JSON output for downstream processing
-* OTEL-enabled logging for observability
+* Structured JSON output for downstream SnapLogic pipeline processing
+* Custom GlobalGemini class routing model calls to `global` endpoint for gemini-3.5-flash
+* Session-based stateful architecture with output_key state management
+* Deployed to Google Cloud Agent Engine (Vertex AI Reasoning Engine) in us-west1
+* OpenTelemetry tracing with `--otel_to_cloud` for full observability
+* SnapLogic integration via streamQuery API with session management
+
+AI-Assisted Development (Cursor + Claude):
+* Architecture design: AI suggested ParallelAgent pattern, output_key for state, GlobalGemini class
+* Implementation: AI generated sub-agent instruction prompts and consolidator JSON schema
+* Deployment: AI diagnosed 5+ deployment errors (file locks, model 404, API format, env var conflicts)
+* Production tuning: AI iteratively refined rules (retry scoping, snap labels, error routing, COE prefix)
+* Integration: AI designed streamQuery payload, resolved SSE streaming limitations for SnapLogic
 
 **Error Analysis Agent**
 
@@ -338,10 +351,14 @@ This demonstrates a focus on sustainable engineering practices and platform evol
 * 5-phase roadmap from reactive to autonomous
 
 ### Multi-Agent Pipeline Review
-* Root Agent + 6 sub-agents (Python ADK/Google ADK)
-* ~90% performance improvement, 100% rule coverage
-* Parallel execution with sequential consolidation
-* Structured JSON output, OTEL logging
+* Root LlmAgent → SequentialAgent → [ParallelAgent (6 sub-agents), Consolidator] (Google ADK/Python)
+* ~90% performance improvement, 100% rule coverage across 6 dimensions
+* ParallelAgent with output_key state management, sequential consolidation to JSON
+* Custom GlobalGemini class for model routing to global endpoint
+* Deployed to Google Cloud Agent Engine with OpenTelemetry tracing
+* Built entirely with AI-assisted development (Cursor IDE + Claude)
+* Iterative production tuning: retry scoping, snap labels, error routing, COE prefix
+* Integrated with SnapLogic via streamQuery API with session management
 
 ### Backend Refactoring & Infrastructure
 * 5,769-line monolith → 9 route modules + 11 lib modules

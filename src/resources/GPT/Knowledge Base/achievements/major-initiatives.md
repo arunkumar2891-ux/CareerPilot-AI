@@ -236,35 +236,96 @@ Built an AI-powered diagnostic agent on GCP Agent Studio that analyzes transacti
 ## Achievement 6: Multi-Agent Pipeline Review System (Google ADK)
 
 ### What
-Deployed a multi-agent system using Google ADK (Python) with a Root Agent orchestrating 6 parallel sub-agents for automated SnapLogic pipeline code review.
+Designed, built, and deployed a production multi-agent system using Google ADK (Agent Development Kit) with a ParallelAgent orchestrating 6 concurrent sub-agents for automated SnapLogic pipeline code review. The entire agent—from architecture design through deployment and iterative production tuning—was built using AI-assisted development (Cursor IDE with Claude), demonstrating how AI Agents can be used to build AI Agents.
 
 ### Quantifiable Impact
-- **~90% performance improvement** in review execution
-- **100% rule coverage** across all review dimensions
-- **6 parallel sub-agents** (Naming, Best Practices, Error Handling, Performance, Review Conditions, Security)
+- **~90% performance improvement** in review execution (parallel vs sequential)
+- **100% rule coverage** across all 6 review dimensions
+- **6 parallel sub-agents** executing concurrently (Naming, Best Practices, Error Handling, Performance, Review Conditions, Security)
 - **4-pass analysis** (inventory, classification, error identification, rule cross-referencing)
-- **Structured JSON output** for consistent downstream processing
+- **Structured JSON output** for consistent downstream SnapLogic pipeline processing
+- **Deployed to Google Cloud Agent Engine** (Vertex AI Reasoning Engine) in us-west1
+- **Session-based architecture** enabling stateful multi-turn interactions
+- **OpenTelemetry tracing** for full observability in Cloud Trace
 
-### How I Did It
-- Built Root Agent + 6 sub-agents using Python ADK
-- Implemented parallel execution with sequential consolidation
-- Designed multi-pass analysis pipeline
-- Deployed to GCP Agent Studio with structured output schemas
-- Enabled OTEL logging for observability
+### Architecture Evolution (Before → After)
+
+**Before (Sequential LlmAgent):**
+- Single root LlmAgent attempted to run all 6 review categories in one pass
+- Sequential execution meant slow response times
+- Inconsistent coverage—the model would sometimes skip or abbreviate categories
+
+**After (ParallelAgent → SequentialAgent → Consolidator):**
+- `ParallelAgent` runs all 6 specialized sub-agents concurrently using `output_key` for state management
+- `SequentialAgent` wraps the parallel phase followed by a consolidator agent
+- Consolidator reads all 6 results from session state and produces a unified structured JSON report
+- Root `LlmAgent` delegates to the sequential pipeline and returns raw JSON to the caller
+- Custom `GlobalGemini` class routes model calls to the `global` endpoint for gemini-3.5-flash availability
+
+### How I Did It (AI-Assisted Development with Cursor)
+
+**1. Architecture Design (AI-Assisted):**
+- Used Cursor IDE with Claude to design the ParallelAgent → SequentialAgent → Consolidator architecture
+- AI suggested the `output_key` parameter pattern for storing parallel sub-agent results in session state
+- Iterated on the agent hierarchy design through conversational AI guidance
+
+**2. Implementation (AI-Pair Programming):**
+- Converted the original monolithic LlmAgent into 6 specialized sub-agents with AI assistance
+- AI generated the initial agent instruction prompts for each review dimension
+- Built the `GlobalGemini` class (subclassing `Gemini`) to route model calls to the global endpoint—solving a regional model availability issue discovered during deployment
+- AI helped design structured JSON output schema for the consolidator
+
+**3. Deployment & Debugging (AI-Guided):**
+- Deployed to Google Cloud Agent Engine using `adk deploy agent_engine` CLI
+- AI diagnosed and resolved multiple deployment issues:
+  - WinError 5 (Access Denied) from locked `.venv`/`.adk` folders in OneDrive
+  - 404 model-not-found for gemini-3.5-flash in us-west1 (fixed with GlobalGemini routing to `global`)
+  - 400 INVALID_ARGUMENT on streamQuery API (fixed request payload format)
+  - Session management for stateful interactions
+- Configured `.env.yaml` with correct telemetry variables (avoiding reserved env var prefix conflicts)
+
+**4. Production Tuning (Iterative AI-Assisted Refinement):**
+- AI identified and fixed false positives in the Review Conditions sub-agent:
+  - Scoped "Retry Settings" rule to only connector snaps—excluding Copy/Router flow snaps
+  - Updated all sub-agents to report snap labels instead of raw UUIDs
+  - Fixed "Unlinked Output View" rule to recognize error routing patterns
+  - Corrected Interface ID validation to accept both INTnnnn and COEnnnn prefixes
+- Each refinement redeployed with `--otel_to_cloud` for observability
+
+**5. SnapLogic Integration (AI-Guided API Design):**
+- AI designed the HTTP integration pattern for SnapLogic to call the deployed agent
+- Resolved SSE streaming limitations in SnapLogic HTTP Client snap
+- Implemented session-based workflow: create session → streamQuery → parse response
+
+### Pain Points Resolved by AI-Assisted Development
+| Challenge | Resolution (AI-Assisted) |
+|-----------|--------------------------|
+| ADK ParallelAgent documentation was sparse | AI provided working examples and explained `output_key` pattern |
+| Model availability varied by region | AI designed GlobalGemini class to route to `global` endpoint |
+| Deployment failures (OneDrive file locks) | AI diagnosed `.venv` path issue and suggested relocation |
+| streamQuery API format undocumented | AI debugged request/response and identified correct payload |
+| SnapLogic couldn't consume SSE streams | AI identified `?alt=sse` parameter issue and alternative |
+| False positive review findings | AI iteratively refined sub-agent instructions with precise scoping |
+| Reserved env var conflicts | AI identified forbidden prefix from Google docs |
 
 ### Business Impact
-- Automated code review with 100% rule coverage
-- ~90% faster reviews freeing senior engineers
-- Consistent, structured review output for downstream processing
-- Scalable architecture for additional review dimensions
+- Automated code review with 100% rule coverage across 6 dimensions
+- ~90% faster reviews freeing senior engineers from manual pipeline audits
+- Consistent, structured JSON output for downstream SnapLogic pipeline processing
+- Scalable architecture—additional review dimensions can be added as new sub-agents
+- Integrated into existing SnapLogic Automations Portal for self-service reviews
+- Demonstrated AI-building-AI pattern: used Cursor AI to build a production multi-agent system
 
 ### Skills Demonstrated
-- Multi-Agent Architecture (Google ADK)
-- Python Development
-- AI Orchestration (parallel sub-agents)
-- DevOps (OTEL, GCP deployment)
+- Multi-Agent Architecture (Google ADK ParallelAgent, SequentialAgent, LlmAgent)
+- AI-Assisted Development (Cursor IDE with Claude for architecture, implementation, debugging, and tuning)
+- Python Development (ADK framework, custom Gemini subclass)
+- Cloud Deployment (Google Cloud Agent Engine, Vertex AI Reasoning Engine)
+- API Integration (SnapLogic HTTP Client → Agent Engine streamQuery)
+- Observability (OpenTelemetry, Cloud Trace)
+- Iterative Production Tuning (rule refinement based on real pipeline review feedback)
 
 ---
 
 *Achievements Summary*  
-*Last Updated: August 25, 2026*
+*Last Updated: August 27, 2026*

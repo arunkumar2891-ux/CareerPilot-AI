@@ -327,28 +327,94 @@
 
 ### Scope
 - **Framework**: Google ADK (Agent Development Kit) — Python
-- **Architecture**: Root Agent + 6 parallel sub-agents
+- **Architecture**: Root LlmAgent → SequentialAgent → [ParallelAgent (6 sub-agents), Consolidator LlmAgent]
 - **Sub-agents**: Naming, Best Practices, Error Handling, Performance, Review Conditions, Security
-- **Output**: Structured JSON reports for downstream processing
+- **Output**: Structured JSON reports for downstream SnapLogic pipeline processing
+- **Deployment**: Google Cloud Agent Engine (Vertex AI Reasoning Engine) in us-west1
+- **Model**: Gemini 3.5 Flash via custom GlobalGemini class (routing to `global` endpoint)
+- **Development Method**: AI-assisted development using Cursor IDE with Claude
 - **Timeline**: August 2026
 
 ### Quantifiable Metrics
 
 | Metric | Value |
 |--------|-------|
-| **Performance Improvement** | ~90% |
-| **Rule Coverage** | 100% |
-| **Sub-agents** | 6 (parallel execution) |
+| **Performance Improvement** | ~90% (parallel vs sequential) |
+| **Rule Coverage** | 100% across 6 dimensions |
+| **Sub-agents** | 6 (concurrent execution via ParallelAgent) |
 | **Analysis Passes** | 4 (inventory, classification, error ID, rule cross-reference) |
 | **Output Format** | Structured JSON |
+| **Deployment Target** | Google Cloud Agent Engine (us-west1) |
+| **Model** | Gemini 3.5 Flash (global endpoint) |
+| **Observability** | OpenTelemetry + Cloud Trace |
+| **Integration** | SnapLogic HTTP Client → streamQuery API |
+
+### Architecture Detail
+
+| Component | Role |
+|-----------|------|
+| `root_agent` (LlmAgent) | Entry point, delegates to audit_pipeline |
+| `audit_pipeline` (SequentialAgent) | Orchestrates parallel → consolidation |
+| `parallel_audit` (ParallelAgent) | Runs 6 sub-agents concurrently |
+| `subagent__naming` (LlmAgent) | Validates naming conventions (9 rules) |
+| `subagent__best_practices` (LlmAgent) | Validates best practices (6 rules) |
+| `subagent__errorhandling` (LlmAgent) | Validates error handling (5 rules) |
+| `subagent__performance` (LlmAgent) | Validates performance (8 rules) |
+| `subagent__review` (LlmAgent) | Validates review conditions (8 critical + 18 warning) |
+| `subagent__security` (LlmAgent) | Validates security (1 rule) |
+| `consolidator_agent` (LlmAgent) | Merges 6 results into single JSON report |
+| `GlobalGemini` (custom class) | Routes model calls to global endpoint |
+
+### AI-Assisted Development Metrics
+
+| Phase | AI Contribution |
+|-------|----------------|
+| Architecture Design | ParallelAgent pattern, output_key state management, GlobalGemini class |
+| Implementation | 6 sub-agent instruction prompts, consolidator JSON schema, agent hierarchy |
+| Deployment | Diagnosed 5+ deployment errors (file locks, model 404, API format, env vars) |
+| Production Tuning | 4 rule refinements (retry scoping, label reporting, error routing, COE prefix) |
+| SnapLogic Integration | streamQuery payload design, SSE workaround, session workflow |
+
+### Pain Points Resolved
+
+| Challenge | Before | After (AI-Assisted Fix) |
+|-----------|--------|------------------------|
+| Sequential execution | Slow, inconsistent coverage | ParallelAgent with 6 concurrent sub-agents |
+| Model not available in us-west1 | 404 errors | GlobalGemini class routing to `global` |
+| OneDrive file locks during deploy | WinError 5 Access Denied | Moved .venv outside deploy path |
+| streamQuery API undocumented | 400 INVALID_ARGUMENT | Correct payload format with class_method |
+| SnapLogic SSE limitation | Only first event captured | Removed ?alt=sse, use chunked response |
+| False positive findings | Copy/Router flagged for retry | Scoped to connector snaps only |
+| UUID-based locations unreadable | Raw UUIDs in findings | Snap labels from property_map.info.label.value |
+| COEnnnn prefix rejected | Flagged as invalid | Updated both naming and best_practices rules |
 
 ### Deliverables
-- ✅ Root Agent orchestrating 6 parallel sub-agents
-- ✅ Python ADK implementation with Google ADK framework
+- ✅ Root Agent orchestrating 6 parallel sub-agents via ParallelAgent
+- ✅ Python ADK implementation with Google ADK framework (agent.py, __init__.py)
+- ✅ Custom GlobalGemini class for global model endpoint routing
 - ✅ Multi-pass analysis pipeline (4 passes)
-- ✅ Structured JSON output schemas
-- ✅ GCP Agent Studio deployment
-- ✅ OTEL-enabled logging for observability
+- ✅ Structured JSON output schema (consolidator)
+- ✅ Google Cloud Agent Engine deployment with `adk deploy agent_engine`
+- ✅ OpenTelemetry-enabled tracing (`--otel_to_cloud`)
+- ✅ SnapLogic integration via streamQuery API with session management
+- ✅ Iterative production tuning (4 rule refinement cycles)
+- ✅ .env.yaml configuration (avoiding reserved env var conflicts)
+
+### Business Impact
+- **Automated code review** with 100% rule coverage across 6 dimensions
+- **~90% faster** reviews freeing senior engineers from manual audits
+- **Consistent JSON output** for downstream processing in SnapLogic pipelines
+- **Scalable architecture** — new review dimensions added as sub-agents
+- **AI-building-AI demonstration** — used Cursor/Claude to build production multi-agent system
+- **Self-service integration** via SnapLogic Automations Portal
+
+### Evidence
+- File: `Agents/agent.py` (agent definitions, GlobalGemini class, all sub-agent instructions)
+- File: `Agents/__init__.py` (root_agent export)
+- File: `Agents/requirements.txt` (google-adk, google-genai, opentelemetry)
+- File: `Agents/.env.yaml` (deployment environment variables)
+- File: `Agents/Quote_Journey_Tracker_Agent_Design_Document.md` (reference architecture)
+- Deployed resource: `projects/894940444885/locations/us-west1/reasoningEngines/1267508208407150592`
 
 ---
 
@@ -452,4 +518,4 @@
 ---
 
 *All metrics and evidence are based on documentation and code artifacts from Jan-Aug 2026.*  
-*Last Updated: August 25, 2026*
+*Last Updated: August 27, 2026*
