@@ -264,60 +264,112 @@ Technologies: Vertex AI, Gemini 2.5 Pro, RAG, Prompt Engineering, SnapLogic
 
 --- Project: Pic-Reel / FrameFlow Hyperlapse Tool (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Concept-to-Production
-Technologies: React 19, TanStack Start (SSR), TypeScript, Vite 7, Tailwind CSS v4, FFmpeg.wasm, dnd-kit, Canvas API, Render.com
+Technologies: React 19, TanStack Start (SSR/Nitro), TypeScript 5.8 (strict), Vite 7.3, Tailwind CSS v4, FFmpeg.wasm 0.12.15, dnd-kit (sortable), react-dropzone, react-hook-form + Zod, Render.com
 
 - Identified real-world photographer problem: no free browser-based tool exists to create hyperlapses/timelapses from photo sequences without uploading to a server
 - Built complete web application from scratch using Cursor AI + Lovable.dev: photo upload → drag-and-drop reordering → configurable video settings → client-side MP4 encoding → download
 - Implemented 100% client-side video encoding using FFmpeg compiled to WebAssembly — photos never leave the user's browser (privacy-first architecture)
-- Built configurable video settings: FPS (24/30/48/60/120), resolution (1080p/2K/4K), codec (H.264/H.265), quality presets, per-photo duration control
+- Designed multi-source WASM loading with CDN fallback: local split binary (4 chunks assembled in-browser) → unpkg CDN → jsdelivr CDN — ensuring reliability across network conditions
+- Built configurable video settings: FPS (24/30/48/60/120), resolution (1080p/2K/4K), codec (H.264 libx264/H.265 libx265), CRF-based quality presets, per-photo duration (0.02s-5s)
 - Implemented multi-step progress indicator with real-time percentage during render pipeline (uploading → preparing → rendering → encoding → finalizing)
-- Deployed as SSR app on Render.com with self-ping keep-alive mechanism to prevent cold starts on free tier
-- Shipped as free tool solving genuine gap in photographer workflow — no account needed, zero server costs for video processing
+- Deployed as SSR app (TanStack Start + Nitro with render_com preset) on Render.com with self-ping keep-alive mechanism every 5 minutes to prevent cold starts on free tier
+- Built singleton FFmpeg instance pattern (lazy-loaded, cached globally) with proper memory management (virtual FS cleanup, Object URL revocation on unmount)
 
 Technical Highlights:
-  - 68 source files (46 UI primitives + 6 feature components)
-  - WASM loading with CDN fallback (4-part binary split for file-size limits)
+  - 68 source files (30+ shadcn/ui primitives + 6 domain components)
+  - React 19 + TanStack Start (file-based routing, SSR shell for SEO)
+  - FFmpeg concat demuxer with force_original_aspect_ratio + black padding for resolution scaling
+  - Phase state machine via discriminated union types (idle | rendering | done)
   - Supports up to 500 images per session
-  - Zero backend video processing costs
+  - Zero backend video processing costs — all computation in user's browser
+
+--- Project: CareerPilot AI — Autonomous Job Search Platform (Personal - GenAI-Native) ---
+Role: Solo GenAI Developer & Architect | Full AI Platform from Concept to Production
+Technologies: React 18, TypeScript, Vite 5, React Router 7, Tailwind CSS 3, shadcn/ui (Radix), Zustand, TanStack Query, Recharts, Framer Motion, Supabase (PostgreSQL + Auth + Storage + Edge Functions/Deno + RLS + pg_cron + pg_net), Google Gemini 1.5 Flash, Apify (LinkedIn scraper), Google Drive OAuth2, Resend (email), LaTeX→PDF (ytotech), Render.com
+
+- Designed and built autonomous AI-powered job search platform — a complete command center for end-to-end job hunting with job discovery, AI resume tailoring, cover letter generation, workflow automation, and conversational AI copilot
+- Implemented RAG-like career corpus system: Master ATS bullet bank + 2-page template + 6 role playbooks (Integration Architect, GenAI Developer, FDE, Cloud Architect, AI/ML Engineer, Engineering Manager) + 14 evidence chunks with tag-based relevance scoring and automatic playbook selection via JD keyword matching
+- Built resumable graph-based workflow engine with 25+ node types (Triggers, AI, Integrations, Logic, Data), topological sort execution, step queue for long-running operations, and pg_cron scheduler (every minute) for resuming paused steps
+- Implemented fully automated 18-node daily pipeline: Schedule (7 AM cron) → Google Doc header → LinkedIn URL → Apify scrape → Poll/wait → Parse jobs → Limit → Dedup filter → Gemini ATS optimization → Store → Build LaTeX → Compile PDF → Upload Storage → Google Drive → Build email → Send via Resend
+- Designed multi-provider AI architecture supporting Gemini, OpenAI, Claude, Azure, Ollama, and Bedrock — all routed through a single Edge Function with mode-based dispatch (resume, ats_score, embed, chat)
+- Built LaTeX → PDF compilation pipeline using `moderncv` package for professional resume output, with Google Drive upload (OAuth2 + token refresh + public sharing) and email delivery via Resend
+- Implemented visual Workflow Studio with drag-and-connect node builder, live execution monitoring, version history, and one-click automation scheduling
+- Designed Bootstrap-on-Login pattern: auto-provisions default workflow, automation, career corpus (master resume, template, evidence chunks), and settings on first user login
+
+Technical Highlights:
+  - 7 Supabase Edge Functions (Deno): workflow-run, workflow-step (resumable), workflow-scheduler, ai-chat, google-oauth-callback, google-oauth-start, google-oauth-refresh
+  - RAG prompt construction: pickPlaybook() + selectEvidence() + buildResumeUserPrompt() with ATS_SYSTEM_PROMPT enforcing strict rules (only select existing bullets, preserve real metrics)
+  - 25+ workflow node types across 5 categories with visual builder
+  - 5 SQL migration files, RLS on all tables, pg_cron + pg_net for scheduling
+  - Multi-auth: Email/password, Google OAuth, GitHub OAuth, Magic Link
+  - Command palette (Cmd+K), page transitions (AnimatePresence), responsive design
+  - Service layer pattern with typed service classes (JobSearchService, ResumeService, WorkflowService, etc.)
+
+--- Project: Cric-Scorer — Cricket Tournament & Live Scoring Platform (Personal - AI-Built) ---
+Role: Solo GenAI Developer | Complex Domain Logic via AI-Augmented Development
+Technologies: React 18.3, TypeScript, Vite 5.4, Tailwind CSS 3.4, Lucide React, Supabase (PostgreSQL + RLS + Migrations + Triggers), Bolt.new
+
+- Built full-featured cricket tournament management and live ball-by-ball scoring application with complex domain logic engine using Bolt.new for scaffolding and AI-augmented development
+- Implemented stateful scoring engine (`scoringEngine.ts`): ball-by-ball scoring, undo/redo, state rebuild, automatic strike rotation, extras handling (wides, no-balls, byes, leg-byes), 10 wicket types, over completion, innings transitions
+- Built career statistics engine (`statsEngine.ts`): batting average, strike rate, highest score, 50s/100s, bowling average, economy, best figures, 3W/5W hauls, fielding stats, NRR-based points table
+- Implemented MVP point system (`mvpEngine.ts`): configurable per-run, per-wicket, milestone bonuses, economy bonuses, fielding points, award points — with detailed per-player breakdowns
+- Designed comprehensive database schema: 14 tables (teams, players, team_players, tournaments, tournament_teams, matches, match_innings, deliveries, player_match_batting/bowling/fielding, match_awards, mvp_points, match_playing_xi, settings) with foreign keys, triggers, and RLS
+- Built Playing XI management with conflict prevention (same player on both teams, player in two live matches), captain/keeper assignment, and squad management
+- Implemented custom hash-based router (`router.ts`) with pattern matching (:id params) — no react-router dependency
+
+Technical Highlights:
+  - 3 domain engines: Scoring, Statistics, MVP (complex deterministic algorithms)
+  - 14-table Supabase schema with migrations, triggers, and RLS policies
+  - 6 pre-seeded teams (Tamil Nadu-based), 32 players, 3 tournaments
+  - Match completion with automatic result determination (win by runs/wickets, tie)
+  - Timeline view with ball-by-ball visual display and inline edit capability
+  - Global/tournament leaderboards for batting, bowling, fielding, and MVP
+  - Responsive: desktop sidebar + mobile bottom nav
 
 --- Project: IPL 2026 Prediction Game (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Requirements from friends → Full production app
-Technologies: React 18, TypeScript, Vite 5, Tailwind CSS, shadcn/ui, Framer Motion, TanStack Query, Node.js, Express.js, Supabase (PostgreSQL), CricAPI, node-cron, JWT, Render.com
+Technologies: React 18, TypeScript, Vite 5 (SWC), Tailwind CSS, shadcn/ui (Radix), Framer Motion, TanStack Query v5, React Router v6, Recharts, Node.js (ES Modules), Express.js, Supabase (PostgreSQL), CricAPI, node-cron, JWT (jsonwebtoken), express-rate-limit, Render.com
 
 - Received requirement from friends group: "Build us an app for IPL match predictions" — translated vague social need into fully automated prediction platform for 30+ users
 - Built complete full-stack application using AI pair programming (Cursor AI + Lovable.dev) with no hand-written implementation syntax ("vibecoded")
-- Implemented pari-mutuel scoring engine: losers' points pooled and redistributed among winners with weighted user multipliers (1x/2x/5x) and playoff escalation (20→50→100 points)
-- Built fully automated tournament lifecycle with zero manual admin: cron-based match detection via CricAPI, automatic cutoff enforcement (15 min before start), auto-result detection, and scoring pipeline
-- Implemented intelligent match management: auto-postpone on delayed matches (+25 min), double-header day logic, no-result handling for rain/abandonment
-- Built OTP authentication with JWT (15-min expiry), 3-tier rate limiting (general 25/min, OTP 5/15min, admin 20/15min), and server-side cutoff enforcement
-- Delivered features: live countdown timers, "Last 5" form guide (W/L/NR streaks), multi-group leaderboards, active user highlighting, admin console
+- Implemented pari-mutuel scoring engine (`calculateMatchResult.js`, 248 lines): losers' points pooled and redistributed among winners with weighted user multipliers (1x/2x/5x) and playoff escalation (20→50→100 points)
+- Built fully automated tournament lifecycle with zero manual admin: cron-based match detection via CricAPI (`matchChecker.js`, 617 lines), automatic cutoff enforcement (15 min before start), auto-result detection by parsing CricAPI status field, and scoring pipeline
+- Implemented intelligent match management: auto-postpone on delayed matches (+25 min with re-check every 10 min), double-header day logic, no-result handling for rain/abandonment (previous leaderboard carried forward)
+- Built OTP authentication with JWT (15-min expiry), 3-tier rate limiting (general 25/min, OTP 5/15min, admin 20/15min), server-side cutoff enforcement, and admin-table gated console
+- Designed 9-table Supabase schema with 3 RPC stored procedures (`get_bids_today`, `insert_unbid_predictions`, `get_todaymatches`) for complex aggregation
+- Delivered features: live countdown timers, "Last 5" form guide (W/L/NR streaks), multi-group leaderboards (G1/G2), active user highlighting, admin console with manual overrides
 
 Technical Highlights:
-  - 80 custom source files (7 core components + 49 UI primitives + 4 backend modules)
+  - 80+ custom source files (7 core components + 49 UI primitives + 4 backend modules)
+  - Express server (607 lines) with 12 JWT-protected API endpoints
   - 9 Supabase tables + 3 RPC stored procedures
-  - 12 API endpoints with JWT-protected routes
-  - Automated via 2 cron jobs (match checker every 10 min + result detector)
-  - 30+ active users throughout IPL 2026 season
+  - 2 autonomous cron jobs (match checker every 10 min + result detector every 30 min)
+  - 29 registered players across multiple groups, active throughout IPL 2026 season
+  - Centralized API layer (`api.ts`) with Bearer token injection
 
 --- Project: PlanItX - Indian Wedding & Event Planning Platform (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Requirements from friends → Premium SaaS product
-Technologies: React 18, TypeScript, Vite 5, Tailwind CSS, Zustand, Framer Motion, Recharts, Zod, Supabase (PostgreSQL + Auth + RLS), 12-table schema
+Technologies: React 18.3, TypeScript 5.5, Vite 5.3, Tailwind CSS 3.4, Zustand 4.5, Framer Motion 11.3, Recharts 2.12, Zod 3.23, Lucide React, Supabase (PostgreSQL + Auth + Row Level Security), 12-table schema
 
 - Received requirement from friends: "We need an app to plan Indian weddings" — translated into full-featured premium SaaS product (branded as "PlanIT X - A Product of Candid Carnival")
 - Built comprehensive event planning platform from scratch using AI-augmented development with 56 source files, 13 pages, 12 custom hooks, and 12 database tables
 - Implemented India-first features: budget tracking in Lakhs/INR with donut charts, guest management with dress/gift tracking (saree types, dhotis, return gifts), wedding-day schedule (Haldi, Baraat, Pheras, Reception, Vidaai)
-- Built vendor marketplace with category browsing (halls, caterers, photographers, makeup, decor, DJ, mehendi), ratings, featured listings, and booking/payment tracker
+- Built vendor marketplace with category browsing (halls, caterers, photographers, makeup, decor, DJ, mehendi), ratings, featured listings, booking/payment tracker with status workflow (pending→booked→advance paid→fully paid), and WhatsApp contact integration
 - Implemented task timeline with family responsibility delegation across bride's and groom's families, priority-based assignments, and pre-built 12-month planning templates
-- Designed fintech-inspired premium UI: dark charcoal + deep crimson + warm white palette, mobile-first (448px primary), Playfair Display headings, Framer Motion animations
-- Implemented comprehensive security: Row Level Security (RLS) on all 12 tables, multi-method auth (email/magic link/phone), single-device session policy, Zod form validation
-- Supports dual event types: Hindu/Muslim/Sikh/Christian weddings AND baby showers (Seemandham) with dynamic labels and cultural elements
+- Designed fintech-inspired premium UI: dark charcoal (#1A1A1A) + deep crimson (#C41E3A) + warm white (#FAFAF8) palette, mobile-first (448px primary), Playfair Display headings, Framer Motion animations
+- Implemented comprehensive security: Row Level Security (RLS) on all 12 tables with auto-triggers, multi-method auth (email/magic link/phone lookup), single-device session policy, Zod form validation on all inputs
+- Supports dual event types: Hindu/Muslim/Sikh/Christian weddings AND baby showers (Seemandham) with dynamic labels and cultural elements via `eventLabels.ts`
+- Built structured error logging to Supabase (`error_logs` table) with user context, browser info, and stack traces
+- Implemented offline-capable sample data loading (`loadSampleData()`) for demo mode without Supabase
 
 Technical Highlights:
   - 56 source files across pages, components, hooks, and lib modules
-  - 12 Supabase PostgreSQL tables with RLS policies and auto-triggers
-  - 9 custom React hooks (useAuth, useBudget, useGuests, useTasks, etc.)
+  - 12 Supabase PostgreSQL tables with RLS policies, auto-triggers, and 16 pre-seeded vendors
+  - 12 custom React hooks (useAuth, useBudget, useGuests, useChecklist, useTasks, useSchedule, useVendorBookings, useWedding, useFamilyMembers, etc.)
   - Hall comparison tool with cost breakdown (rent, GST, generator, rooms, decor)
-  - Responsive: mobile bottom-nav + desktop sidebar layout
+  - Responsive: mobile bottom-nav (BottomNav) + desktop sidebar (breakpoint: lg)
+  - Route guards: ProtectedRoute (auth) + WeddingGuard (wedding exists)
+  - Bulk `fetchAllData` pattern in Zustand store for initial hydration
 
 ================================================================================
 FORWARD DEPLOYMENT ENGINEERING
@@ -328,8 +380,10 @@ Demonstrated ability to operate as a Forward Deployment Engineer: identifying re
 --- Forward Deployment Skills Demonstrated ---
 
 PROBLEM IDENTIFICATION & REQUIREMENTS ENGINEERING:
+- Built autonomous AI job search platform (CareerPilot AI) — identified fragmented workflow → built unified command center
 - Identified photographer workflow gap → built Pic-Reel (free hyperlapse tool)
 - Received friend group requirement → built IPL 2026 prediction game
+- Identified cricket scoring gap → built Cric-Scorer (live ball-by-ball tournament platform)
 - Received social need → built PlanItX event planning app
 - Identified team inefficiency → built SnapLogic Automations Portal
 - Identified RAG inconsistency → engineered optimized corpus (v1.8→v3.0)
@@ -360,25 +414,42 @@ CUSTOMER/USER ENGAGEMENT:
 EARLIER EXPERIENCE
 ================================================================================
 
-[Previous Company Name]
-[Previous Role Title]
-[Start Date] - [End Date] | [Location]
+INFOSYS
+Senior Consultant
+Apr 2024 - Jul 2024 | India
 
-[Summarize earlier experience here - integration development, software engineering, etc.]
+- Continued enterprise SnapLogic and integration delivery for manufacturing and telecom clients during senior consulting tenure
+- Supported pipeline governance, automated error handling, and agile delivery in high-availability integration landscapes
 
-- [Achievement 1 with metrics]
-- [Achievement 2 with metrics]
-- [Achievement 3 with metrics]
-- [Achievement 4 with metrics]
-- [Achievement 5 with metrics]
+INFOSYS
+Consultant
+Mar 2023 - Mar 2024 | India
 
-[Previous Company Name]
-[Previous Role Title]
-[Start Date] - [End Date] | [Location]
+- Delivered SnapLogic integration solutions across GCP, Azure, Oracle, SAP, and Salesforce ecosystems for enterprise clients
+- Built scalable, secure integrations with API management, pipeline governance, and automated error handling
 
-- [Achievement 1 with metrics]
-- [Achievement 2 with metrics]
-- [Achievement 3 with metrics]
+INFOSYS
+Consultant
+Aug 2022 - Mar 2023 | India
+
+- Designed CI/CD deployment flow with rollback and smoke-testing reduction for NTT Ltd using SnapLogic and GitHub
+- Improved deployment reliability and reduced manual validation effort across integration release cycles
+
+INFOSYS
+Senior Associate Consultant
+Feb 2021 - Sep 2022 | India
+
+- Developed and deployed high-priority Dell Boomi B2B interfaces for ICHOR Systems with automated reprocessing and monitoring tools
+- Redesigned interfaces and improved stability across the Boomi landscape for Visteon Corporation by co-developing a common error/logging framework
+- Led integration delivery as Business Analyst and Scrum Master, driving requirement finalization and deployment excellence
+
+TATA CONSULTANCY SERVICES (TCS)
+Systems Engineer
+Jun 2016 - Feb 2021 | India
+
+- Built integration solutions across manufacturing, telecom, and enterprise domains using Dell Boomi and SnapLogic platforms
+- Developed B2B interfaces, persistent integration designs, and monitoring frameworks involving Kafka, GitHub, and Azure Functions
+- Demonstrated cross-functional leadership in requirement analysis, agile delivery, and production support in high-availability environments
 
 ================================================================================
 TECHNICAL SKILLS
@@ -386,13 +457,13 @@ TECHNICAL SKILLS
 
 Integration Platforms:
 - SnapLogic iPaaS (5+ years): Pipeline Design, Listener/Worker Patterns, Triggered Tasks, Common Pipeline Framework, Ultra Tasks, Error Handling, Snap Development
+- Dell Boomi: B2B Interfaces, Professional Developer certified, Common Error/Logging Frameworks, Automated Reprocessing
 - Salesforce (SFDC): Integration, OAuth Configuration, API Integration
-- MuleSoft: [If applicable - add experience level]
-- Dell Boomi: [If applicable - add experience level]
+- API & Middleware: Postman, SOAPUI, Azure APIM, Kafka
 
 Programming Languages:
-- TypeScript (Advanced) | JavaScript ES6+ (Advanced) | SQL (Advanced)
-- Python (Intermediate) | Java (Intermediate) | Shell/Bash (Intermediate)
+- TypeScript (Advanced) | JavaScript ES6+ (Advanced) | SQL / PL/SQL (Advanced)
+- Java (Intermediate) | Python (Intermediate) | Shell/Bash (Intermediate)
 - HTML5/CSS3 (Advanced)
 
 Frontend Technologies:
@@ -409,26 +480,24 @@ Backend Technologies:
 
 Databases & Data:
 - Google BigQuery: Schema Design, MERGE/DML, Partitioning, Clustering, ML
-- PostgreSQL | MySQL | MongoDB
+- Oracle SCM | Oracle OM | MySQL | PostgreSQL | MongoDB
 - SQL Optimization | Query Performance Tuning
 - Data Modeling: Star Schema, Snowflake, Normalization, Denormalization
 - ETL/ELT Pipeline Design | Data Quality | Data Governance
 
-Cloud Platforms (Google Cloud):
+Cloud Platforms:
+- Google Cloud Platform (GCP): Pub/Sub, BigQuery, Vertex AI, GKE, Cloud Functions, Cloud Storage, IAM
+- Microsoft Azure: Azure Functions, Azure APIM, Azure Application Insights
 - Pub/Sub: Event Streaming, Message Queuing, Dead-Letter Topics
-- BigQuery: Data Warehousing, Analytics, ML
-- Vertex AI: Gemini Model Deployment, Embeddings, RAG
-- Google Kubernetes Engine (GKE): Container Orchestration
-- Cloud Functions | Cloud Run | Cloud Storage
-- IAM | Service Accounts | Workload Identity
 
 DevOps & Infrastructure:
 - Kubernetes: Deployments, Services, HPA, ConfigMaps, Secrets, Helm
 - Docker: Multi-Stage Builds, Docker Compose, Registry Management
-- CI/CD: Harness Pipelines, Automated Testing, Security Gates
+- CI/CD: Harness Pipelines, GitHub Actions, Automated Testing, Security Gates
 - Vault (HashiCorp): Secret Injection, Dynamic Credentials, Rotation
-- Monitoring: Datadog APM, Chronosphere, Custom Metrics, Alerting
+- Monitoring: Datadog APM, Chronosphere, Azure Application Insights, JMeter, Custom Metrics, Alerting
 - IaC: Terraform, Helm Charts
+- Version Control: Git, GitHub
 
 AI/ML & LLM:
 - Google Gemini 2.5 Flash (Fast Inference, Story Generation)
@@ -448,20 +517,20 @@ Security:
 
 Tools & Platforms:
 - JIRA | Confluence | Slack | Git | GitHub
-- Postman | Swagger/OpenAPI | VS Code | IntelliJ
-- Datadog | Chronosphere | Looker Studio
+- Postman | SOAPUI | Swagger/OpenAPI | VS Code | IntelliJ
+- Datadog | Chronosphere | Azure Application Insights | Looker Studio
+- Microsoft Office | G Suite
 - Harness | Docker Hub | GCR (Google Container Registry)
 
 ================================================================================
 CERTIFICATIONS & TRAINING
 ================================================================================
 
-[Add certifications here - examples below]
-- Google Cloud Professional Data Engineer [If applicable]
-- Google Cloud Professional Cloud Architect [If applicable]
-- SnapLogic Certified Integration Architect [If applicable]
-- Kubernetes Administrator (CKA) [If applicable]
-- AWS Solutions Architect [If applicable]
+Certifications:
+- SnapLogic Certified Enterprise Automation Professional — Issued Mar 2024
+- SnapLogic Partner Integrator Library — Issued Feb 2024
+- Dell Boomi Professional Developer — Issued 2021
+- Dell Boomi Associate Developer — Issued 2020
 
 Professional Development:
 - Google Cloud Platform Architecture and Services
@@ -469,6 +538,8 @@ Professional Development:
 - Kubernetes Administration and Deployment
 - AI/LLM Integration and Prompt Engineering
 - Generative AI with Google Vertex AI
+- SnapLogic Enterprise Automation and Partner Integrator Library
+- Dell Boomi Professional Developer training and B2B integration patterns
 
 ================================================================================
 EDUCATION
@@ -491,6 +562,8 @@ PC to CC BigQuery Migration      | 4-10x latency, 10-80x cost savings | 5 pipeli
 Automations Portal (AI-Built)    | 99.95% uptime, <300ms response     | 100+ users, 35+ APIs
 RAG Corpus Optimization          | 40% → <5% AI review inconsistency  | 58→20 clusters, v3.0
 Critical Incident Response       | <2hr resolution, $0 business impact| Quarter-end period
+CareerPilot AI (Personal)       | Autonomous AI job search platform | Runtime GenAI, RAG, workflow engine
+Cric-Scorer (Personal)          | Cricket tournament & live scoring  | 3 domain engines, 14 tables
 Pic-Reel Hyperlapse (Personal)   | Free tool for photographers        | Concept→prod in 1 week
 IPL 2026 Prediction (Personal)   | Friends group prediction game      | Full app in 2 weeks
 PlanItX Events (Personal)        | Collaborative event planning       | Full app via AI
@@ -515,3 +588,98 @@ Open Source & Community:
 Languages:
 - English (Professional)
 - [Add other languages]
+
+================================================================================
+ATS KEYWORDS (FOR TAILORING)
+================================================================================
+
+This section contains additional keywords mapped to experience for ATS optimization.
+Remove this section before submitting; use it to match JD requirements.
+
+Architecture Keywords:
+integration architecture, solution architecture, enterprise architecture, technical architecture, system design, high availability, fault tolerance, scalability, distributed systems, event-driven architecture, microservices, API-first design, middleware, ETL, ELT, data pipeline, event sourcing, CQRS, saga pattern
+
+Cloud & Infrastructure Keywords:
+Google Cloud Platform, GCP, AWS, Azure, Pub/Sub, BigQuery, Vertex AI, Kubernetes, GKE, EKS, Docker, containerization, container orchestration, Helm, Terraform, infrastructure as code, IaC, serverless, cloud functions, cloud run, cloud storage, IAM, VPC, networking
+
+Integration Keywords:
+SnapLogic, MuleSoft, Dell Boomi, iPaaS, API management, REST, GraphQL, SOAP, webhook, message queue, event streaming, Kafka, RabbitMQ, message broker, pub/sub, data integration, application integration, B2B integration, EDI, file transfer
+
+Development Keywords:
+React, TypeScript, JavaScript, Node.js, Express.js, full-stack, frontend, backend, REST API, GraphQL, microservices, serverless, web application, SPA, PWA, responsive design, component library, state management, hooks, context API
+
+Database Keywords:
+BigQuery, PostgreSQL, MySQL, MongoDB, Redis, DynamoDB, SQL, NoSQL, data modeling, schema design, query optimization, indexing, partitioning, clustering, MERGE statement, stored procedures, data warehouse, data lake, OLTP, OLAP
+
+AI/ML Keywords:
+Generative AI, GenAI, LLM, large language model, Gemini, GPT, Claude, Vertex AI, RAG, retrieval augmented generation, prompt engineering, AI agent, chatbot, NLP, natural language processing, embeddings, vector database, fine-tuning, few-shot learning, AI pair programming, Cursor AI, ChatGPT, GitHub Copilot, AI-augmented development, AI-native developer, corpus optimization, token optimization, multi-turn conversation, chain-of-thought prompting, context window management
+
+Forward Deployment Keywords:
+forward deployment engineer, solutions engineer, customer engineer, field engineer, technical solutions, customer-facing engineering, rapid prototyping, proof of concept, POC, production debugging, deployment engineering, site reliability, incident response, customer engagement, requirements engineering, problem identification, concept-to-production, stakeholder management, user adoption, feedback-driven development, distributed systems debugging
+
+DevOps & Deployment Keywords:
+CI/CD, continuous integration, continuous deployment, Harness, Jenkins, GitHub Actions, Docker, Kubernetes, Helm, monitoring, observability, Datadog, Prometheus, Grafana, logging, alerting, SRE, site reliability, incident management, on-call, Kong gateway, ingress controller, production debugging, deployment pipeline, infrastructure troubleshooting
+
+Security Keywords:
+OAuth 2.0, OpenID Connect, JWT, SAML, SSO, MFA, authentication, authorization, RBAC, ABAC, zero trust, secrets management, Vault, encryption, TLS, certificate management, SAST, DAST, SCA, vulnerability management, penetration testing, OWASP, SOC 2, GDPR, compliance
+
+Leadership Keywords:
+technical leadership, team lead, architect, mentoring, coaching, cross-functional, stakeholder management, agile, scrum, sprint planning, project management, technical documentation, architecture review, code review, best practices, standards, governance
+
+================================================================================
+RESUME TAILORING GUIDE
+================================================================================
+
+When tailoring this resume for a specific JD:
+
+1. PROFESSIONAL SUMMARY: Rewrite to emphasize the skills and experience most relevant to the target role. Lead with the most relevant achievement.
+
+2. CORE COMPETENCIES: Reorder sections to match JD priority. Remove irrelevant sections. Add any missing keywords from the JD.
+
+3. EXPERIENCE BULLETS: Select the 4-6 most relevant bullets per project. Reorder projects by relevance to the JD. Remove projects not relevant to the role.
+
+4. SKILLS SECTION: Move the most relevant skills category to the top. Match the JD's technology stack exactly.
+
+5. KEYWORDS: Cross-reference the ATS Keywords section against the JD. Ensure key terms appear naturally in your bullets.
+
+6. LENGTH: Target 2 pages for most roles. 3 pages acceptable for senior/principal architect roles.
+
+7. FORMAT: Keep formatting simple for ATS parsing - avoid tables, columns, graphics, headers/footers. Use standard section headings.
+
+Example Tailoring Scenarios:
+
+FOR "Integration Architect" ROLES:
+- Lead with FW_Flex Redesign and PC to CC Migration
+- Emphasize: SnapLogic, iPaaS, API design, event-driven architecture
+- Highlight: 66% reduction, standardization, error handling patterns
+
+FOR "GenAI Developer" ROLES:
+- Lead with GenAI-Augmented Development Methodology section
+- Emphasize: AI pair programming, prompt engineering, RAG optimization, rapid prototyping
+- Highlight: Built 4+ production apps using AI, 10x development speed, RAG optimization reducing inconsistency from 40% to <5%
+- Include personal projects: CareerPilot AI (strongest GenAI — runtime AI, RAG, workflow engine), Cric-Scorer, Pic-Reel, IPL 2026, PlanItX (shows initiative and AI fluency)
+- Keywords: prompt engineering, LLM, RAG, AI agent, Cursor AI, ChatGPT, generative AI, AI-augmented development
+
+FOR "Forward Deployment Engineer" ROLES:
+- Lead with Forward Deployment Engineering section + Portal Development
+- Emphasize: Problem identification, rapid solution delivery, production debugging, customer engagement
+- Highlight: Real-world problem → working app pipeline, Kubernetes debugging, CI/CD diagnosis, user adoption
+- Include personal projects as evidence of identifying problems and shipping solutions
+- Keywords: forward deployment, customer engineering, solutions engineer, production debugging, rapid prototyping, stakeholder engagement
+
+FOR "Cloud Architect" ROLES:
+- Lead with PC to CC Migration and Portal deployment
+- Emphasize: GCP, BigQuery, Pub/Sub, Kubernetes, Vertex AI
+- Highlight: 4-10x performance, zero-data-loss, auto-scaling
+
+FOR "AI/ML Engineer" ROLES:
+- Lead with Portal AI features
+- Emphasize: Gemini, RAG, prompt engineering, AI agents
+- Highlight: 2 AI agents, multi-turn conversations, <2s latency
+
+FOR "Engineering Manager/Lead" ROLES:
+- Lead with Leadership & Mentoring
+- Emphasize: Team mentoring, cross-functional collaboration, stakeholder management
+- Highlight: 5+ mentees, 30+ trained, 3 major initiatives delivered
+
+================================================================================

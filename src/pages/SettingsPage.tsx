@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase,
+  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useUIStore, useAuthStore } from '@/store';
 import { services } from '@/services';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -94,6 +95,7 @@ export function SettingsPage() {
           <TabsTrigger value="appearance" className="gap-1.5"><Palette className="h-3.5 w-3.5" /> Appearance</TabsTrigger>
           <TabsTrigger value="notifications" className="gap-1.5"><Bell className="h-3.5 w-3.5" /> Notifications</TabsTrigger>
           <TabsTrigger value="api" className="gap-1.5"><Key className="h-3.5 w-3.5" /> API Keys</TabsTrigger>
+          <TabsTrigger value="account" className="gap-1.5"><Shield className="h-3.5 w-3.5" /> Account</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-4">
@@ -178,6 +180,64 @@ export function SettingsPage() {
                 <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — Service role key</li>
                 <li><code>WORKFLOW_SCHEDULER_SECRET</code> — Cron auth token</li>
               </ul>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="account" className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Your Account</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-border p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{user?.fullName || 'User'}</p>
+                    <p className="text-xs text-muted-foreground">{user?.email}</p>
+                  </div>
+                  <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary capitalize">{user?.plan || 'free'} plan</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Change Password</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">Send a password reset link to your email address.</p>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!user?.email) return;
+                  const { error } = await supabase.auth.resetPasswordForEmail(user.email);
+                  if (error) toast.error(error.message);
+                  else toast.success('Password reset link sent to ' + user.email);
+                }}
+              >
+                Send Reset Link
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-destructive/30">
+            <CardHeader><CardTitle className="text-base text-destructive">Danger Zone</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border border-destructive/20 p-4">
+                <div>
+                  <p className="text-sm font-medium">Sign Out of All Devices</p>
+                  <p className="text-xs text-muted-foreground">Invalidate all active sessions.</p>
+                </div>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={async () => {
+                    await supabase.auth.signOut({ scope: 'global' });
+                    toast.success('Signed out everywhere');
+                    window.location.href = '/auth';
+                  }}
+                >
+                  Sign Out All
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

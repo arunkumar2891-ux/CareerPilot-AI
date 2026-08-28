@@ -54,6 +54,123 @@ Deno.serve(async (req) => {
       return jsonResponse({ embedding: [] });
     }
 
+    if (mode === 'sync_google_doc_chunks') {
+      const { refreshGoogleToken } = await import('../_shared/credentials.ts');
+      const { createAdminClient } = await import('../_shared/supabase-admin.ts');
+      const admin = createAdminClient();
+
+      const fileId = String(body.fileId || '').trim();
+      if (!fileId) return jsonResponse({ error: 'fileId is required' }, 400);
+
+      const accessToken = await refreshGoogleToken(user.id);
+      const docRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!docRes.ok) {
+        const err = await docRes.json().catch(() => ({}));
+        throw new Error((err as { error?: { message?: string } }).error?.message || 'Failed to fetch Google Doc');
+      }
+      const docContent = await docRes.text();
+
+      const TAG_KEYWORDS: Record<string, string[]> = {
+        fw_flex: ['fw_flex', 'fw_register', 'firewall flex', 'worker pipeline'],
+        snaplogic: ['snaplogic', 'snap reduction', 'snaps', 'pipeline', 'iPaaS'],
+        bigquery: ['bigquery', 'bq', 'merge statement'],
+        gcp: ['gcp', 'google cloud', 'vertex ai', 'gke', 'pub/sub'],
+        performance: ['latency', 'performance', 'faster', 'improvement'],
+        cost: ['cost reduction', 'cost', 'savings'],
+        portal: ['portal', 'automations portal'],
+        kubernetes: ['kubernetes', 'k8s', 'gke', 'helm', 'hpa'],
+        security: ['security', 'vulnerability', 'compliance', 'vault'],
+        leadership: ['mentor', 'workshop', 'training', 'documentation', 'team'],
+        incident: ['incident', 'p1', 'root cause', 'rca'],
+        integration: ['integration', 'standardiz', 'consolidat', 'framework'],
+        fullstack: ['react', 'typescript', 'frontend', 'backend', 'express'],
+        gemini: ['gemini', 'vertex ai', 'llm', 'ai agent', 'rag'],
+        productivity: ['hours saved', 'roi', 'annual value'],
+        refactor: ['refactor', 'monolith', 'reduction', 'consolidated'],
+        reliability: ['uptime', '99.9', 'zero rollback', 'zero data loss'],
+        observability: ['datadog', 'chronosphere', 'monitoring', 'logging'],
+        devops: ['ci/cd', 'harness', 'docker', 'deployment'],
+        documentation: ['specification', 'documentation', 'lines of'],
+        adoption: ['users', 'concurrent', 'adoption'],
+      };
+
+      function inferTags(bullet: string): string[] {
+        const lower = bullet.toLowerCase();
+        const tags: string[] = [];
+        for (const [tag, keywords] of Object.entries(TAG_KEYWORDS)) {
+          if (keywords.some((kw) => lower.includes(kw))) tags.push(tag);
+        }
+        return tags.length ? tags : ['general'];
+      }
+
+      function hasMetric(line: string): boolean {
+        const metricPattern = /\d+[%x×]|\d+-\d+x|\d+\.\d+[x%]|\b\d{2,}\b/;
+        const verbs = /\b(achieved|delivered|reduced|improved|saved|built|implemented|designed|architected|deployed|migrated|resolved|eliminated|consolidated|created|integrated|established)\b/i;
+        return metricPattern.test(line) && verbs.test(line);
+      }
+
+      const lines = docContent.split('\n');
+      const chunks: { id: string; tags: string[]; text: string }[] = [];
+      const seenTexts = new Set<string>();
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('- ') && !line.startsWith('• ')) continue;
+        const bullet = line.replace(/^[-•]\s*/, '').trim();
+        if (bullet.length < 50) continue;
+        if (!hasMetric(bullet)) continue;
+        const norm = bullet.toLowerCase().replace(/\s+/g, ' ');
+        if (seenTexts.has(norm)) continue;
+        seenTexts.add(norm);
+        const tags = inferTags(bullet);
+        const id = bullet.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((w) => w.length > 3).slice(0, 4).join('-').slice(0, 40) || `chunk-${chunks.length}`;
+        chunks.push({ id, tags, text: bullet });
+      }
+
+      const { data: existing } = await admin
+        .from('knowledge_chunks')
+        .select('content')
+        .eq('user_id', user.id)
+        .eq('collection', 'career');
+      const existingTexts = new Set((existing || []).map((c) => String(c.content || '').toLowerCase().replace(/\s+/g, ' ')));
+
+      const toInsert = chunks
+        .filter((c) => !existingTexts.has(c.text.toLowerCase().replace(/\s+/g, ' ')))
+        .map((c) => ({
+          user_id: user.id,
+          collection: 'career',
+          source_id: c.id,
+          tags: c.tags,
+          content: c.text,
+        }));
+
+      if (toInsert.length > 0) {
+        await admin.from('knowledge_chunks').insert(toInsert);
+      }
+
+      // Also update the Master ATS resume content in the resumes table
+      const endIdx = docContent.indexOf('END OF MASTER RESUME');
+      let resumeContent = docContent;
+      if (endIdx !== -1) resumeContent = docContent.slice(0, endIdx).trim();
+      const tailoringIdx = resumeContent.indexOf('TAILORING INSTRUCTIONS');
+      if (tailoringIdx !== -1) resumeContent = resumeContent.slice(0, resumeContent.lastIndexOf('=', tailoringIdx)).trim();
+
+      await admin.from('resumes')
+        .update({ content: resumeContent })
+        .eq('user_id', user.id)
+        .eq('name', 'Master ATS (bullet bank)');
+
+      return jsonResponse({
+        chunksExtracted: chunks.length,
+        newChunksAdded: toInsert.length,
+        totalExisting: (existing || []).length + toInsert.length,
+        resumeUpdated: true,
+      });
+    }
+
     if (mode === 'resume') {
       const jd = String(body.jobDescription || content || '');
       const corpus = await loadCareerCorpus(user.id, jd);

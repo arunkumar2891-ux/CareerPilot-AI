@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   BookOpen, Search, FileText, Database,
-  Layers, SearchX,
+  Layers, SearchX, RefreshCw, CloudDownload,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,16 +14,39 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { services } from '@/services';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { supabase } from '@/lib/supabase';
+import { useToast } from '@/hooks/use-toast';
 
 export function KnowledgeBasePage() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ chunk: string; score: number; collection: string; tags: string[] }[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [collection, setCollection] = useState('all');
+  const [googleDocId, setGoogleDocId] = useState('');
+  const { toast } = useToast();
 
-  const { data: collections } = useQuery({
+  const { data: collections, refetch: refetchCollections } = useQuery({
     queryKey: ['knowledge-collections'],
     queryFn: () => services.embedding.collections(),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async (fileId: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+      const res = await supabase.functions.invoke('ai-chat', {
+        body: { mode: 'sync_google_doc_chunks', fileId },
+      });
+      if (res.error) throw new Error(res.error.message);
+      return res.data as { chunksExtracted: number; newChunksAdded: number; totalExisting: number; resumeUpdated: boolean };
+    },
+    onSuccess: (data) => {
+      toast({ title: 'Google Doc synced', description: `${data.newChunksAdded} new chunks added (${data.totalExisting} total). Master ATS resume updated.` });
+      refetchCollections();
+    },
+    onError: (err) => {
+      toast({ title: 'Sync failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    },
   });
 
   const search = async () => {
@@ -48,6 +71,7 @@ export function KnowledgeBasePage() {
         <TabsList>
           <TabsTrigger value="search" className="gap-1.5"><Search className="h-3.5 w-3.5" /> Search</TabsTrigger>
           <TabsTrigger value="collections" className="gap-1.5"><Layers className="h-3.5 w-3.5" /> Collections</TabsTrigger>
+          <TabsTrigger value="google-sync" className="gap-1.5"><CloudDownload className="h-3.5 w-3.5" /> Google Doc Sync</TabsTrigger>
         </TabsList>
 
         <TabsContent value="search" className="space-y-4">
@@ -112,6 +136,67 @@ export function KnowledgeBasePage() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="google-sync" className="space-y-4">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h3 className="font-semibold text-sm">Sync Master Resume from Google Docs</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Fetch your master resume from a Google Doc, extract quantified achievement bullets as knowledge chunks,
+                  and update the Master ATS bullet bank in one click. Requires Google OAuth connection (Integrations → Connect Google).
+                </p>
+              </div>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1 space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Google Doc ID</label>
+                  <Input
+                    placeholder="e.g. 1A2b3C4d5E6f7G8h9I0j (from the doc URL)"
+                    value={googleDocId}
+                    onChange={(e) => setGoogleDocId(e.target.value)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Find this in your Google Doc URL: docs.google.com/document/d/<strong>THIS_PART</strong>/edit
+                  </p>
+                </div>
+                <Button
+                  onClick={() => syncMutation.mutate(googleDocId)}
+                  disabled={!googleDocId.trim() || syncMutation.isPending}
+                  className="gap-2"
+                >
+                  {syncMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
+                  {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
+                </Button>
+              </div>
+
+              {syncMutation.isSuccess && syncMutation.data && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-md border border-primary/30 bg-primary/5 p-4">
+                  <p className="text-sm font-medium text-primary">Sync Complete</p>
+                  <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    <li>Chunks extracted from doc: <strong>{syncMutation.data.chunksExtracted}</strong></li>
+                    <li>New chunks added: <strong>{syncMutation.data.newChunksAdded}</strong></li>
+                    <li>Total chunks in knowledge base: <strong>{syncMutation.data.totalExisting}</strong></li>
+                    <li>Master ATS resume content: <strong>{syncMutation.data.resumeUpdated ? 'Updated' : 'Unchanged'}</strong></li>
+                  </ul>
+                </motion.div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <h4 className="text-sm font-medium mb-2">How it works</h4>
+              <ol className="space-y-2 text-xs text-muted-foreground list-decimal list-inside">
+                <li>Your Google Doc is fetched via the Google Drive API (uses your connected OAuth token).</li>
+                <li>Bullet points (lines starting with - or •) with quantifiable metrics and achievement verbs are extracted.</li>
+                <li>Each bullet is tagged automatically based on keywords (e.g. SnapLogic, BigQuery, performance, security).</li>
+                <li>Only <em>new</em> bullets are inserted — existing chunks are never duplicated.</li>
+                <li>The Master ATS resume content in the database is updated to match the Google Doc.</li>
+                <li>Next time you tailor a resume, the ATS Optimizer uses the updated bullet bank.</li>
+              </ol>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

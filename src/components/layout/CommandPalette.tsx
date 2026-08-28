@@ -34,9 +34,9 @@ export function CommandPalette({ open, onOpenChange, onNavigate }: Props) {
             <LayoutDashboard className="mr-2 h-4 w-4" />
             <span>Open AI Copilot</span>
           </CommandItem>
-          <CommandItem onSelect={() => go('/workflows')}>
+          <CommandItem onSelect={() => go('/resumes')}>
             <Settings className="mr-2 h-4 w-4" />
-            <span>Create Workflow</span>
+            <span>Manage Resumes</span>
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />

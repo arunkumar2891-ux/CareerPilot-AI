@@ -406,3 +406,78 @@ This demonstrates a focus on sustainable engineering practices and platform evol
 * Produced executive-level communications, governance proposals, and strategic updates that effectively translated technical initiatives into measurable business value (16 tracked leadership emails in August alone).
 * Shifted the integration organization from reactive support toward an AI-enabled, standardized, and scalable engineering model focused on automation, governance, reliability, and continuous improvement.
 * Applied formal AI evaluation methodologies (RECIPE, CASE, COSTS, PATH, AI-First) to validate AI agent decisions, establishing rigorous assessment practices for future investments.
+
+---
+
+# 14. Personal Projects — GenAI-Augmented Development & Forward Deployment Engineering
+
+Beyond professional work, Arun demonstrated GenAI fluency and Forward Deployment Engineering skills by shipping 5 personal projects via AI pair programming (Cursor AI + Lovable.dev + Bolt.new).
+
+### CareerPilot AI — Autonomous AI-Powered Job Search Platform (Flagship Personal Project)
+* **Problem:** Job searching is fragmented across multiple tools with repetitive manual work
+* **Solution:** Full autonomous platform with AI resume tailoring, workflow automation, and daily pipeline
+* **Method:** Built with Cursor AI; deep GenAI integration (Gemini 1.5 Flash, RAG, multi-provider)
+* **Stack:** React 18, TypeScript, Supabase (PostgreSQL + Auth + Storage + Edge Functions/Deno + RLS + pg_cron), Google Gemini 1.5 Flash, Apify, Google Drive OAuth2, Resend, LaTeX→PDF
+* **Key Technical:**
+ - RAG-like career corpus: Master ATS bullet bank + 6 role playbooks (keyword-matched) + 14 evidence chunks with tag-based relevance scoring
+ - Resumable graph-based workflow engine: 25+ node types, topological sort, step queue, pg_cron scheduler (every minute)
+ - Fully automated 18-node daily pipeline: LinkedIn scrape → AI optimize → LaTeX PDF → Google Drive → email
+ - Multi-provider AI architecture (Gemini, OpenAI, Claude, Azure, Ollama, Bedrock) via single Edge Function
+ - Visual Workflow Studio with drag-and-connect builder
+ - ATS scoring, version history, job-tailored AI generation
+ - Bootstrap-on-Login: auto-provisions workflow, career corpus, and settings on first user login
+* **Impact:** Complete autonomous job search — from job discovery to tailored resume delivery — running daily without intervention
+* **FDE/GenAI Signal:** Most sophisticated GenAI project — demonstrates RAG architecture, multi-provider AI, workflow engine design, and autonomous AI agent orchestration
+
+### IPL 2026 Prediction Game
+* **Problem:** Friends group needed a match prediction app for IPL season
+* **Solution:** Full-stack automated prediction platform with pari-mutuel scoring
+* **Method:** Built entirely via "vibecoding" — natural language prompting, zero hand-written syntax
+* **Stack:** React 18, TypeScript, Express.js, Supabase (9 tables + 3 RPC), CricAPI, JWT, node-cron
+* **Key Technical:** Automated tournament lifecycle (match detection every 10 min, cutoff enforcement, result parsing, scoring), 3-tier rate limiting, multi-group leaderboards
+* **Impact:** 29+ active users throughout IPL 2026 season, zero manual intervention required
+* **FDE Signal:** Translated vague social need → production platform in ~2 weeks
+
+### Cric-Scorer — Cricket Tournament & Live Scoring Platform
+* **Problem:** Local cricket tournaments needed a proper scoring and stats platform
+* **Solution:** Full-featured live ball-by-ball scoring with tournament management
+* **Method:** Scaffolded with Bolt.new, complex domain logic via AI-augmented development
+* **Stack:** React 18, TypeScript, Supabase (14 tables + RLS + triggers + migrations)
+* **Key Technical:** 3 domain engines (Scoring: extras/wickets/strike rotation/undo, Statistics: career batting/bowling/fielding/NRR, MVP: configurable point system with detailed breakdowns), 14-table schema with conflict prevention triggers, custom hash-based router
+* **Impact:** Complete tournament management from team creation to career statistics
+* **FDE Signal:** Complex domain logic (cricket scoring rules) implemented via AI-augmented development
+
+### Pic-Reel (FrameFlow) — In-Browser Hyperlapse Maker
+* **Problem:** No free browser-based tool for photographers to create hyperlapses from photo sequences
+* **Solution:** Privacy-first video maker — photos never leave user's device (FFmpeg.wasm)
+* **Method:** Built with Cursor AI + Lovable.dev
+* **Stack:** React 19, TanStack Start (SSR/Nitro), TypeScript 5.8, Vite 7.3, Tailwind v4, FFmpeg.wasm, dnd-kit
+* **Key Technical:** Multi-source WASM fallback (local → unpkg → jsdelivr), H.264/H.265 encoding, 4K support, 500 images, singleton FFmpeg instance, discriminated union state machine
+* **Impact:** Free tool solving genuine gap in photographer workflow — zero server costs
+* **FDE Signal:** Identified workflow gap → shipped in ~1 week
+
+### PlanItX — Indian Wedding & Event Planning Platform
+* **Problem:** Friends planning Indian weddings needed a comprehensive tool
+* **Solution:** Premium event planning SaaS with India-first features
+* **Method:** AI-augmented development via Cursor AI
+* **Stack:** React 18, TypeScript, Supabase (12 tables + RLS), Zustand, Framer Motion, Recharts, Zod
+* **Key Technical:** Row Level Security on all 12 tables, multi-method auth, vendor marketplace (16 vendors, 7 categories), WhatsApp integration, dual event types (weddings + Seemandham), fintech-inspired UI
+* **Impact:** Full premium SaaS product with cultural-specific features
+* **FDE Signal:** Received social need → delivered premium product
+
+### What These Projects Demonstrate
+
+**GenAI Fluency:**
+* CareerPilot AI: Runtime GenAI with RAG corpus, multi-provider AI, workflow automation — the most sophisticated personal AI project
+* Ability to architect complex systems and delegate implementation to AI
+* Mastery of prompt engineering for requirements decomposition
+* Understanding that AI is a force multiplier, not a replacement for system design thinking
+* Comfort with modern React 19, TanStack, WebAssembly, Edge Functions, and cutting-edge tooling
+
+**Forward Deployment Engineering:**
+* Problem identification from real-world user pain points
+* Rapid solution delivery (concept → production in days/weeks)
+* End-to-end ownership (architecture, frontend, backend, database, deployment, user support)
+* Deployment on cloud platforms (Render.com, Supabase) with proper security and monitoring
+* Serving real users (29+ IPL players, photographer community)
+* Complex domain logic implementation (cricket scoring, pari-mutuel algorithms, workflow engines)

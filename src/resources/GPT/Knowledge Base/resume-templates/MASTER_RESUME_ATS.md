@@ -1,11 +1,11 @@
-ARUN KUMAR
+ARUNKUMAR JS 
 Integration Architect | GenAI Developer | Forward Deployment Engineer
+Location: Chennai, Tamil Nadu
+Phone: +91-9677669918 
+Email: arunkumarjs@outlook.com 
+LinkedIn: https://www.linkedin.com/in/arunkumar-j-s-05164393/
+GitHub: https://github.com/arunkumar2891-ux
 
-Location: [City, State]
-Phone: [Phone Number]
-Email: [Email Address]
-LinkedIn: [LinkedIn URL]
-GitHub: [GitHub URL]
 
 ================================================================================
 PROFESSIONAL SUMMARY
@@ -264,60 +264,112 @@ Technologies: Vertex AI, Gemini 2.5 Pro, RAG, Prompt Engineering, SnapLogic
 
 --- Project: Pic-Reel / FrameFlow Hyperlapse Tool (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Concept-to-Production
-Technologies: React 19, TanStack Start (SSR), TypeScript, Vite 7, Tailwind CSS v4, FFmpeg.wasm, dnd-kit, Canvas API, Render.com
+Technologies: React 19, TanStack Start (SSR/Nitro), TypeScript 5.8 (strict), Vite 7.3, Tailwind CSS v4, FFmpeg.wasm 0.12.15, dnd-kit (sortable), react-dropzone, react-hook-form + Zod, Render.com
 
 - Identified real-world photographer problem: no free browser-based tool exists to create hyperlapses/timelapses from photo sequences without uploading to a server
 - Built complete web application from scratch using Cursor AI + Lovable.dev: photo upload → drag-and-drop reordering → configurable video settings → client-side MP4 encoding → download
 - Implemented 100% client-side video encoding using FFmpeg compiled to WebAssembly — photos never leave the user's browser (privacy-first architecture)
-- Built configurable video settings: FPS (24/30/48/60/120), resolution (1080p/2K/4K), codec (H.264/H.265), quality presets, per-photo duration control
+- Designed multi-source WASM loading with CDN fallback: local split binary (4 chunks assembled in-browser) → unpkg CDN → jsdelivr CDN — ensuring reliability across network conditions
+- Built configurable video settings: FPS (24/30/48/60/120), resolution (1080p/2K/4K), codec (H.264 libx264/H.265 libx265), CRF-based quality presets, per-photo duration (0.02s-5s)
 - Implemented multi-step progress indicator with real-time percentage during render pipeline (uploading → preparing → rendering → encoding → finalizing)
-- Deployed as SSR app on Render.com with self-ping keep-alive mechanism to prevent cold starts on free tier
-- Shipped as free tool solving genuine gap in photographer workflow — no account needed, zero server costs for video processing
+- Deployed as SSR app (TanStack Start + Nitro with render_com preset) on Render.com with self-ping keep-alive mechanism every 5 minutes to prevent cold starts on free tier
+- Built singleton FFmpeg instance pattern (lazy-loaded, cached globally) with proper memory management (virtual FS cleanup, Object URL revocation on unmount)
 
 Technical Highlights:
-  - 68 source files (46 UI primitives + 6 feature components)
-  - WASM loading with CDN fallback (4-part binary split for file-size limits)
+  - 68 source files (30+ shadcn/ui primitives + 6 domain components)
+  - React 19 + TanStack Start (file-based routing, SSR shell for SEO)
+  - FFmpeg concat demuxer with force_original_aspect_ratio + black padding for resolution scaling
+  - Phase state machine via discriminated union types (idle | rendering | done)
   - Supports up to 500 images per session
-  - Zero backend video processing costs
+  - Zero backend video processing costs — all computation in user's browser
+
+--- Project: CareerPilot AI — Autonomous Job Search Platform (Personal - GenAI-Native) ---
+Role: Solo GenAI Developer & Architect | Full AI Platform from Concept to Production
+Technologies: React 18, TypeScript, Vite 5, React Router 7, Tailwind CSS 3, shadcn/ui (Radix), Zustand, TanStack Query, Recharts, Framer Motion, Supabase (PostgreSQL + Auth + Storage + Edge Functions/Deno + RLS + pg_cron + pg_net), Google Gemini 1.5 Flash, Apify (LinkedIn scraper), Google Drive OAuth2, Resend (email), LaTeX→PDF (ytotech), Render.com
+
+- Designed and built autonomous AI-powered job search platform — a complete command center for end-to-end job hunting with job discovery, AI resume tailoring, cover letter generation, workflow automation, and conversational AI copilot
+- Implemented RAG-like career corpus system: Master ATS bullet bank + 2-page template + 6 role playbooks (Integration Architect, GenAI Developer, FDE, Cloud Architect, AI/ML Engineer, Engineering Manager) + 14 evidence chunks with tag-based relevance scoring and automatic playbook selection via JD keyword matching
+- Built resumable graph-based workflow engine with 25+ node types (Triggers, AI, Integrations, Logic, Data), topological sort execution, step queue for long-running operations, and pg_cron scheduler (every minute) for resuming paused steps
+- Implemented fully automated 18-node daily pipeline: Schedule (7 AM cron) → Google Doc header → LinkedIn URL → Apify scrape → Poll/wait → Parse jobs → Limit → Dedup filter → Gemini ATS optimization → Store → Build LaTeX → Compile PDF → Upload Storage → Google Drive → Build email → Send via Resend
+- Designed multi-provider AI architecture supporting Gemini, OpenAI, Claude, Azure, Ollama, and Bedrock — all routed through a single Edge Function with mode-based dispatch (resume, ats_score, embed, chat)
+- Built LaTeX → PDF compilation pipeline using `moderncv` package for professional resume output, with Google Drive upload (OAuth2 + token refresh + public sharing) and email delivery via Resend
+- Implemented visual Workflow Studio with drag-and-connect node builder, live execution monitoring, version history, and one-click automation scheduling
+- Designed Bootstrap-on-Login pattern: auto-provisions default workflow, automation, career corpus (master resume, template, evidence chunks), and settings on first user login
+
+Technical Highlights:
+  - 7 Supabase Edge Functions (Deno): workflow-run, workflow-step (resumable), workflow-scheduler, ai-chat, google-oauth-callback, google-oauth-start, google-oauth-refresh
+  - RAG prompt construction: pickPlaybook() + selectEvidence() + buildResumeUserPrompt() with ATS_SYSTEM_PROMPT enforcing strict rules (only select existing bullets, preserve real metrics)
+  - 25+ workflow node types across 5 categories with visual builder
+  - 5 SQL migration files, RLS on all tables, pg_cron + pg_net for scheduling
+  - Multi-auth: Email/password, Google OAuth, GitHub OAuth, Magic Link
+  - Command palette (Cmd+K), page transitions (AnimatePresence), responsive design
+  - Service layer pattern with typed service classes (JobSearchService, ResumeService, WorkflowService, etc.)
+
+--- Project: Cric-Scorer — Cricket Tournament & Live Scoring Platform (Personal - AI-Built) ---
+Role: Solo GenAI Developer | Complex Domain Logic via AI-Augmented Development
+Technologies: React 18.3, TypeScript, Vite 5.4, Tailwind CSS 3.4, Lucide React, Supabase (PostgreSQL + RLS + Migrations + Triggers), Bolt.new
+
+- Built full-featured cricket tournament management and live ball-by-ball scoring application with complex domain logic engine using Bolt.new for scaffolding and AI-augmented development
+- Implemented stateful scoring engine (`scoringEngine.ts`): ball-by-ball scoring, undo/redo, state rebuild, automatic strike rotation, extras handling (wides, no-balls, byes, leg-byes), 10 wicket types, over completion, innings transitions
+- Built career statistics engine (`statsEngine.ts`): batting average, strike rate, highest score, 50s/100s, bowling average, economy, best figures, 3W/5W hauls, fielding stats, NRR-based points table
+- Implemented MVP point system (`mvpEngine.ts`): configurable per-run, per-wicket, milestone bonuses, economy bonuses, fielding points, award points — with detailed per-player breakdowns
+- Designed comprehensive database schema: 14 tables (teams, players, team_players, tournaments, tournament_teams, matches, match_innings, deliveries, player_match_batting/bowling/fielding, match_awards, mvp_points, match_playing_xi, settings) with foreign keys, triggers, and RLS
+- Built Playing XI management with conflict prevention (same player on both teams, player in two live matches), captain/keeper assignment, and squad management
+- Implemented custom hash-based router (`router.ts`) with pattern matching (:id params) — no react-router dependency
+
+Technical Highlights:
+  - 3 domain engines: Scoring, Statistics, MVP (complex deterministic algorithms)
+  - 14-table Supabase schema with migrations, triggers, and RLS policies
+  - 6 pre-seeded teams (Tamil Nadu-based), 32 players, 3 tournaments
+  - Match completion with automatic result determination (win by runs/wickets, tie)
+  - Timeline view with ball-by-ball visual display and inline edit capability
+  - Global/tournament leaderboards for batting, bowling, fielding, and MVP
+  - Responsive: desktop sidebar + mobile bottom nav
 
 --- Project: IPL 2026 Prediction Game (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Requirements from friends → Full production app
-Technologies: React 18, TypeScript, Vite 5, Tailwind CSS, shadcn/ui, Framer Motion, TanStack Query, Node.js, Express.js, Supabase (PostgreSQL), CricAPI, node-cron, JWT, Render.com
+Technologies: React 18, TypeScript, Vite 5 (SWC), Tailwind CSS, shadcn/ui (Radix), Framer Motion, TanStack Query v5, React Router v6, Recharts, Node.js (ES Modules), Express.js, Supabase (PostgreSQL), CricAPI, node-cron, JWT (jsonwebtoken), express-rate-limit, Render.com
 
 - Received requirement from friends group: "Build us an app for IPL match predictions" — translated vague social need into fully automated prediction platform for 30+ users
 - Built complete full-stack application using AI pair programming (Cursor AI + Lovable.dev) with no hand-written implementation syntax ("vibecoded")
-- Implemented pari-mutuel scoring engine: losers' points pooled and redistributed among winners with weighted user multipliers (1x/2x/5x) and playoff escalation (20→50→100 points)
-- Built fully automated tournament lifecycle with zero manual admin: cron-based match detection via CricAPI, automatic cutoff enforcement (15 min before start), auto-result detection, and scoring pipeline
-- Implemented intelligent match management: auto-postpone on delayed matches (+25 min), double-header day logic, no-result handling for rain/abandonment
-- Built OTP authentication with JWT (15-min expiry), 3-tier rate limiting (general 25/min, OTP 5/15min, admin 20/15min), and server-side cutoff enforcement
-- Delivered features: live countdown timers, "Last 5" form guide (W/L/NR streaks), multi-group leaderboards, active user highlighting, admin console
+- Implemented pari-mutuel scoring engine (`calculateMatchResult.js`, 248 lines): losers' points pooled and redistributed among winners with weighted user multipliers (1x/2x/5x) and playoff escalation (20→50→100 points)
+- Built fully automated tournament lifecycle with zero manual admin: cron-based match detection via CricAPI (`matchChecker.js`, 617 lines), automatic cutoff enforcement (15 min before start), auto-result detection by parsing CricAPI status field, and scoring pipeline
+- Implemented intelligent match management: auto-postpone on delayed matches (+25 min with re-check every 10 min), double-header day logic, no-result handling for rain/abandonment (previous leaderboard carried forward)
+- Built OTP authentication with JWT (15-min expiry), 3-tier rate limiting (general 25/min, OTP 5/15min, admin 20/15min), server-side cutoff enforcement, and admin-table gated console
+- Designed 9-table Supabase schema with 3 RPC stored procedures (`get_bids_today`, `insert_unbid_predictions`, `get_todaymatches`) for complex aggregation
+- Delivered features: live countdown timers, "Last 5" form guide (W/L/NR streaks), multi-group leaderboards (G1/G2), active user highlighting, admin console with manual overrides
 
 Technical Highlights:
-  - 80 custom source files (7 core components + 49 UI primitives + 4 backend modules)
+  - 80+ custom source files (7 core components + 49 UI primitives + 4 backend modules)
+  - Express server (607 lines) with 12 JWT-protected API endpoints
   - 9 Supabase tables + 3 RPC stored procedures
-  - 12 API endpoints with JWT-protected routes
-  - Automated via 2 cron jobs (match checker every 10 min + result detector)
-  - 30+ active users throughout IPL 2026 season
+  - 2 autonomous cron jobs (match checker every 10 min + result detector every 30 min)
+  - 29 registered players across multiple groups, active throughout IPL 2026 season
+  - Centralized API layer (`api.ts`) with Bearer token injection
 
 --- Project: PlanItX - Indian Wedding & Event Planning Platform (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Requirements from friends → Premium SaaS product
-Technologies: React 18, TypeScript, Vite 5, Tailwind CSS, Zustand, Framer Motion, Recharts, Zod, Supabase (PostgreSQL + Auth + RLS), 12-table schema
+Technologies: React 18.3, TypeScript 5.5, Vite 5.3, Tailwind CSS 3.4, Zustand 4.5, Framer Motion 11.3, Recharts 2.12, Zod 3.23, Lucide React, Supabase (PostgreSQL + Auth + Row Level Security), 12-table schema
 
 - Received requirement from friends: "We need an app to plan Indian weddings" — translated into full-featured premium SaaS product (branded as "PlanIT X - A Product of Candid Carnival")
 - Built comprehensive event planning platform from scratch using AI-augmented development with 56 source files, 13 pages, 12 custom hooks, and 12 database tables
 - Implemented India-first features: budget tracking in Lakhs/INR with donut charts, guest management with dress/gift tracking (saree types, dhotis, return gifts), wedding-day schedule (Haldi, Baraat, Pheras, Reception, Vidaai)
-- Built vendor marketplace with category browsing (halls, caterers, photographers, makeup, decor, DJ, mehendi), ratings, featured listings, and booking/payment tracker
+- Built vendor marketplace with category browsing (halls, caterers, photographers, makeup, decor, DJ, mehendi), ratings, featured listings, booking/payment tracker with status workflow (pending→booked→advance paid→fully paid), and WhatsApp contact integration
 - Implemented task timeline with family responsibility delegation across bride's and groom's families, priority-based assignments, and pre-built 12-month planning templates
-- Designed fintech-inspired premium UI: dark charcoal + deep crimson + warm white palette, mobile-first (448px primary), Playfair Display headings, Framer Motion animations
-- Implemented comprehensive security: Row Level Security (RLS) on all 12 tables, multi-method auth (email/magic link/phone), single-device session policy, Zod form validation
-- Supports dual event types: Hindu/Muslim/Sikh/Christian weddings AND baby showers (Seemandham) with dynamic labels and cultural elements
+- Designed fintech-inspired premium UI: dark charcoal (#1A1A1A) + deep crimson (#C41E3A) + warm white (#FAFAF8) palette, mobile-first (448px primary), Playfair Display headings, Framer Motion animations
+- Implemented comprehensive security: Row Level Security (RLS) on all 12 tables with auto-triggers, multi-method auth (email/magic link/phone lookup), single-device session policy, Zod form validation on all inputs
+- Supports dual event types: Hindu/Muslim/Sikh/Christian weddings AND baby showers (Seemandham) with dynamic labels and cultural elements via `eventLabels.ts`
+- Built structured error logging to Supabase (`error_logs` table) with user context, browser info, and stack traces
+- Implemented offline-capable sample data loading (`loadSampleData()`) for demo mode without Supabase
 
 Technical Highlights:
   - 56 source files across pages, components, hooks, and lib modules
-  - 12 Supabase PostgreSQL tables with RLS policies and auto-triggers
-  - 9 custom React hooks (useAuth, useBudget, useGuests, useTasks, etc.)
+  - 12 Supabase PostgreSQL tables with RLS policies, auto-triggers, and 16 pre-seeded vendors
+  - 12 custom React hooks (useAuth, useBudget, useGuests, useChecklist, useTasks, useSchedule, useVendorBookings, useWedding, useFamilyMembers, etc.)
   - Hall comparison tool with cost breakdown (rent, GST, generator, rooms, decor)
-  - Responsive: mobile bottom-nav + desktop sidebar layout
+  - Responsive: mobile bottom-nav (BottomNav) + desktop sidebar (breakpoint: lg)
+  - Route guards: ProtectedRoute (auth) + WeddingGuard (wedding exists)
+  - Bulk `fetchAllData` pattern in Zustand store for initial hydration
 
 ================================================================================
 FORWARD DEPLOYMENT ENGINEERING
@@ -328,8 +380,10 @@ Demonstrated ability to operate as a Forward Deployment Engineer: identifying re
 --- Forward Deployment Skills Demonstrated ---
 
 PROBLEM IDENTIFICATION & REQUIREMENTS ENGINEERING:
+- Built autonomous AI job search platform (CareerPilot AI) — identified fragmented workflow → built unified command center
 - Identified photographer workflow gap → built Pic-Reel (free hyperlapse tool)
 - Received friend group requirement → built IPL 2026 prediction game
+- Identified cricket scoring gap → built Cric-Scorer (live ball-by-ball tournament platform)
 - Received social need → built PlanItX event planning app
 - Identified team inefficiency → built SnapLogic Automations Portal
 - Identified RAG inconsistency → engineered optimized corpus (v1.8→v3.0)
@@ -490,12 +544,9 @@ Professional Development:
 ================================================================================
 EDUCATION
 ================================================================================
-
-[Degree Name] - [Major/Specialization]
-[University Name]
-[Graduation Year] | [Location]
-
-[Add any additional degrees or relevant coursework]
+B.Tech – Information Technology 
+SASTRA University 
+2016 | Thanjavur
 
 ================================================================================
 KEY PROJECTS & METRICS SUMMARY
@@ -508,6 +559,8 @@ PC to CC BigQuery Migration      | 4-10x latency, 10-80x cost savings | 5 pipeli
 Automations Portal (AI-Built)    | 99.95% uptime, <300ms response     | 100+ users, 35+ APIs
 RAG Corpus Optimization          | 40% → <5% AI review inconsistency  | 58→20 clusters, v3.0
 Critical Incident Response       | <2hr resolution, $0 business impact| Quarter-end period
+CareerPilot AI (Personal)       | Autonomous AI job search platform | Runtime GenAI, RAG, workflow engine
+Cric-Scorer (Personal)          | Cricket tournament & live scoring  | 3 domain engines, 14 tables
 Pic-Reel Hyperlapse (Personal)   | Free tool for photographers        | Concept→prod in 1 week
 IPL 2026 Prediction (Personal)   | Friends group prediction game      | Full app in 2 weeks
 PlanItX Events (Personal)        | Collaborative event planning       | Full app via AI
@@ -601,7 +654,7 @@ FOR "GenAI Developer" ROLES:
 - Lead with GenAI-Augmented Development Methodology section
 - Emphasize: AI pair programming, prompt engineering, RAG optimization, rapid prototyping
 - Highlight: Built 4+ production apps using AI, 10x development speed, RAG optimization reducing inconsistency from 40% to <5%
-- Include personal projects: Pic-Reel, IPL 2026, PlanItX (shows initiative and AI fluency)
+- Include personal projects: CareerPilot AI (strongest GenAI — runtime AI, RAG, workflow engine), Cric-Scorer, Pic-Reel, IPL 2026, PlanItX (shows initiative and AI fluency)
 - Keywords: prompt engineering, LLM, RAG, AI agent, Cursor AI, ChatGPT, generative AI, AI-augmented development
 
 FOR "Forward Deployment Engineer" ROLES:
@@ -635,5 +688,5 @@ Last Updated: July 30, 2026
 Total Experience Bullets: 70+
 Tailoring Scenarios: 6
 ATS Keyword Categories: 11
-Personal Projects: 3
+Personal Projects: 5
 AI Development Methodology: Documented with examples

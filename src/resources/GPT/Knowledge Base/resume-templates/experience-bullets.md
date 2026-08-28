@@ -177,5 +177,30 @@ Arun Kumar
 
 ---
 
+## Personal Projects — GenAI & FDE Resume Bullets
+
+### GenAI-Augmented Development
+- Pioneered "vibecoding" methodology — shipping production-grade full-stack applications from concept to deployment using AI pair programming (Cursor AI + Lovable.dev + Bolt.new) with zero hand-written implementation syntax
+- Built CareerPilot AI — an autonomous job search platform with runtime GenAI (Gemini 1.5 Flash), RAG-like career corpus (6 role playbooks + 14 evidence chunks), resumable 25+ node workflow engine, and fully automated 18-node daily pipeline (LinkedIn scrape → AI resume optimization → LaTeX PDF → Google Drive → email)
+- Built 5 personal projects entirely via natural language prompting, demonstrating mastery of prompt engineering, architecture specification, RAG system design, workflow automation, and AI-augmented software delivery
+- Reduced concept-to-production timeline from months to days/weeks by applying GenAI-first development workflows, architectural constraint specification, and iterative AI refinement
+
+### Forward Deployment Engineering
+- Designed and built autonomous AI job search platform (CareerPilot AI) with multi-provider AI architecture (Gemini, OpenAI, Claude, Azure, Ollama, Bedrock), visual workflow studio, and daily automated pipeline requiring zero manual intervention
+- Translated vague user needs ("build us an IPL prediction app") into fully automated production platform serving 30+ users with pari-mutuel scoring, cron-based match detection, and zero manual intervention
+- Identified photographer workflow gap (no free browser-based hyperlapse tool) and shipped privacy-first solution using FFmpeg compiled to WebAssembly — photos never leave user's device
+- Built cricket tournament scoring platform with 3 complex domain engines (scoring, statistics, MVP) implementing full cricket rules including extras, wicket types, strike rotation, NRR, and career stats across 14-table schema
+- Designed and deployed premium Indian wedding planning SaaS with India-first features (budget in Lakhs, cultural ceremonies, vendor marketplace with WhatsApp integration) from a social requirement
+
+### Technical Highlights (Personal Projects)
+- Implemented RAG-like career corpus with role playbook selection (keyword-scored), evidence chunk relevance scoring (top-8 selection), and structured prompt construction with strict ATS system prompt (CareerPilot AI)
+- Built resumable graph-based workflow engine: 25+ node types, topological sort execution, step queue for long-running ops (Apify polling), pg_cron scheduler every minute (CareerPilot AI)
+- Implemented pari-mutuel scoring engine with weighted multipliers (1x/2x/5x), playoff escalation (20→50→100 pts), and fully automated tournament lifecycle via CricAPI (IPL 2026)
+- Built 100% client-side video encoding pipeline using FFmpeg.wasm with multi-source WASM fallback (local → unpkg → jsdelivr), supporting 500 images at 4K H.265 (Pic-Reel)
+- Implemented stateful cricket scoring engine with ball-by-ball undo/redo, state rebuild, automatic strike rotation, 10 wicket types, extras handling, and NRR calculation (Cric-Scorer)
+- Designed 12-table PostgreSQL schema with Row Level Security on all tables, multi-method auth (email/magic link/phone), and single-device session policy (PlanItX)
+
+---
+
 *Resume Templates & Experience Bullets*  
-*Generated: July 29, 2026*
+*Last Updated: August 28, 2026*

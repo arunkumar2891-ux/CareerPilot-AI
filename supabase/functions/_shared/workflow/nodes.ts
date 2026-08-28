@@ -117,6 +117,14 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       }
       if (fn === 'email_summary') {
         const items = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
+        if (items.length === 0) {
+          const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
+          const today = new Date().toISOString().slice(0, 10);
+          return {
+            output: { subject: `No New Jobs Found — ${today}`, body: '<p>All discovered jobs were duplicates of previously processed listings. No new resumes generated today.</p>', to: email },
+            status: 'success',
+          };
+        }
         const today = new Date().toISOString().slice(0, 10);
         let body = `<div style="font-family:Arial,sans-serif"><h2>Your ATS resumes are ready (${items.length})</h2><table border="1" cellpadding="8"><tr><th>Company</th><th>Role</th><th>Job</th><th>Resume</th></tr>`;
         for (const it of items) {
@@ -317,6 +325,9 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const action = node.config.action as string || 'insert_job';
       const admin = createAdminClient();
       if (action === 'insert_job') {
+        if (input == null || typeof input !== 'object') {
+          return { output: input, status: 'success' };
+        }
         const job = input as Record<string, unknown>;
         const row = {
           user_id: ctx.userId,

@@ -13,17 +13,12 @@ import { ApplicationsPage } from '@/pages/ApplicationsPage';
 import { ResumesPage } from '@/pages/ResumesPage';
 import { CoverLettersPage } from '@/pages/CoverLettersPage';
 import { CopilotPage } from '@/pages/CopilotPage';
-import { AutomationsPage } from '@/pages/AutomationsPage';
-import { WorkflowsPage } from '@/pages/WorkflowsPage';
-import { AgentsPage } from '@/pages/AgentsPage';
-import { DocumentsPage } from '@/pages/DocumentsPage';
 import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
-import { AnalyticsPage } from '@/pages/AnalyticsPage';
 import { ExecutionsPage } from '@/pages/ExecutionsPage';
+import { AnalyticsPage } from '@/pages/AnalyticsPage';
 import { IntegrationsPage } from '@/pages/IntegrationsPage';
-import { PromptsPage } from '@/pages/PromptsPage';
-import { SettingsPage } from '@/pages/SettingsPage';
 import { SetupPage } from '@/pages/SetupPage';
+import { SettingsPage } from '@/pages/SettingsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, refetchOnWindowFocus: false, retry: 1 } },
@@ -102,16 +97,11 @@ function App() {
               <Route path="/resumes" element={<ResumesPage />} />
               <Route path="/cover-letters" element={<CoverLettersPage />} />
               <Route path="/copilot" element={<CopilotPage />} />
-              <Route path="/automations" element={<AutomationsPage />} />
-              <Route path="/workflows" element={<WorkflowsPage />} />
-              <Route path="/agents" element={<AgentsPage />} />
-              <Route path="/documents" element={<DocumentsPage />} />
               <Route path="/knowledge" element={<KnowledgeBasePage />} />
-              <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/executions" element={<ExecutionsPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/setup" element={<SetupPage />} />
-              <Route path="/prompts" element={<PromptsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

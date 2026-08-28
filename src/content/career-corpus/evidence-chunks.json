@@ -1,16 +1,513 @@
 [
-  {"id": "fw-flex-total", "tags": ["fw_flex", "snaplogic", "standardization", "integration"], "text": "FW_Flex redesign: 20 fragmented pipelines to 3 common + 9 worker pipelines; 66% snap reduction (278 to 94 snaps), 164 snaps removed from maintenance."},
-  {"id": "fw-flex-reuse", "tags": ["fw_flex", "reuse", "error-handling"], "text": "Common Pipeline Framework consolidated 5 duplicate TMS lookups, 3 duplicate CSP API calls, and 9 duplicate error handlers; unified 4 logging patterns into COM0005 Chronosphere logging."},
-  {"id": "fw-flex-spec", "tags": ["fw_flex", "documentation"], "text": "979-line technical specification with snap-level details enabled parallel team implementation of FW_Flex."},
-  {"id": "pc-cc-latency", "tags": ["pc_cc", "bigquery", "performance", "gcp"], "text": "PC to CC migration: query latency improved 4-10x (2-5s Datadog lookups to under 500ms BigQuery); state lookup 20-50x faster (<100ms)."},
-  {"id": "pc-cc-cost", "tags": ["pc_cc", "bigquery", "cost"], "text": "PC to CC: 10-80x cost reduction per query vs Datadog API lookups; unlimited retention vs 15-day Datadog limit; zero data loss via dual-write."},
-  {"id": "pc-cc-schema", "tags": ["pc_cc", "sql", "idempotency"], "text": "BigQuery MERGE for idempotent writes; DATE partitioning and clustering; 5 pipelines changed (7 snaps removed, 13 added, 8 modified); 4-phase rollout."},
-  {"id": "portal-users", "tags": ["portal", "fullstack", "adoption"], "text": "SnapLogic Automations Portal: 100+ internal users (150+ concurrent), 48 React components, 35+ REST endpoints, 8 request categories."},
-  {"id": "portal-slo", "tags": ["portal", "sre", "kubernetes"], "text": "Portal SLOs: 99.95% uptime, <300ms API, <1.5s page load; GKE Helm + HPA 3-10 pods; Vault secret injection; Datadog APM."},
-  {"id": "portal-ai", "tags": ["portal", "gemini", "rag", "agents"], "text": "Portal AI: Gemini 2.5 Flash stories (<2s, 3x retry); Gemini 2.5 Pro Error Analysis + Pipeline Performance agents; RAG corpus of 50+ pipeline metrics."},
-  {"id": "incident-licensing", "tags": ["incident", "observability", "pubsub"], "text": "P1 Licensing logging loss at quarter-end: root cause in 20 min, Pub/Sub+Chronosphere fix in 30 min, team unblocked in 60 min; zero business impact, zero data loss."},
-  {"id": "security-three", "tags": ["security", "compliance", "vault"], "text": "3 security issues resolved (SNAPLOGIC-631 input sanitization, Vault 90-day password rotation, SFDC OAuth/URL review); 100% Mythos/Checkmarx/Blackduck compliance."},
-  {"id": "leadership", "tags": ["leadership", "mentoring", "docs"], "text": "Mentored 5+ engineers; workshops for 30+ people; 3,348 lines of technical documentation; 15+ production deployments with zero rollbacks."},
-  {"id": "ai-agents-value", "tags": ["agents", "roi", "productivity"], "text": "AI agent platforms: 540+ hours/year saved, ~$40K annual value, 2,000-3,000% ROI; quote investigation 85-90% faster (3-4 min to 30-40 sec)."},
-  {"id": "synthetic-monolith", "tags": ["refactor", "reliability"], "text": "Synthetic monitoring 27 to 2 pipelines (93% reduction); backend monolith 5,769 lines refactored to 9 routes + 11 libs."}
+  {
+    "id": "fw-flex-total",
+    "tags": [
+      "fw_flex",
+      "snaplogic",
+      "standardization",
+      "integration"
+    ],
+    "text": "FW_Flex redesign: 20 fragmented pipelines to 3 common + 9 worker pipelines; 66% snap reduction (278 to 94 snaps), 164 snaps removed from maintenance."
+  },
+  {
+    "id": "fw-flex-reuse",
+    "tags": [
+      "fw_flex",
+      "reuse",
+      "error-handling"
+    ],
+    "text": "Common Pipeline Framework consolidated 5 duplicate TMS lookups, 3 duplicate CSP API calls, and 9 duplicate error handlers; unified 4 logging patterns into COM0005 Chronosphere logging."
+  },
+  {
+    "id": "fw-flex-spec",
+    "tags": [
+      "fw_flex",
+      "documentation"
+    ],
+    "text": "979-line technical specification with snap-level details enabled parallel team implementation of FW_Flex."
+  },
+  {
+    "id": "pc-cc-latency",
+    "tags": [
+      "pc_cc",
+      "bigquery",
+      "performance",
+      "gcp"
+    ],
+    "text": "PC to CC migration: query latency improved 4-10x (2-5s Datadog lookups to under 500ms BigQuery); state lookup 20-50x faster (<100ms)."
+  },
+  {
+    "id": "pc-cc-cost",
+    "tags": [
+      "pc_cc",
+      "bigquery",
+      "cost"
+    ],
+    "text": "PC to CC: 10-80x cost reduction per query vs Datadog API lookups; unlimited retention vs 15-day Datadog limit; zero data loss via dual-write."
+  },
+  {
+    "id": "pc-cc-schema",
+    "tags": [
+      "pc_cc",
+      "sql",
+      "idempotency"
+    ],
+    "text": "BigQuery MERGE for idempotent writes; DATE partitioning and clustering; 5 pipelines changed (7 snaps removed, 13 added, 8 modified); 4-phase rollout."
+  },
+  {
+    "id": "portal-users",
+    "tags": [
+      "portal",
+      "fullstack",
+      "adoption"
+    ],
+    "text": "SnapLogic Automations Portal: 100+ internal users (150+ concurrent), 48 React components, 35+ REST endpoints, 8 request categories."
+  },
+  {
+    "id": "portal-slo",
+    "tags": [
+      "portal",
+      "sre",
+      "kubernetes"
+    ],
+    "text": "Portal SLOs: 99.95% uptime, <300ms API, <1.5s page load; GKE Helm + HPA 3-10 pods; Vault secret injection; Datadog APM."
+  },
+  {
+    "id": "portal-ai",
+    "tags": [
+      "portal",
+      "gemini",
+      "rag",
+      "agents"
+    ],
+    "text": "Portal AI: Gemini 2.5 Flash stories (<2s, 3x retry); Gemini 2.5 Pro Error Analysis + Pipeline Performance agents; RAG corpus of 50+ pipeline metrics."
+  },
+  {
+    "id": "incident-licensing",
+    "tags": [
+      "incident",
+      "observability",
+      "pubsub"
+    ],
+    "text": "P1 Licensing logging loss at quarter-end: root cause in 20 min, Pub/Sub+Chronosphere fix in 30 min, team unblocked in 60 min; zero business impact, zero data loss."
+  },
+  {
+    "id": "security-three",
+    "tags": [
+      "security",
+      "compliance",
+      "vault"
+    ],
+    "text": "3 security issues resolved (SNAPLOGIC-631 input sanitization, Vault 90-day password rotation, SFDC OAuth/URL review); 100% Mythos/Checkmarx/Blackduck compliance."
+  },
+  {
+    "id": "leadership",
+    "tags": [
+      "leadership",
+      "mentoring",
+      "docs"
+    ],
+    "text": "Mentored 5+ engineers; workshops for 30+ people; 3,348 lines of technical documentation; 15+ production deployments with zero rollbacks."
+  },
+  {
+    "id": "ai-agents-value",
+    "tags": [
+      "agents",
+      "roi",
+      "productivity"
+    ],
+    "text": "AI agent platforms: 540+ hours/year saved, ~$40K annual value, 2,000-3,000% ROI; quote investigation 85-90% faster (3-4 min to 30-40 sec)."
+  },
+  {
+    "id": "synthetic-monolith",
+    "tags": [
+      "refactor",
+      "reliability"
+    ],
+    "text": "Synthetic monitoring 27 to 2 pipelines (93% reduction); backend monolith 5,769 lines refactored to 9 routes + 11 libs."
+  },
+  {
+    "id": "achieved-snap-reduction-across",
+    "tags": [
+      "fwflex_integration",
+      "fw_flex",
+      "snaplogic",
+      "refactor",
+      "devops"
+    ],
+    "text": "Achieved 66% snap reduction across all worker pipelines (278 to 94 snaps), eliminating 164 redundant components and reducing ongoing maintenance burden by two-thirds"
+  },
+  {
+    "id": "created-comprehensive-line-technical",
+    "tags": [
+      "fwflex_integration",
+      "leadership",
+      "documentation"
+    ],
+    "text": "Created comprehensive 979-line technical specification document with snap-level implementation details, configuration matrices, and validation checklists enabling parallel team implementation"
+  },
+  {
+    "id": "architected-specified-phased-migration",
+    "tags": [
+      "pc_to",
+      "snaplogic",
+      "bigquery",
+      "observability",
+      "devops"
+    ],
+    "text": "Architected and specified phased migration from Datadog state-store lookups to Google BigQuery for the Cortex-to-Cloud (PC to CC) migration pipeline, eliminating critical 15-day data retention risk"
+  },
+  {
+    "id": "achieved-query-latency-improvement",
+    "tags": [
+      "pc_to",
+      "bigquery",
+      "performance"
+    ],
+    "text": "Achieved 4-10x query latency improvement (from 2-5 seconds to under 500ms) by designing optimized BigQuery schema with DATE partitioning and field clustering"
+  },
+  {
+    "id": "delivered-cost-reduction-query",
+    "tags": [
+      "pc_to",
+      "bigquery",
+      "cost",
+      "refactor",
+      "observability"
+    ],
+    "text": "Delivered 10-80x cost reduction per query through migration from expensive Datadog API lookups to cost-efficient BigQuery DML operations"
+  },
+  {
+    "id": "identified-designed-additional-improveme",
+    "tags": [
+      "pc_to",
+      "performance",
+      "incident"
+    ],
+    "text": "Identified and designed 13 additional improvements: 3 critical P0 (dead-letter table, event sourcing, automated reconciliation), plus P1-P3 enhancements for future implementation"
+  },
+  {
+    "id": "eliminated-data-retention-risk",
+    "tags": [
+      "pc_to",
+      "bigquery",
+      "gemini",
+      "observability"
+    ],
+    "text": "Eliminated data retention risk completely (15-day Datadog limit to unlimited BigQuery storage) for critical business transaction data"
+  },
+  {
+    "id": "designed-developed-deployed-comprehensiv",
+    "tags": [
+      "snaplogic_automations",
+      "snaplogic",
+      "portal",
+      "leadership",
+      "devops"
+    ],
+    "text": "Designed, developed, and deployed comprehensive internal developer portal serving 100+ team members with self-service SnapLogic pipeline operations, reducing manual ticket creation and support burden"
+  },
+  {
+    "id": "built-responsive-react-frontend",
+    "tags": [
+      "snaplogic_automations",
+      "fullstack"
+    ],
+    "text": "Built responsive React 18 frontend with TypeScript, 48 shadcn/ui components, dynamic form system, and real-time status tracking achieving sub-1.5 second page load times"
+  },
+  {
+    "id": "implemented-express-backend-with",
+    "tags": [
+      "snaplogic_automations",
+      "fullstack"
+    ],
+    "text": "Implemented Express.js backend with 35+ REST API endpoints organized across 5 domains: Form Submissions (8 categories), Utilities, AI/ML, Analytics, and Administration"
+  },
+  {
+    "id": "integrated-google-vertex-gemini",
+    "tags": [
+      "snaplogic_automations",
+      "gcp",
+      "performance",
+      "gemini",
+      "agents"
+    ],
+    "text": "Integrated Google Vertex AI (Gemini 2.5 Flash) for AI-powered story creation with 3x retry mechanism and exponential backoff, achieving under 2-second generation latency"
+  },
+  {
+    "id": "built-conversational-agents-powered",
+    "tags": [
+      "snaplogic_automations",
+      "snaplogic",
+      "performance",
+      "gemini",
+      "agents",
+      "devops"
+    ],
+    "text": "Built 2 conversational AI agents powered by Gemini 2.5 Pro: Error Analysis Agent and Pipeline Performance Agent with multi-turn conversation support and RAG corpus of 50+ pipeline metrics"
+  },
+  {
+    "id": "achieved-uptime-exceeding-target",
+    "tags": [
+      "snaplogic_automations",
+      "performance",
+      "reliability",
+      "adoption"
+    ],
+    "text": "Achieved 99.95% uptime (exceeding 99.9% target) with sub-300ms API response times (target: 500ms) supporting 150+ concurrent users (target: 100+)"
+  },
+  {
+    "id": "deployed-google-kubernetes-engine",
+    "tags": [
+      "snaplogic_automations",
+      "gcp",
+      "kubernetes",
+      "security",
+      "observability"
+    ],
+    "text": "Deployed to Google Kubernetes Engine (GKE) with Helm charts, HPA auto-scaling (3-10 pods based on CPU/memory), Vault secret injection, and Datadog APM instrumentation"
+  },
+  {
+    "id": "designed-implemented-architectural-withi",
+    "tags": [
+      "critical_incident",
+      "gcp",
+      "observability"
+    ],
+    "text": "Designed and implemented architectural fix within 30 minutes: migrated logging from deprecated direct API calls to enterprise Pub/Sub pattern with Chronosphere ingestion"
+  },
+  {
+    "id": "form-submission-whitespace-vulnerability",
+    "tags": [
+      "critical_incident",
+      "snaplogic",
+      "security"
+    ],
+    "text": "Form Submission Whitespace Vulnerability (SNAPLOGIC-631): Discovered missing input sanitization allowing potential injection attacks; implemented trimming and validation layer"
+  },
+  {
+    "id": "service-account-password-rotation",
+    "tags": [
+      "critical_incident",
+      "security",
+      "integration"
+    ],
+    "text": "Service Account Password Rotation (Mythos Scan): Addressed credential exposure risk; implemented automated 90-day rotation cycle via Vault integration"
+  },
+  {
+    "id": "achieved-compliance-with-enterprise",
+    "tags": [
+      "critical_incident",
+      "security"
+    ],
+    "text": "Achieved 100% compliance with enterprise security scanning requirements across Mythos, Checkmarx SAST, and Blackduck SCA tools"
+  },
+  {
+    "id": "created-lines-technical-documentation",
+    "tags": [
+      "critical_incident",
+      "leadership",
+      "documentation"
+    ],
+    "text": "Created 3,348 lines of technical documentation including design specifications, architecture decision records, and operational runbooks"
+  },
+  {
+    "id": "achieved-uptime-deployed-services",
+    "tags": [
+      "critical_incident",
+      "reliability",
+      "observability"
+    ],
+    "text": "Achieved 99.9%+ uptime for all deployed services with comprehensive monitoring, alerting, and automated recovery"
+  },
+  {
+    "id": "built-pipeline-performance-analysis",
+    "tags": [
+      "snaplogic_automations",
+      "snaplogic",
+      "bigquery",
+      "performance",
+      "gemini",
+      "observability",
+      "devops"
+    ],
+    "text": "Built Pipeline Performance Analysis engine: 2-step async (Datadog discovery → SnapLogic Runtime API → 50+ KPI computation → BigQuery storage → pattern analysis with error clustering)"
+  },
+  {
+    "id": "implemented-jira-ticket-lifecycle",
+    "tags": [
+      "snaplogic_automations",
+      "bigquery"
+    ],
+    "text": "Implemented JIRA ticket lifecycle automation: creation, transitions, comments, epic linking, 60-second polling loop syncing to BigQuery with Slack notifications"
+  },
+  {
+    "id": "achieved-users-endpoints-agents",
+    "tags": [
+      "snaplogic_automations",
+      "gemini",
+      "agents",
+      "reliability",
+      "adoption"
+    ],
+    "text": "Achieved 100+ users, 35+ API endpoints, 2 AI agents with tool-calling, 99.95% uptime — all developed through AI-augmented workflows"
+  },
+  {
+    "id": "implemented-cluster-deduplication-error",
+    "tags": [
+      "rag_corpus",
+      "integration",
+      "gemini"
+    ],
+    "text": "Implemented 58→20 cluster deduplication for Error Report RAG, analyzing semantic similarity across cluster names and consolidating near-duplicates"
+  },
+  {
+    "id": "reduced-review-inconsistency-from",
+    "tags": [
+      "rag_corpus",
+      "gemini"
+    ],
+    "text": "Reduced AI review inconsistency from ~40% variance to <5% through structured RAG design and deterministic system instructions"
+  },
+  {
+    "id": "implemented-client-side-video",
+    "tags": [
+      "pic_reel",
+      "leadership"
+    ],
+    "text": "Implemented 100% client-side video encoding using FFmpeg compiled to WebAssembly — photos never leave the user's browser (privacy-first architecture)"
+  },
+  {
+    "id": "built-configurable-video-settings",
+    "tags": [
+      "pic_reel",
+      "general"
+    ],
+    "text": "Built configurable video settings: FPS (24/30/48/60/120), resolution (1080p/2K/4K), codec (H.264 libx264/H.265 libx265), CRF-based quality presets, per-photo duration (0.02s-5s)"
+  },
+  {
+    "id": "implemented-like-career-corpus",
+    "tags": [
+      "careerpilot_ai",
+      "integration",
+      "gemini"
+    ],
+    "text": "Implemented RAG-like career corpus system: Master ATS bullet bank + 2-page template + 6 role playbooks (Integration Architect, GenAI Developer, FDE, Cloud Architect, AI/ML Engineer, Engineering Manager) + 14 evidence chunks with tag-based relevance scoring and automatic playbook selection via JD keyword matching"
+  },
+  {
+    "id": "built-resumable-graph-based",
+    "tags": [
+      "careerpilot_ai",
+      "integration"
+    ],
+    "text": "Built resumable graph-based workflow engine with 25+ node types (Triggers, AI, Integrations, Logic, Data), topological sort execution, step queue for long-running operations, and pg_cron scheduler (every minute) for resuming paused steps"
+  },
+  {
+    "id": "implemented-fully-automated-node",
+    "tags": [
+      "careerpilot_ai",
+      "snaplogic",
+      "gemini",
+      "devops"
+    ],
+    "text": "Implemented fully automated 18-node daily pipeline: Schedule (7 AM cron) → Google Doc header → LinkedIn URL → Apify scrape → Poll/wait → Parse jobs → Limit → Dedup filter → Gemini ATS optimization → Store → Build LaTeX → Compile PDF → Upload Storage → Google Drive → Build email → Send via Resend"
+  },
+  {
+    "id": "implemented-stateful-scoring-engine",
+    "tags": [
+      "cric_scorer",
+      "general"
+    ],
+    "text": "Implemented stateful scoring engine (`scoringEngine.ts`): ball-by-ball scoring, undo/redo, state rebuild, automatic strike rotation, extras handling (wides, no-balls, byes, leg-byes), 10 wicket types, over completion, innings transitions"
+  },
+  {
+    "id": "designed-comprehensive-database-schema",
+    "tags": [
+      "cric_scorer",
+      "leadership"
+    ],
+    "text": "Designed comprehensive database schema: 14 tables (teams, players, team_players, tournaments, tournament_teams, matches, match_innings, deliveries, player_match_batting/bowling/fielding, match_awards, mvp_points, match_playing_xi, settings) with foreign keys, triggers, and RLS"
+  },
+  {
+    "id": "implemented-pari-mutuel-scoring",
+    "tags": [
+      "ipl_2026",
+      "leadership"
+    ],
+    "text": "Implemented pari-mutuel scoring engine (`calculateMatchResult.js`, 248 lines): losers' points pooled and redistributed among winners with weighted user multipliers (1x/2x/5x) and playoff escalation (20→50→100 points)"
+  },
+  {
+    "id": "built-fully-automated-tournament",
+    "tags": [
+      "ipl_2026",
+      "snaplogic",
+      "devops"
+    ],
+    "text": "Built fully automated tournament lifecycle with zero manual admin: cron-based match detection via CricAPI (`matchChecker.js`, 617 lines), automatic cutoff enforcement (15 min before start), auto-result detection by parsing CricAPI status field, and scoring pipeline"
+  },
+  {
+    "id": "implemented-intelligent-match-management",
+    "tags": [
+      "ipl_2026",
+      "general"
+    ],
+    "text": "Implemented intelligent match management: auto-postpone on delayed matches (+25 min with re-check every 10 min), double-header day logic, no-result handling for rain/abandonment (previous leaderboard carried forward)"
+  },
+  {
+    "id": "built-authentication-with-expiry",
+    "tags": [
+      "ipl_2026",
+      "general"
+    ],
+    "text": "Built OTP authentication with JWT (15-min expiry), 3-tier rate limiting (general 25/min, OTP 5/15min, admin 20/15min), server-side cutoff enforcement, and admin-table gated console"
+  },
+  {
+    "id": "built-comprehensive-event-planning",
+    "tags": [
+      "planitx_",
+      "general"
+    ],
+    "text": "Built comprehensive event planning platform from scratch using AI-augmented development with 56 source files, 13 pages, 12 custom hooks, and 12 database tables"
+  },
+  {
+    "id": "implemented-task-timeline-with",
+    "tags": [
+      "planitx_",
+      "general"
+    ],
+    "text": "Implemented task timeline with family responsibility delegation across bride's and groom's families, priority-based assignments, and pre-built 12-month planning templates"
+  },
+  {
+    "id": "implemented-comprehensive-security-level",
+    "tags": [
+      "planitx_",
+      "security"
+    ],
+    "text": "Implemented comprehensive security: Row Level Security (RLS) on all 12 tables with auto-triggers, multi-method auth (email/magic link/phone lookup), single-device session policy, Zod form validation on all inputs"
+  },
+  {
+    "id": "received-friend-group-requirement",
+    "tags": [
+      "planitx_",
+      "general"
+    ],
+    "text": "Received friend group requirement → built IPL 2026 prediction game"
+  },
+  {
+    "id": "highlight-built-production-apps",
+    "tags": [
+      "planitx_",
+      "performance",
+      "gemini"
+    ],
+    "text": "Highlight: Built 4+ production apps using AI, 10x development speed, RAG optimization reducing inconsistency from 40% to <5%"
+  },
+  {
+    "id": "highlight-mentees-trained-major",
+    "tags": [
+      "planitx_",
+      "general"
+    ],
+    "text": "Highlight: 5+ mentees, 30+ trained, 3 major initiatives delivered"
+  }
 ]

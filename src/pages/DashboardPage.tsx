@@ -2,26 +2,23 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Briefcase, FileCheck, Send, FileText, Sparkles, Activity,
-  TrendingUp, Target, Zap, ArrowRight, Play, Clock, CheckCircle2,
-  XCircle, AlertCircle, Inbox, Bot,
+  TrendingUp, Zap, ArrowRight, Play, Clock, CheckCircle2,
+  XCircle, AlertCircle, Inbox,
 } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis,
-  CartesianGrid, BarChart, Bar, RadialBarChart, RadialBar, PieChart, Pie, Cell,
+  CartesianGrid, BarChart, Bar, RadialBarChart, RadialBar,
 } from 'recharts';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { MetricCard } from '@/components/shared/MetricCard';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { services } from '@/services';
 import { timeAgo } from '@/utils';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '@/store';
-import type { Workflow } from '@/types';
 import { EmptyState } from '@/components/shared/EmptyState';
 
 export function DashboardPage() {
@@ -29,11 +26,9 @@ export function DashboardPage() {
   const { data: metrics } = useQuery({ queryKey: ['metrics'], queryFn: () => services.analytics.metrics() });
   const { data: timeseries } = useQuery({ queryKey: ['timeseries'], queryFn: () => services.analytics.timeseries() });
   const { data: runs } = useQuery({ queryKey: ['runs'], queryFn: () => services.execution.listRuns() });
-  const { data: agents } = useQuery({ queryKey: ['agents'], queryFn: () => services.agent.list() });
   const notifications = useNotificationStore((s) => s.notifications);
 
   const recentRuns = (runs || []).slice(0, 6);
-  const activeAgents = (agents || []).filter((a) => a.enabled).slice(0, 5);
 
   return (
     <div className="space-y-6 p-6">
@@ -162,34 +157,6 @@ export function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="text-base">Active AI Agents</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/agents')} className="gap-1">
-              Manage <ArrowRight className="h-3 w-3" />
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {activeAgents.length === 0 ? (
-              <EmptyState icon={Bot} title="No active agents" description="Enable AI agents from the Agents page to see them here." />
-            ) : activeAgents.map((agent) => (
-              <div key={agent.id} className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium">{agent.name}</p>
-                  <p className="text-xs text-muted-foreground capitalize">{agent.model} · {agent.metrics.runs} runs</p>
-                </div>
-                <div className="w-20">
-                  <Progress value={agent.metrics.successRate} className="h-1.5" />
-                </div>
-                <span className="text-xs font-medium text-success">{agent.metrics.successRate}%</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
           <CardHeader>
             <CardTitle className="text-base">Application Funnel</CardTitle>
           </CardHeader>
@@ -217,7 +184,7 @@ export function DashboardPage() {
           { label: 'New Resume', icon: FileText, path: '/resumes' },
           { label: 'Search Jobs', icon: Briefcase, path: '/jobs' },
           { label: 'AI Copilot', icon: Sparkles, path: '/copilot' },
-          { label: 'Build Workflow', icon: Activity, path: '/workflows' },
+          { label: 'Executions', icon: Activity, path: '/executions' },
         ].map((q, i) => (
           <motion.button
             key={q.label}

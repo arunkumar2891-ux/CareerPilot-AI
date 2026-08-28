@@ -120,8 +120,20 @@ export async function executeWorkflow(
       // Process array items sequentially for per-job nodes
       const perItemTypes = ['gemini', 'resume_optimizer', 'supabase', 'function', 'pdf', 'storage', 'gdrive'];
       if (Array.isArray(inputData) && perItemTypes.includes(node.type)) {
+        if (inputData.length === 0) {
+          ctx.nodeOutputs[node.id] = [];
+          await logStep(runId, userId, node.id, 'info', `Skipped: no items to process`);
+          await saveRunContext(runId, ctx);
+          const nextId = getNextNodeId(node.id, edges);
+          if (nextId) {
+            const nextNode = nodes.find((n) => n.id === nextId);
+            if (nextNode) queue.push(nextNode);
+          }
+          continue;
+        }
         const results: unknown[] = [];
         for (const item of inputData) {
+          if (item == null) continue;
           ctx.variables.currentItem = item;
           const itemResult = await executor.execute(ctx, node, item, edges);
           if (itemResult.status === 'failed') throw new Error(itemResult.error || 'Node failed');

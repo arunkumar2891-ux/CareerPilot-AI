@@ -275,3 +275,64 @@ RAG/SnaplogicPortal.md ◄── architecture/snaplogic-portal.md (AI-retrieval 
 | AI Tool Adoption | Exceeded | 62% time savings on PC to CC; Quote Journey Tracker (540+ hrs/year); Multi-agent review (90% improvement) |
 | Ops/Quality Excellence | Exceeded | 99.9% uptime, zero critical incidents, 5,769-line refactoring, 27→2 pipeline consolidation, 900K file cleanup |
 | Innovation using AI | Exceeded | GCP Agent Studio agent (2000-3000% ROI); Google ADK multi-agent (6 sub-agents); 5 evaluation frameworks |
+
+---
+
+## Personal Projects (GenAI / Forward Deployment Engineering)
+
+| Project | What It Does | GenAI/FDE Signal |
+|---|---|---|
+| **CareerPilot AI** | Autonomous AI job search platform with RAG corpus, Gemini resume tailoring, 28-node workflow engine, daily 18-node automated pipeline | Runtime GenAI (Gemini), RAG, workflow automation, multi-provider AI, Edge Functions |
+| **IPL 2026 Prediction Game** | Full-stack prediction platform for 29+ users with pari-mutuel scoring and fully automated lifecycle | Built entirely via "vibecoding" (Cursor AI + Lovable.dev); concept→production in ~2 weeks |
+| **Cric-Scorer** | Cricket tournament platform with live ball-by-ball scoring, 3 domain engines (Scoring, Stats, MVP) | Complex domain logic via Bolt.new; 14-table schema with triggers and RLS |
+| **Pic-Reel (FrameFlow)** | Privacy-first in-browser hyperlapse maker (FFmpeg.wasm, 4K, H.265, 500 images) | Identified photographer gap → shipped in ~1 week; zero server costs |
+| **PlanItX** | Premium Indian wedding planning SaaS (12 tables, RLS, vendor marketplace) | Social need → premium product via AI-augmented development |
+
+**Technologies across personal projects:** React 18/19, TanStack Start, TypeScript, Vite 5/7, Tailwind v3/v4, Express.js, Supabase (PostgreSQL + Auth + RLS + Edge Functions + pg_cron + pg_net), Google Gemini 1.5 Flash, Apify, Google Drive OAuth2, LaTeX→PDF, Resend, FFmpeg.wasm, Zustand, Framer Motion, CricAPI, JWT, node-cron, dnd-kit, Bolt.new, Render.com
+
+---
+
+## CareerPilot AI — Current App Architecture (August 2026)
+
+### Core Pages (Production)
+
+| Group | Page | Purpose |
+|-------|------|---------|
+| **Overview** | Dashboard | Metrics, 14-day charts, execution queue, notifications, quick actions |
+| **Overview** | Job Discovery | Scraped LinkedIn jobs, kanban/table views, "Run Search" trigger |
+| **Overview** | Applications | Application lifecycle tracking with timelines |
+| **Studio** | Resumes | ATS-optimized resumes with versioning and AI-tailored generation |
+| **Studio** | Cover Letters | AI-generated cover letters linked to jobs |
+| **Studio** | AI Copilot | Multi-conversation Gemini chat for career help |
+| **Resources** | Knowledge Base | Career evidence chunks (tag-based retrieval for resume tailoring) |
+| **Resources** | Execution History | Per-node workflow run logs with timing and errors |
+| **Resources** | Analytics | Job funnel, 14-day trends, success rate, resume versions |
+| **Configure** | Integrations | Google Drive OAuth, Apify token |
+| **Configure** | Settings | Profile, Job Search config, Appearance, Notifications, API Keys, Account |
+
+### Automated Pipeline (Server-Side — No UI Required)
+
+The 18-node daily job search pipeline runs entirely via Supabase Edge Functions + pg_cron. No visual workflow builder is exposed in the UI — the pipeline is provisioned automatically on first login and executes on schedule.
+
+```
+pg_cron (daily 7 AM) → workflow-scheduler Edge Function
+  → Schedule → Get Resume → Build LinkedIn URL → Start Apify Scrape
+  → Poll/Wait → Fetch Results → Parse Jobs → Limit → Dedup Filter
+  → For each new job: Gemini ATS → Store → LaTeX→PDF → Upload → Drive
+  → Email Summary
+```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, TypeScript, Vite 5, React Router 7 |
+| Styling | Tailwind CSS 3, shadcn/ui (Radix), Framer Motion |
+| State | Zustand 5, TanStack React Query 5 |
+| Backend | Supabase (PostgreSQL 17, Auth, Storage, Edge Functions/Deno) |
+| AI | Google Gemini 1.5 Flash (primary) |
+| Scraping | Apify (LinkedIn Jobs Scraper) |
+| PDF | LaTeX→PDF via ytotech.com |
+| Email | Resend |
+| Scheduler | pg_cron + pg_net |
+| Hosting | Render Static Site / Vercel |
