@@ -20,11 +20,11 @@ const ACCOUNT_STEPS: SetupStep[] = [
   {
     title: 'Sign in',
     time: '1 min',
-    description: 'Create an account or log in. CareerPilot then provisions your pipeline, automation, and Master ATS corpus automatically — no import needed.',
+    description: 'Create an account or log in. CareerPilot provisions your pipeline and automation automatically — resume content comes from your Google Doc.',
     details: [
       'Go to /auth and sign up with email/password, Google, GitHub, or a magic link.',
-      'Wait until the dashboard loads. In the background we create: Daily Job Search Pipeline, Daily 7 AM automation, Master ATS (bullet bank), 2-page template, and career evidence chunks.',
-      'If resumes are empty, refresh once — seeding runs on first authenticated page load.',
+      'Wait until the dashboard loads. In the background we create: Daily Job Search Pipeline and Daily 7 AM automation.',
+      'Empty "Master ATS (bullet bank)" and "2-page template" placeholders are created in Resume Studio — you populate them by syncing your Google Doc.',
     ],
     action: { label: 'Go to Dashboard', path: '/' },
   },
@@ -43,14 +43,14 @@ const ACCOUNT_STEPS: SetupStep[] = [
   {
     title: 'Confirm the Master ATS corpus',
     time: '1 min',
-    description: 'Tailoring selects from your 70+ real bullets. You should see two seeded resumes — do not paste a Google Doc as the source of truth.',
+    description: 'After syncing your Google Doc, confirm chunks appear. The optimizer selects from your real bullets.',
     details: [
-      'Open Resume Studio. You should see "Master ATS (bullet bank)" and "2-page template".',
-      'Open Master ATS and skim — FW_Flex, PC to CC, Portal, incident, security, leadership should all be there.',
-      'Optional: Knowledge Base → search "66%" or "BigQuery" to confirm evidence chunks seeded.',
-      'Do not replace the Master ATS content with a short 2-page resume. The optimizer picks 4–6 bullets per project from the full bank.',
+      'Open Knowledge Base → Google Doc Sync tab. Paste your Google Doc ID and click Sync Now.',
+      'After sync completes, switch to the Search tab — search "66%" or any metric to confirm evidence chunks loaded.',
+      'Open Resume Studio → Master ATS (bullet bank) should now show your full resume content.',
+      'The ATS optimizer picks 4–6 bullets per project from your synced bullet bank when tailoring.',
     ],
-    action: { label: 'Open Resume Studio', path: '/resumes' },
+    action: { label: 'Open Knowledge Base', path: '/knowledge' },
   },
   {
     title: 'Set what to search for',
@@ -67,14 +67,14 @@ const ACCOUNT_STEPS: SetupStep[] = [
     action: { label: 'Job Search Settings', path: '/settings' },
   },
   {
-    title: 'Connect Google (optional)',
+    title: 'Connect Google',
     time: '3 min',
-    description: 'Only needed if you want tailored PDFs uploaded to Drive. Resume tailoring itself uses the in-app corpus.',
+    description: 'Required to sync your master resume from Google Docs and generate knowledge chunks for tailoring.',
     details: [
-      'Integrations → Connect Google. Use the Gmail you want Drive files owned by.',
-      'If you see 403 access_denied, an admin must add your Gmail as an OAuth test user (Platform Setup → Google Cloud OAuth).',
+      'Integrations → Connect Google. Use the Gmail that owns the resume Google Doc.',
+      'If you see 403 access_denied, an admin must add your Gmail as an OAuth test user (Google Cloud Console → OAuth consent screen).',
       'Unverified-app warning: Advanced → Go to CareerPilot (unsafe). Normal while the OAuth app is in Testing.',
-      'Google Doc Resume ID in Job Search settings is optional — header/contact override only, not the bullet bank.',
+      'After connecting, go to Knowledge Base → Google Doc Sync and paste your resume Doc ID to pull in your bullets.',
     ],
     action: { label: 'Open Integrations', path: '/integrations' },
   },
@@ -191,7 +191,7 @@ export function SetupPage() {
           <span className="text-xs font-semibold text-primary">100%</span>
         </div>
         <p className="text-xs text-muted-foreground">
-          Required path: sign in → contact → confirm Master ATS → job search query → tailor or Run Search. Connecting Google is optional. Expand a step for exact clicks.
+          Required path: sign in → connect Google → sync resume Doc → contact info → job search query → tailor or Run Search. Expand a step for exact clicks.
         </p>
         <Card>
           <CardContent className="p-0">

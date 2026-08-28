@@ -95,35 +95,6 @@ EARLIER EXPERIENCE
 - [Achievement 4 with quantifiable metrics]
 
 ================================================================================
-PERSONAL PROJECTS (GenAI-Augmented Development)
-================================================================================
-
-All projects built via AI pair programming (Cursor AI + Lovable.dev + Bolt.new) — demonstrating
-GenAI fluency and Forward Deployment Engineering: real-world problem → production app.
-
-CareerPilot AI | React 18, Supabase Edge Functions (Deno), Gemini 1.5 Flash, Apify, Google Drive, LaTeX
-- Built autonomous AI-powered job search platform with RAG-like career corpus (6 role playbooks, 14 evidence chunks, Master ATS bullet bank) and Gemini-powered resume tailoring
-- Implemented resumable graph-based workflow engine (25+ node types, pg_cron scheduler) with fully automated 18-node daily pipeline: LinkedIn scrape → AI optimize → LaTeX PDF → Google Drive → email
-- Multi-provider AI architecture (Gemini, OpenAI, Claude, Azure, Ollama, Bedrock) with visual Workflow Studio drag-and-connect builder
-
-IPL 2026 Prediction Game | React 18, Express, Supabase, CricAPI, JWT, Cron
-- Built full-stack prediction platform for 30+ users entirely via AI "vibecoding" (natural language → code)
-- Implemented pari-mutuel scoring engine with weighted multipliers (1x/2x/5x) and playoff escalation
-- Fully automated tournament lifecycle: match detection via CricAPI, cutoff enforcement, result detection, scoring — zero manual intervention
-
-Cric-Scorer | React 18, Supabase (14 tables + RLS + Triggers), Bolt.new
-- Built full cricket tournament platform with live ball-by-ball scoring, 3 domain engines (Scoring, Statistics, MVP), and automatic result determination
-- Complex domain logic: extras, wicket types, strike rotation, NRR calculation, career stats, configurable MVP point system
-
-Pic-Reel (FrameFlow) | React 19, TanStack Start, FFmpeg.wasm, Vite 7, Render.com
-- Built privacy-first in-browser hyperlapse maker — photos never leave user's device (FFmpeg compiled to WebAssembly)
-- Configurable: FPS (24-120), resolution (1080p-4K), codec (H.264/H.265), per-photo duration; supports 500 images
-
-PlanItX | React 18, Supabase (PostgreSQL + RLS), Zustand, Framer Motion, Recharts
-- Built premium Indian wedding planning app with 12-table schema, RLS on all tables, multi-event support
-- Features: budget tracking (INR), guest management with cultural elements, vendor marketplace, task timeline with family delegation
-
-================================================================================
 EDUCATION
 ================================================================================
 

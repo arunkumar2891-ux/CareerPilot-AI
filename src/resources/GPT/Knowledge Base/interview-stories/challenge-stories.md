@@ -114,26 +114,5 @@
 
 ---
 
-## Story 7: GenAI-Augmented Development (AI Pair Programming & Rapid Delivery)
-
-**Competency:** Innovation, AI Fluency, Forward Deployment Engineering
-
-**Situation:**
-"A group of 30 friends asked me to build an IPL match prediction app right before the IPL 2026 season started. They wanted a way to compete by predicting match winners, with automatic scoring and a live leaderboard. The challenge was: the season was about to start, I had no dedicated time outside my day job, and the requirements were vague — just 'build us something fun for IPL predictions.' At the same time, I was exploring how far AI pair programming could go for full-stack application development."
-
-**Task:**
-"My task was to translate the vague requirement into a fully automated production platform in ~2 weeks, using only natural language prompting and AI-generated code — what I call 'vibecoding.' I wanted to prove that a senior engineer's value is in system design, architecture, and constraint specification — and AI can handle the implementation syntax."
-
-**Action:**
-"I approached it systematically: first, I designed the architecture myself — a React SPA + Express backend + Supabase (PostgreSQL) with CricAPI for live match data. I specified the database schema (9 tables + 3 stored procedures), the pari-mutuel scoring algorithm with weighted multipliers, and the cron-based automation strategy. Then I used Cursor AI (Agent Mode) and Lovable.dev to implement every feature by describing what I needed in natural language. I specified constraints like: 'cutoff predictions 15 minutes before match start, enforce server-side,' 'implement auto-postpone if CricAPI shows match hasn't started — push cutoff +25 minutes,' 'generate unbid predictions for players who don't bid before cutoff.' I also applied this same approach to two other projects: Pic-Reel (a browser-based hyperlapse maker using FFmpeg.wasm) where I identified a gap in photographer workflows, and PlanItX (an Indian wedding planning app) where friends needed event coordination. All three shipped to production."
-
-**Result:**
-"The IPL app served 29 active users throughout the entire IPL 2026 season with zero manual intervention — match detection, scoring, and leaderboard updates all ran autonomously via cron jobs. Pic-Reel shipped as a free privacy-first tool supporting 4K H.265 encoding of 500 images entirely in the browser. PlanItX delivered a premium SaaS with 12-table schema, vendor marketplace, and cultural-specific features. Together, these proved that AI pair programming, when guided by strong system design thinking, can compress months of development into days. The key insight: AI doesn't replace architecture skills — it amplifies them. My 62% time savings on the PC to CC migration at work and these personal projects together demonstrate that GenAI fluency is now a core engineering multiplier."
-
-**Key Takeaway:**
-"GenAI-augmented development is most powerful when the developer brings strong system design, security thinking, and constraint specification. The value shifts from syntax to architecture. I demonstrated this by shipping 3 personal projects (full-stack, 30+ users, automated lifecycle) and applying the same methodology professionally (20-25% productivity gain, 62% time savings on complex architecture)."
-
----
-
 *STAR Format Interview Stories*  
-*Last Updated: August 28, 2026*
+*Generated: July 29, 2026*

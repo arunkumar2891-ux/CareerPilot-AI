@@ -221,18 +221,6 @@ knowledge-base/
   - Achievements section
   - Cover letter template
 
-- **MASTER_RESUME_ATS.md** (~25 KB)
-  - Comprehensive ATS-optimized master resume (v2.0, 70+ experience bullets)
-  - GenAI-augmented development methodology with 5 personal projects
-  - Forward deployment engineering section
-  - ATS keyword lists for 6 role types
-  - Tailoring instructions per role category
-  - Auto-synced to `src/content/career-corpus/` via Cursor hook on save
-
-- **RESUME_2PAGE_READY.md**
-  - Condensed 2-page version for direct submission
-  - Most impactful bullets selected from the master
-
 ---
 
 ## How to Use This Knowledge Base

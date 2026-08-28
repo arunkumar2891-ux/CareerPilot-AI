@@ -8,7 +8,6 @@ import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/auth';
 import { DEFAULT_JOB_SEARCH_WORKFLOW, buildSeedEdges } from '@/constants/workflow-seed';
 import {
-  CAREER_CORPUS,
   MASTER_RESUME_NAME,
   TWO_PAGE_RESUME_NAME,
   applyContactOverlay,
@@ -1149,7 +1148,7 @@ export class BootstrapService {
     if (!user) return;
 
     await this.workflow.ensureDefaultPipeline();
-    await this.seedCareerCorpus(user.id, user.email ?? '');
+    await this.seedCareerCorpus(user.id);
 
     const settings = await this.settings.get();
     const jobSearch = settings.jobSearch as Record<string, string> | undefined;
@@ -1167,9 +1166,7 @@ export class BootstrapService {
     }
   }
 
-  private async seedCareerCorpus(userId: string, email: string): Promise<void> {
-    const overlay = await this.settings.contactOverlay();
-    if (!overlay.email) overlay.email = email;
+  private async seedCareerCorpus(userId: string): Promise<void> {
     const { data: existingResumes } = await supabase.from('resumes').select('id, name').eq('user_id', userId);
     const names = new Set((existingResumes || []).map((r) => String(r.name)));
 
@@ -1178,7 +1175,7 @@ export class BootstrapService {
         user_id: userId,
         name: MASTER_RESUME_NAME,
         type: 'technical',
-        content: applyContactOverlay(CAREER_CORPUS.masterResume, overlay),
+        content: '# Master ATS (bullet bank)\n\nSync your master resume from Google Docs via Knowledge Base → Google Doc Sync to populate this.',
         ats_score: 0,
       });
     }
@@ -1187,29 +1184,9 @@ export class BootstrapService {
         user_id: userId,
         name: TWO_PAGE_RESUME_NAME,
         type: 'general',
-        content: applyContactOverlay(CAREER_CORPUS.twoPageTemplate, overlay),
+        content: '# 2-page template\n\nThis template will be populated after you sync your master resume from Google Docs.',
         ats_score: 0,
       });
-    }
-    await this.settings.applyContactToSeededResumes();
-
-    const { data: existingChunks } = await supabase
-      .from('knowledge_chunks')
-      .select('source_id')
-      .eq('user_id', userId)
-      .eq('collection', 'career');
-    const chunkIds = new Set((existingChunks || []).map((c) => String(c.source_id || '')));
-    const toInsert = CAREER_CORPUS.evidenceChunks
-      .filter((c) => !chunkIds.has(c.id))
-      .map((c) => ({
-        user_id: userId,
-        collection: 'career',
-        source_id: c.id,
-        tags: c.tags,
-        content: c.text,
-      }));
-    if (toInsert.length) {
-      await supabase.from('knowledge_chunks').insert(toInsert);
     }
   }
 }
