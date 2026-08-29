@@ -119,7 +119,8 @@ export async function executeWorkflow(
 
       // Process array items sequentially for per-job nodes
       const perItemTypes = ['gemini', 'resume_optimizer', 'supabase', 'function', 'pdf', 'storage', 'gdrive'];
-      if (Array.isArray(inputData) && perItemTypes.includes(node.type)) {
+      const isAggregateFunction = node.type === 'function' && node.config.builtin === 'email_summary';
+      if (Array.isArray(inputData) && perItemTypes.includes(node.type) && !isAggregateFunction) {
         const items = inputData.filter((item) => item != null);
         if (items.length === 0) {
           ctx.nodeOutputs[node.id] = [];

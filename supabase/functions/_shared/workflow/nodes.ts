@@ -408,12 +408,24 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   email: {
     async execute(ctx, node, input) {
-      const data = input as Record<string, unknown>;
-      const to = String(data.to || (ctx.settings.notifications as Record<string, string>)?.email || '');
-      const subject = String(data.subject || 'CareerPilot Notification');
-      const body = String(data.body || data.message || '');
+      let payload = input;
+      if (Array.isArray(payload)) {
+        payload = payload.find((item) => item && typeof item === 'object') ?? payload[0];
+      }
+      const data = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+      const to = String(data.to || (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail || '');
+      const today = new Date().toISOString().slice(0, 10);
+      const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
+      const subject = String(
+        data.subject || (processed.length === 0 ? `No New Jobs Found — ${today}` : 'CareerPilot Notification'),
+      );
+      const body = String(
+        data.body || data.message || (processed.length === 0
+          ? '<p>All discovered jobs were duplicates of previously processed listings. No new resumes generated today.</p>'
+          : ''),
+      );
       const resendKey = Deno.env.get('RESEND_API_KEY');
-      if (resendKey && to) {
+      if (resendKey && to && body) {
         const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
