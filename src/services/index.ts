@@ -533,6 +533,7 @@ export class WorkflowService {
     const userId = await requireUserId();
     const { data: existing } = await supabase.from('workflows').select('id').eq('user_id', userId).eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name).maybeSingle();
     if (existing) {
+      await this.repairDefaultPipelineGraph(existing.id);
       const wf = await this.get(existing.id);
       if (wf) return wf;
     }
@@ -567,6 +568,28 @@ export class WorkflowService {
       });
     }
     return (await this.get(wf.id))!;
+  }
+  /** Ensure jobs are stored in Supabase before ATS tailoring (fixes legacy graph order). */
+  private async repairDefaultPipelineGraph(workflowId: string): Promise<void> {
+    const wf = await this.get(workflowId);
+    if (!wf) return;
+    const find = (name: string) => wf.nodes.find((n) => n.name === name);
+    const dedupe = find('Filter Duplicates');
+    const store = find('Store Job');
+    const ats = find('ATS Optimizer');
+    const latex = find('Build LaTeX');
+    if (!dedupe || !store || !ats || !latex) return;
+    if (!wf.edges.some((e) => e.source === dedupe.id && e.target === ats.id)) return;
+
+    const chainIds = new Set([dedupe.id, store.id, ats.id, latex.id]);
+    const kept = wf.edges.filter((e) => !chainIds.has(e.source) || !chainIds.has(e.target));
+    const repaired: WorkflowEdge[] = [
+      ...kept,
+      { id: crypto.randomUUID(), source: dedupe.id, target: store.id },
+      { id: crypto.randomUUID(), source: store.id, target: ats.id },
+      { id: crypto.randomUUID(), source: ats.id, target: latex.id },
+    ];
+    await this.saveGraph(workflowId, wf.nodes, repaired);
   }
   async toggle(id: string): Promise<void> {
     const { data } = await supabase.from('workflows').select('active').eq('id', id).maybeSingle();

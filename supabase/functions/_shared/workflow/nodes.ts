@@ -81,20 +81,49 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(ctx, node, input) {
       const fn = node.config.builtin as string;
       if (fn === 'parse_apify_jobs') {
-        const results = Array.isArray(input) ? input : [input];
+        const rawItems: Record<string, unknown>[] = [];
+        if (Array.isArray(input)) {
+          for (const item of input) {
+            if (item && typeof item === 'object') rawItems.push(item as Record<string, unknown>);
+          }
+        } else if (input && typeof input === 'object') {
+          const wrapped = input as Record<string, unknown>;
+          if (Array.isArray(wrapped.items)) {
+            for (const item of wrapped.items) {
+              if (item && typeof item === 'object') rawItems.push(item as Record<string, unknown>);
+            }
+          } else {
+            rawItems.push(wrapped);
+          }
+        }
         const jobs: Record<string, unknown>[] = [];
         const seen = new Set<string>();
         const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-        for (const item of results) {
-          const j = item as Record<string, unknown>;
+        ctx.variables.jobsScraped = rawItems.length;
+        for (const j of rawItems) {
           const jobLink = String(j.link || j.jobUrl || j.url || '');
           if (seen.has(jobLink) || !jobLink) continue;
           const postedAt = String(j.postedAt || '');
-          if (postedAt && postedAt < sevenDaysAgo) continue;
-          const jobDescription = j.descriptionHtml
+          if (/^\d{4}-\d{2}-\d{2}/.test(postedAt) && postedAt < sevenDaysAgo) continue;
+          let jobDescription = j.descriptionHtml
             ? stripHtml(String(j.descriptionHtml))
             : String(j.descriptionText || j.description || '');
-          if (!jobDescription || jobDescription.length < 50) continue;
+          if (jobDescription.length < 50) {
+            const fallback = [
+              j.title,
+              j.companyName || j.company,
+              j.location,
+              j.seniorityLevel,
+              j.employmentType,
+              j.jobFunction,
+              j.industries,
+            ]
+              .map((p) => String(p || '').trim())
+              .filter(Boolean)
+              .join('. ');
+            if (fallback.length >= 20) jobDescription = fallback;
+          }
+          if (!jobDescription || jobDescription.length < 20) continue;
           jobs.push({
             title: j.title || 'No Title',
             company: j.companyName || j.company || 'Unknown Company',
@@ -108,6 +137,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           seen.add(jobLink);
           if (jobs.length >= 20) break;
         }
+        ctx.variables.jobsParsed = jobs.length;
         return { output: jobs, status: 'success' };
       }
       if (fn === 'build_latex') {
@@ -118,11 +148,26 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       }
       if (fn === 'email_summary') {
         const items = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
+        const scraped = Number(ctx.variables.jobsScraped ?? 0);
+        const parsed = Number(ctx.variables.jobsParsed ?? 0);
+        const afterDedupe = Number(ctx.variables.jobsAfterDedupe ?? 0);
         if (items.length === 0) {
           const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
           const today = new Date().toISOString().slice(0, 10);
+          let detail = 'No new resumes were generated today.';
+          if (scraped === 0) {
+            detail = 'Apify returned no job listings for your LinkedIn search URL. Try broadening location or keywords in Settings.';
+          } else if (parsed === 0) {
+            detail = `Apify returned ${scraped} listings but none could be parsed into jobs (missing descriptions or links).`;
+          } else if (afterDedupe === 0) {
+            detail = `All ${parsed} scraped jobs were already in your jobs table — no new listings to process.`;
+          }
           return {
-            output: { subject: `No New Jobs Found — ${today}`, body: '<p>All discovered jobs were duplicates of previously processed listings. No new resumes generated today.</p>', to: email },
+            output: {
+              subject: `No New Jobs Found — ${today}`,
+              body: `<p>${detail}</p>`,
+              to: email,
+            },
             status: 'success',
           };
         }
@@ -159,7 +204,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const res = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: [linkedinUrl], scrapeCompany: false, count: Number(node.config.count || 10) }),
+          body: JSON.stringify({
+            urls: [linkedinUrl],
+            scrapeCompany: true,
+            autoConvertToAiSearch: true,
+            limitPerSource: Number(node.config.limitPerSource ?? node.config.count ?? 10),
+          }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error?.message || 'Apify start failed');
@@ -219,11 +269,13 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const admin = createAdminClient();
       const newItems: unknown[] = [];
       for (const item of items) {
-        const jobLink = String((item as Record<string, unknown>).jobLink || (item as Record<string, unknown>).url || '');
+        const row = item as Record<string, unknown>;
+        const jobLink = String(row.jobLink || row.link || row.url || '');
         if (!jobLink) continue;
         const { data } = await admin.from('jobs').select('id').eq('user_id', ctx.userId).eq('url', jobLink).maybeSingle();
         if (!data) newItems.push(item);
       }
+      ctx.variables.jobsAfterDedupe = newItems.length;
       return { output: newItems, status: 'success' };
     },
   },
@@ -416,14 +468,24 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const to = String(data.to || (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail || '');
       const today = new Date().toISOString().slice(0, 10);
       const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
+      const scraped = Number(ctx.variables.jobsScraped ?? 0);
+      const parsed = Number(ctx.variables.jobsParsed ?? 0);
+      const afterDedupe = Number(ctx.variables.jobsAfterDedupe ?? 0);
       const subject = String(
         data.subject || (processed.length === 0 ? `No New Jobs Found — ${today}` : 'CareerPilot Notification'),
       );
-      const body = String(
-        data.body || data.message || (processed.length === 0
-          ? '<p>All discovered jobs were duplicates of previously processed listings. No new resumes generated today.</p>'
-          : ''),
-      );
+      let body = String(data.body || data.message || '');
+      if (!body && processed.length === 0) {
+        if (scraped === 0) {
+          body = '<p>Apify returned no job listings for your LinkedIn search URL. Try broadening location or keywords in Settings.</p>';
+        } else if (parsed === 0) {
+          body = `<p>Apify returned ${scraped} listings but none could be parsed into jobs.</p>`;
+        } else if (afterDedupe === 0) {
+          body = `<p>All ${parsed} scraped jobs were already in your jobs table.</p>`;
+        } else {
+          body = '<p>No new resumes were generated today.</p>';
+        }
+      }
       const resendKey = Deno.env.get('RESEND_API_KEY');
       if (resendKey && to && body) {
         const res = await fetch('https://api.resend.com/emails', {
