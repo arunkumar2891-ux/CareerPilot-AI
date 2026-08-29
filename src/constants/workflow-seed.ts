@@ -15,7 +15,7 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
   schedule: '0 7 * * *',
   nodes: [
     { type: 'schedule', name: 'Daily 7 AM', x: 0, y: 200, config: { cron: '0 7 * * *' } },
-    { type: 'gdocs', name: 'Optional Google Header', x: 200, y: 200, config: { fileId: '{{settings.jobSearch.resumeFileId}}' } },
+    { type: 'gdocs', name: 'Sync Google Doc Resume', x: 200, y: 200, config: { fileId: '{{settings.jobSearch.resumeFileId}}' } },
     { type: 'transform', name: 'Build LinkedIn URL', x: 400, y: 200, config: { action: 'build_linkedin_url' } },
     { type: 'apify', name: 'Start Apify Scrape', x: 600, y: 200, config: { action: 'start_run', actorId: 'curious_coder~linkedin-jobs-scraper', count: 10 } },
     { type: 'apify', name: 'Check Apify Status', x: 800, y: 200, config: { action: 'check_status' } },

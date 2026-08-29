@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/auth';
 import { DEFAULT_JOB_SEARCH_WORKFLOW, buildSeedEdges } from '@/constants/workflow-seed';
 import {
+  CAREER_CORPUS,
   MASTER_RESUME_NAME,
   TWO_PAGE_RESUME_NAME,
   applyContactOverlay,
@@ -1164,29 +1165,65 @@ export class BootstrapService {
         userEmail: user.email ?? '',
       });
     }
+
+    const resumeFileId = String(jobSearch?.resumeFileId ?? '').trim();
+    if (resumeFileId) {
+      try {
+        await supabase.functions.invoke('ai-chat', {
+          body: { mode: 'sync_google_doc_chunks', fileId: resumeFileId },
+        });
+      } catch {
+        // Google may not be connected yet — user can sync from Knowledge Base later
+      }
+    }
   }
 
-  private async seedCareerCorpus(userId: string): Promise<void> {
-    const { data: existingResumes } = await supabase.from('resumes').select('id, name').eq('user_id', userId);
-    const names = new Set((existingResumes || []).map((r) => String(r.name)));
+  private static readonly CORPUS_PLACEHOLDER = 'Sync your master resume from Google Docs';
 
-    if (!names.has(MASTER_RESUME_NAME)) {
-      await supabase.from('resumes').insert({
+  private async seedCareerCorpus(userId: string): Promise<void> {
+    const overlay = await this.settings.contactOverlay();
+    const { data: existingResumes } = await supabase
+      .from('resumes')
+      .select('id, name, content')
+      .eq('user_id', userId);
+    const byName = new Map((existingResumes || []).map((r) => [String(r.name), r]));
+
+    const upsertResume = async (name: string, type: Resume['type'], content: string) => {
+      const overlayed = applyContactOverlay(content, overlay);
+      const existing = byName.get(name);
+      if (!existing) {
+        await supabase.from('resumes').insert({
+          user_id: userId,
+          name,
+          type,
+          content: overlayed,
+          ats_score: 0,
+        });
+      } else if (String(existing.content || '').includes(BootstrapService.CORPUS_PLACEHOLDER)) {
+        await supabase
+          .from('resumes')
+          .update({ content: overlayed, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+      }
+    };
+
+    await upsertResume(MASTER_RESUME_NAME, 'technical', CAREER_CORPUS.masterResume);
+    await upsertResume(TWO_PAGE_RESUME_NAME, 'general', CAREER_CORPUS.twoPageTemplate);
+
+    const { count } = await supabase
+      .from('knowledge_chunks')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('collection', 'career');
+    if (!count) {
+      const toInsert = CAREER_CORPUS.evidenceChunks.map((c) => ({
         user_id: userId,
-        name: MASTER_RESUME_NAME,
-        type: 'technical',
-        content: '# Master ATS (bullet bank)\n\nSync your master resume from Google Docs via Knowledge Base → Google Doc Sync to populate this.',
-        ats_score: 0,
-      });
-    }
-    if (!names.has(TWO_PAGE_RESUME_NAME)) {
-      await supabase.from('resumes').insert({
-        user_id: userId,
-        name: TWO_PAGE_RESUME_NAME,
-        type: 'general',
-        content: '# 2-page template\n\nThis template will be populated after you sync your master resume from Google Docs.',
-        ats_score: 0,
-      });
+        collection: 'career',
+        source_id: c.id,
+        tags: c.tags,
+        content: c.text,
+      }));
+      await supabase.from('knowledge_chunks').insert(toInsert);
     }
   }
 }

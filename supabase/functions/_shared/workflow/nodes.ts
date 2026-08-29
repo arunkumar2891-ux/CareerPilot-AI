@@ -4,6 +4,7 @@ import { resolveTemplate } from './graph.ts';
 import { createAdminClient } from '../supabase-admin.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../career-corpus/load.ts';
+import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -128,7 +129,9 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const today = new Date().toISOString().slice(0, 10);
         let body = `<div style="font-family:Arial,sans-serif"><h2>Your ATS resumes are ready (${items.length})</h2><table border="1" cellpadding="8"><tr><th>Company</th><th>Role</th><th>Job</th><th>Resume</th></tr>`;
         for (const it of items) {
-          body += `<tr><td>${it.company}</td><td>${it.roleName || it.title}</td><td><a href="${it.jobLink}">View</a></td><td><a href="${it.pdfLink || it.pdf_url}">PDF</a></td></tr>`;
+          if (!it || typeof it !== 'object') continue;
+          const row = it as Record<string, unknown>;
+          body += `<tr><td>${row.company ?? ''}</td><td>${row.roleName || row.title}</td><td><a href="${row.jobLink}">View</a></td><td><a href="${row.pdfLink || row.pdf_url}">PDF</a></td></tr>`;
         }
         body += `</table><p>Generated: ${new Date().toLocaleString()}</p></div>`;
         const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
@@ -231,21 +234,19 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         return { output: { skipped: true, reason: 'no_google_doc' }, status: 'success' };
       }
       try {
-        const accessToken = await refreshGoogleToken(ctx.userId);
-        const res = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
-          { headers: { Authorization: `Bearer ${accessToken}` } },
-        );
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(
-            (err as { error?: { message?: string } }).error?.message
-              || 'Google Docs fetch failed',
-          );
-        }
-        const fullText = await res.text();
-        ctx.variables.googleHeader = fullText.split('\n').slice(0, 12).join('\n');
-        return { output: { docId: fileId, headerOnly: true }, status: 'success' };
+        const sync = await syncGoogleDocToCorpus(ctx.userId, fileId);
+        ctx.variables.googleHeader = sync.docContent.split('\n').slice(0, 12).join('\n');
+        ctx.variables.googleDocSynced = true;
+        return {
+          output: {
+            docId: fileId,
+            synced: true,
+            chunksExtracted: sync.chunksExtracted,
+            newChunksAdded: sync.newChunksAdded,
+            resumeUpdated: sync.resumeUpdated,
+          },
+          status: 'success',
+        };
       } catch (err) {
         ctx.variables.googleDocWarning = err instanceof Error ? err.message : String(err);
         return { output: { skipped: true, reason: 'google_doc_optional' }, status: 'success' };
@@ -294,12 +295,15 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   gemini: {
     async execute(ctx, node, input) {
       const systemPrompt = String(node.config.systemPrompt || ATS_SYSTEM_PROMPT);
-      const job = input as Record<string, unknown>;
+      const job = (input && typeof input === 'object' ? input : ctx.variables.currentItem) as Record<string, unknown> | undefined;
+      if (!job) {
+        return { output: { skipped: true, reason: 'no_job_input' }, status: 'success' };
+      }
       const jd = String(job.jobDescription || job.description || '');
       const corpus = await loadCareerCorpus(ctx.userId, jd);
       const userPrompt = buildResumeUserPrompt({
         jobTitle: String(job.title || job.role || ''),
-        company: String(job.company || ''),
+        company: String(job.company || job.companyName || ''),
         jobDescription: jd,
         playbookTitle: corpus.playbookTitle,
         playbookInstructions: corpus.playbookInstructions,
@@ -326,14 +330,17 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const admin = createAdminClient();
       if (action === 'insert_job') {
         if (input == null || typeof input !== 'object') {
-          return { output: input, status: 'success' };
+          return { output: input ?? { skipped: true }, status: 'success' };
         }
         const job = input as Record<string, unknown>;
+        if (job.skipped) {
+          return { output: job, status: 'success' };
+        }
         const row = {
           user_id: ctx.userId,
-          company: String(job.company || ''),
-          role: String(job.title || job.role || ''),
-          description: String(job.jobDescription || job.description || ''),
+          company: String(job.company ?? job.companyName ?? ''),
+          role: String(job.title ?? job.role ?? ''),
+          description: String(job.jobDescription ?? job.description ?? ''),
           match_score: 0,
           skills: [],
           posting_date: job.postedAt || new Date().toISOString(),
@@ -493,17 +500,19 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   cover_letter: {
     async execute(ctx, node, input) {
-      const job = input as Record<string, unknown>;
+      const job = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+      const company = String(job.company ?? job.companyName ?? 'Company');
+      const title = String(job.title ?? job.role ?? 'Role');
       const output = await callGemini(
         'Write a professional cover letter.',
-        `Write a cover letter for ${job.title} at ${job.company}. Job description: ${job.jobDescription}`,
+        `Write a cover letter for ${title} at ${company}. Job description: ${job.jobDescription ?? job.description ?? ''}`,
       );
       const admin = createAdminClient();
       await admin.from('cover_letters').insert({
         user_id: ctx.userId,
-        name: `Cover Letter - ${job.company}`,
-        company_name: String(job.company),
-        role: String(job.title),
+        name: `Cover Letter - ${company}`,
+        company_name: company,
+        role: title,
         content: output,
         job_id: job.jobId || null,
       });

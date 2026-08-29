@@ -81,6 +81,21 @@ export function SettingsPage() {
       notifications: { email: notifyEmail },
       userEmail: notifyEmail,
     });
+    const fileId = resumeFileId.trim();
+    if (fileId) {
+      try {
+        const res = await supabase.functions.invoke('ai-chat', {
+          body: { mode: 'sync_google_doc_chunks', fileId },
+        });
+        if (res.error) throw new Error(res.error.message);
+        qc.invalidateQueries({ queryKey: ['resumes'] });
+        qc.invalidateQueries({ queryKey: ['knowledge-collections'] });
+        toast.success('Job search saved — Google Doc synced to Master ATS');
+        return;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Google Doc sync failed — check Integrations');
+      }
+    }
     toast.success('Job search settings saved');
   };
 
@@ -133,7 +148,11 @@ export function SettingsPage() {
               <div className="space-y-1.5"><Label>Search Query</Label><Input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="AI Product Manager" /></div>
               <div className="space-y-1.5"><Label>Location</Label><Input value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="San Francisco, CA" /></div>
               <div className="space-y-1.5"><Label>Max Jobs Per Run</Label><Input value={maxJobs} onChange={(e) => setMaxJobs(e.target.value)} type="number" /></div>
-              <div className="space-y-1.5"><Label>Google Doc Resume ID (optional backup)</Label><Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="Optional — header override only" /></div>
+              <div className="space-y-1.5">
+                <Label>Google Doc Resume ID</Label>
+                <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="From docs.google.com/document/d/THIS_PART/edit" />
+                <p className="text-xs text-muted-foreground">Syncs your master resume from Google Docs before each workflow run. Requires Google connection in Integrations.</p>
+              </div>
               <p className="text-xs text-muted-foreground">Tailoring uses the in-app Master ATS corpus. A Google Doc ID is optional (name/contact header only). API keys stay as Edge Function secrets.</p>
               <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save Job Search Settings</Button>
             </CardContent>
