@@ -5,6 +5,7 @@ import { createAdminClient } from '../supabase-admin.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
+import { flattenJobItems, normalizeLinkedInJobUrl } from '../job-url.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -66,7 +67,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       }
       if (action === 'limit') {
         const items = Array.isArray(input) ? input : (Array.isArray(ctx.items) ? ctx.items : [input]);
-        const max = Number(node.config.max ?? 5);
+        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
+        const max = Number(jobSearch.maxJobs || node.config.max || 5);
         return { output: items.slice(0, max), status: 'success' };
       }
       if (action === 'merge_job_data') {
@@ -101,7 +103,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
         ctx.variables.jobsScraped = rawItems.length;
         for (const j of rawItems) {
-          const jobLink = String(j.link || j.jobUrl || j.url || '');
+          const jobLink = normalizeLinkedInJobUrl(String(j.link || j.jobUrl || j.url || ''));
           if (seen.has(jobLink) || !jobLink) continue;
           const postedAt = String(j.postedAt || '');
           if (/^\d{4}-\d{2}-\d{2}/.test(postedAt) && postedAt < sevenDaysAgo) continue;
@@ -151,6 +153,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const scraped = Number(ctx.variables.jobsScraped ?? 0);
         const parsed = Number(ctx.variables.jobsParsed ?? 0);
         const afterDedupe = Number(ctx.variables.jobsAfterDedupe ?? 0);
+        const skippedDuplicate = Number(ctx.variables.jobsSkippedDuplicate ?? 0);
+        const skippedNoLink = Number(ctx.variables.jobsSkippedNoLink ?? 0);
         if (items.length === 0) {
           const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
           const today = new Date().toISOString().slice(0, 10);
@@ -159,8 +163,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             detail = 'Apify returned no job listings for your LinkedIn search URL. Try broadening location or keywords in Settings.';
           } else if (parsed === 0) {
             detail = `Apify returned ${scraped} listings but none could be parsed into jobs (missing descriptions or links).`;
+          } else if (afterDedupe === 0 && skippedDuplicate > 0) {
+            detail = `All ${skippedDuplicate} new job(s) were already in your jobs table — no new listings to process.`;
+          } else if (afterDedupe === 0 && skippedNoLink > 0) {
+            detail = `${skippedNoLink} parsed job(s) could not be processed because the job URL was missing.`;
           } else if (afterDedupe === 0) {
-            detail = `All ${parsed} scraped jobs were already in your jobs table — no new listings to process.`;
+            detail = `${parsed} job(s) were parsed but none were queued for tailoring.`;
           }
           return {
             output: {
@@ -201,6 +209,10 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             if (o?.linkedinUrl) { linkedinUrl = String(o.linkedinUrl); break; }
           }
         }
+        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
+        const scrapeLimit = Number(
+          jobSearch.maxJobs || node.config.limitPerSource ?? node.config.count ?? 10,
+        );
         const res = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -208,7 +220,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             urls: [linkedinUrl],
             scrapeCompany: true,
             autoConvertToAiSearch: true,
-            limitPerSource: Number(node.config.limitPerSource ?? node.config.count ?? 10),
+            limitPerSource: scrapeLimit,
           }),
         });
         const json = await res.json();
@@ -265,17 +277,29 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   duplicate_checker: {
     async execute(ctx, _node, input) {
-      const items = Array.isArray(input) ? input : [input];
+      const items = flattenJobItems(input);
       const admin = createAdminClient();
       const newItems: unknown[] = [];
+      let skippedNoLink = 0;
+      let skippedDuplicate = 0;
       for (const item of items) {
         const row = item as Record<string, unknown>;
-        const jobLink = String(row.jobLink || row.link || row.url || '');
-        if (!jobLink) continue;
+        const jobLink = normalizeLinkedInJobUrl(String(row.jobLink || row.link || row.url || row.jobUrl || ''));
+        if (!jobLink) {
+          skippedNoLink++;
+          continue;
+        }
+        row.jobLink = jobLink;
         const { data } = await admin.from('jobs').select('id').eq('user_id', ctx.userId).eq('url', jobLink).maybeSingle();
-        if (!data) newItems.push(item);
+        if (data) {
+          skippedDuplicate++;
+          continue;
+        }
+        newItems.push(row);
       }
       ctx.variables.jobsAfterDedupe = newItems.length;
+      ctx.variables.jobsSkippedDuplicate = skippedDuplicate;
+      ctx.variables.jobsSkippedNoLink = skippedNoLink;
       return { output: newItems, status: 'success' };
     },
   },
@@ -405,7 +429,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           resume_status: 'ready',
           application_status: 'draft',
           status: 'resume_ready',
-          url: String(job.jobLink || job.url || ''),
+          url: normalizeLinkedInJobUrl(String(job.jobLink || job.url || job.link || '')),
         };
         const { data, error } = await admin.from('jobs').insert(row).select().single();
         if (error) throw error;
@@ -471,6 +495,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const scraped = Number(ctx.variables.jobsScraped ?? 0);
       const parsed = Number(ctx.variables.jobsParsed ?? 0);
       const afterDedupe = Number(ctx.variables.jobsAfterDedupe ?? 0);
+      const skippedDuplicate = Number(ctx.variables.jobsSkippedDuplicate ?? 0);
+      const skippedNoLink = Number(ctx.variables.jobsSkippedNoLink ?? 0);
       const subject = String(
         data.subject || (processed.length === 0 ? `No New Jobs Found — ${today}` : 'CareerPilot Notification'),
       );
@@ -480,8 +506,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           body = '<p>Apify returned no job listings for your LinkedIn search URL. Try broadening location or keywords in Settings.</p>';
         } else if (parsed === 0) {
           body = `<p>Apify returned ${scraped} listings but none could be parsed into jobs.</p>`;
+        } else if (afterDedupe === 0 && skippedDuplicate > 0) {
+          body = `<p>All ${skippedDuplicate} new job(s) were already in your jobs table.</p>`;
+        } else if (afterDedupe === 0 && skippedNoLink > 0) {
+          body = `<p>${skippedNoLink} parsed job(s) could not be processed because the job URL was missing.</p>`;
         } else if (afterDedupe === 0) {
-          body = `<p>All ${parsed} scraped jobs were already in your jobs table.</p>`;
+          body = `<p>${parsed} job(s) were parsed but none were queued for tailoring.</p>`;
         } else {
           body = '<p>No new resumes were generated today.</p>';
         }

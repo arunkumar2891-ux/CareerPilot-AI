@@ -22,7 +22,7 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
     { type: 'wait', name: 'Wait 10s', x: 800, y: 400, config: { seconds: 10 } },
     { type: 'apify', name: 'Fetch Results', x: 1000, y: 200, config: { action: 'fetch_dataset' } },
     { type: 'function', name: 'Parse Jobs', x: 1200, y: 200, config: { builtin: 'parse_apify_jobs' } },
-    { type: 'transform', name: 'Limit Jobs', x: 1400, y: 200, config: { action: 'limit', max: 5 } },
+    { type: 'transform', name: 'Limit Jobs', x: 1400, y: 200, config: { action: 'limit', max: 10 } },
     { type: 'duplicate_checker', name: 'Filter Duplicates', x: 1600, y: 200, config: {} },
     { type: 'supabase', name: 'Store Job', x: 1800, y: 200, config: { action: 'insert_job' } },
     { type: 'gemini', name: 'ATS Optimizer', x: 2000, y: 200, config: {} },
