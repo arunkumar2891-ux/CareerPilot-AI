@@ -36,7 +36,7 @@ interface AuthState {
   initializing: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>;
-  signInWithOAuth: (provider: 'google' | 'github') => Promise<void>;
+  signInWithOAuth: (provider: 'google') => Promise<void>;
   signInWithMagicLink: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Rocket, Mail, Github, Chrome, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Rocket, Mail, Chrome, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,7 +25,7 @@ export function AuthPage() {
     else { toast.success(mode === 'signin' ? 'Welcome back!' : 'Account created!'); navigate('/'); }
   };
 
-  const handleOAuth = async (provider: 'google' | 'github') => { await signInWithOAuth(provider); };
+  const handleOAuth = async () => { await signInWithOAuth('google'); };
 
   const handleMagicLink = async () => {
     if (!email) { toast.error('Enter your email first'); return; }
@@ -70,9 +70,8 @@ export function AuthPage() {
             <div className="h-px flex-1 bg-border" /><span className="text-xs text-muted-foreground">or continue with</span><div className="h-px flex-1 bg-border" />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <Button variant="outline" onClick={() => handleOAuth('google')} className="flex-col gap-1 py-3"><Chrome className="h-5 w-5" /><span className="text-[10px]">Google</span></Button>
-            <Button variant="outline" onClick={() => handleOAuth('github')} className="flex-col gap-1 py-3"><Github className="h-5 w-5" /><span className="text-[10px]">GitHub</span></Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" onClick={handleOAuth} className="flex-col gap-1 py-3"><Chrome className="h-5 w-5" /><span className="text-[10px]">Google</span></Button>
             <Button variant="outline" onClick={handleMagicLink} className="flex-col gap-1 py-3"><Mail className="h-5 w-5" /><span className="text-[10px]">Magic</span></Button>
           </div>
 

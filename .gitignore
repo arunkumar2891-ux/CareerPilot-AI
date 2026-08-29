@@ -48,3 +48,5 @@ src/resources/GPT/Comprehensive_Summary.md
 src/resources/H1-FY27/
 TNYPL_Auction_Strategy.md
 .env.local.bak
+/.bolt
+.env.example

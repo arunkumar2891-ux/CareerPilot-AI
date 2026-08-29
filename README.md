@@ -204,7 +204,7 @@ supabase/
 Supports multiple sign-in methods via Supabase Auth:
 
 - Email + password (sign up / sign in)
-- OAuth (Google, GitHub)
+- OAuth (Google)
 - Magic link (OTP via email)
 
 User profiles are stored in a `profiles` table and auto-created on first login via a database trigger.

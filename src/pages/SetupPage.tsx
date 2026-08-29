@@ -22,7 +22,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
     time: '1 min',
     description: 'Create an account or log in. CareerPilot provisions your pipeline and automation automatically — resume content comes from your Google Doc.',
     details: [
-      'Go to /auth and sign up with email/password, Google, GitHub, or a magic link.',
+      'Go to /auth and sign up with email/password, Google, or a magic link.',
       'Wait until the dashboard loads. In the background we create: Daily Job Search Pipeline and Daily 7 AM automation.',
       'Empty "Master ATS (bullet bank)" and "2-page template" placeholders are created in Resume Studio — you populate them by syncing your Google Doc.',
     ],
