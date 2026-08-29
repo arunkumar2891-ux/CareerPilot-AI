@@ -211,7 +211,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         }
         const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
         const scrapeLimit = Number(
-          jobSearch.maxJobs || node.config.limitPerSource ?? node.config.count ?? 10,
+          jobSearch.maxJobs || (node.config.limitPerSource ?? node.config.count ?? 10),
         );
         const res = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
           method: 'POST',
