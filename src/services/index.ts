@@ -1218,6 +1218,7 @@ export class BootstrapService {
           query: 'Integration Architect',
           location: 'San Francisco, CA',
           maxJobs: '5',
+          postedWithin: '1d',
           resumeFileId: jobSearch?.resumeFileId ?? '',
         },
         notifications: { email: user.email ?? '' },

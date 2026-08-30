@@ -10,9 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUIStore, useAuthStore } from '@/store';
 import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
+import { JOB_POSTED_WITHIN_OPTIONS, DEFAULT_JOB_POSTED_WITHIN } from '@/constants';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -25,6 +27,7 @@ export function SettingsPage() {
   const [jobQuery, setJobQuery] = useState('AI Product Manager');
   const [jobLocation, setJobLocation] = useState('San Francisco, CA');
   const [maxJobs, setMaxJobs] = useState('5');
+  const [postedWithin, setPostedWithin] = useState(DEFAULT_JOB_POSTED_WITHIN);
   const [resumeFileId, setResumeFileId] = useState('');
   const [notifyEmail, setNotifyEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState('');
@@ -42,6 +45,8 @@ export function SettingsPage() {
       if (js?.query) setJobQuery(js.query);
       if (js?.location) setJobLocation(js.location);
       if (js?.maxJobs) setMaxJobs(js.maxJobs);
+      if (js?.postedWithin) setPostedWithin(js.postedWithin);
+      else setPostedWithin(DEFAULT_JOB_POSTED_WITHIN);
       if (js?.resumeFileId) setResumeFileId(js.resumeFileId);
       if (notif?.email) setNotifyEmail(notif.email);
       const contact = settings.contact as Record<string, string> | undefined;
@@ -77,7 +82,7 @@ export function SettingsPage() {
 
   const saveJobSearch = async () => {
     await services.settings.update({
-      jobSearch: { query: jobQuery, location: jobLocation, maxJobs, resumeFileId },
+      jobSearch: { query: jobQuery, location: jobLocation, maxJobs, postedWithin, resumeFileId },
       notifications: { email: notifyEmail },
       userEmail: notifyEmail,
     });
@@ -147,13 +152,27 @@ export function SettingsPage() {
             <CardContent className="space-y-4">
               <div className="space-y-1.5"><Label>Search Query</Label><Input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="AI Product Manager" /></div>
               <div className="space-y-1.5"><Label>Location</Label><Input value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="San Francisco, CA" /></div>
+              <div className="space-y-1.5">
+                <Label>Posted within</Label>
+                <Select value={postedWithin} onValueChange={setPostedWithin}>
+                  <SelectTrigger><SelectValue placeholder="Past 24 hours" /></SelectTrigger>
+                  <SelectContent>
+                    {JOB_POSTED_WITHIN_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">LinkedIn time filter for each pipeline run. Default is past 24 hours.</p>
+              </div>
               <div className="space-y-1.5"><Label>Max Jobs Per Run</Label><Input value={maxJobs} onChange={(e) => setMaxJobs(e.target.value)} type="number" /></div>
               <div className="space-y-1.5">
                 <Label>Google Doc Resume ID</Label>
                 <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="From docs.google.com/document/d/THIS_PART/edit" />
                 <p className="text-xs text-muted-foreground">Syncs your master resume from Google Docs before each workflow run. Requires Google connection in Integrations.</p>
               </div>
-              <p className="text-xs text-muted-foreground">Tailoring uses the in-app Master ATS corpus. A Google Doc ID is optional (name/contact header only). API keys stay as Edge Function secrets.</p>
+              <p className="text-xs text-muted-foreground">
+                Searches all work types (on-site, remote, hybrid) in your location. Tailoring uses the in-app Master ATS corpus.
+              </p>
               <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save Job Search Settings</Button>
             </CardContent>
           </Card>

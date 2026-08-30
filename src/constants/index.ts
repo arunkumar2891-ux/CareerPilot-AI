@@ -38,6 +38,17 @@ export const NAV_ITEMS: NavItem[] = [
 
 export const JOB_BOARDS = ['LinkedIn', 'Indeed', 'Glassdoor', 'AngelList', 'Wellfound', 'ZipRecruiter', 'Dice', 'Remotive'];
 export const EXPERIENCE_LEVELS = ['Entry', 'Junior', 'Mid', 'Senior', 'Lead', 'Staff', 'Principal', 'Executive'];
+
+/** LinkedIn scrape window (stored in settings.jobSearch.postedWithin). */
+export const JOB_POSTED_WITHIN_OPTIONS = [
+  { value: '1d', label: 'Past 24 hours (1 day)' },
+  { value: '3d', label: 'Past 3 days' },
+  { value: '7d', label: 'Past week' },
+  { value: '30d', label: 'Past month' },
+  { value: 'any', label: 'Any time' },
+] as const;
+
+export const DEFAULT_JOB_POSTED_WITHIN = '1d';
 export const APPLICATION_STATUSES = ['draft', 'submitted', 'viewed', 'interview', 'offer', 'rejected', 'withdrawn'];
 export const JOB_STATUSES = ['discovered', 'queued', 'resume_ready', 'applied', 'interview', 'offer', 'rejected', 'withdrawn'];
 

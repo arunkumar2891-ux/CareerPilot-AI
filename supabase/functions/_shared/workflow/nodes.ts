@@ -5,7 +5,7 @@ import { createAdminClient } from '../supabase-admin.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
-import { flattenJobItems, normalizeLinkedInJobUrl } from '../job-url.ts';
+import { flattenJobItems, normalizeLinkedInJobUrl, buildLinkedInJobSearchUrl, inferJobWorkplace, postedWithinCutoffIso } from '../job-url.ts';
 import { geminiGenerateContentUrl } from '../gemini.ts';
 
 function stripHtml(html: string): string {
@@ -61,8 +61,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
         const query = node.config.query as string || jobSearch.query || 'Software Engineer';
         const location = node.config.location as string || jobSearch.location || 'United States';
-        const linkedinUrl = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(query)}&location=${encodeURIComponent(location)}&f_TPR=r86400&f_WT=1%2C2&sortBy=DD`;
-        return { output: { linkedinUrl, query, location }, status: 'success' };
+        const linkedinUrl = buildLinkedInJobSearchUrl(query, location, jobSearch.postedWithin);
+        return { output: { linkedinUrl, query, location, postedWithin: jobSearch.postedWithin || '1d' }, status: 'success' };
       }
       if (action === 'limit') {
         const items = Array.isArray(input) ? input : (Array.isArray(ctx.items) ? ctx.items : [input]);
@@ -99,13 +99,14 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         }
         const jobs: Record<string, unknown>[] = [];
         const seen = new Set<string>();
-        const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
+        const postedCutoff = postedWithinCutoffIso(jobSearch.postedWithin);
         ctx.variables.jobsScraped = rawItems.length;
         for (const j of rawItems) {
           const jobLink = normalizeLinkedInJobUrl(String(j.link || j.jobUrl || j.url || ''));
           if (seen.has(jobLink) || !jobLink) continue;
           const postedAt = String(j.postedAt || '');
-          if (/^\d{4}-\d{2}-\d{2}/.test(postedAt) && postedAt < sevenDaysAgo) continue;
+          if (postedCutoff && /^\d{4}-\d{2}-\d{2}/.test(postedAt) && postedAt < postedCutoff) continue;
           let jobDescription = j.descriptionHtml
             ? stripHtml(String(j.descriptionHtml))
             : String(j.descriptionText || j.description || '');
@@ -132,6 +133,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             postedAt,
             employmentType: j.employmentType || '',
             seniorityLevel: j.seniorityLevel || '',
+            workplaceType: j.workplaceType || j.workType || j.jobBenefits || '',
             jobLink,
             jobDescription,
           });
@@ -411,6 +413,11 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         if (job.skipped) {
           return { output: job, status: 'success' };
         }
+        const workplace = inferJobWorkplace(
+          String(job.location || ''),
+          String(job.employmentType || ''),
+          String(job.workplaceType || ''),
+        );
         const row = {
           user_id: ctx.userId,
           company: String(job.company ?? job.companyName ?? ''),
@@ -421,8 +428,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           posting_date: job.postedAt || new Date().toISOString(),
           source: 'linkedin/apify',
           location: String(job.location || ''),
-          remote: String(job.location || '').toLowerCase().includes('remote'),
-          hybrid: false,
+          remote: workplace.remote,
+          hybrid: workplace.hybrid,
           experience: String(job.seniorityLevel || ''),
           duplicate: false,
           resume_status: 'ready',

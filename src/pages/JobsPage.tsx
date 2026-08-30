@@ -159,6 +159,9 @@ export function JobsPage() {
             </div>
             <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="gap-2">
               <Filter className="h-4 w-4" /> Filters
+              {(filters.remote || filters.hybrid) && (
+                <Badge variant="secondary" className="ml-1">Active</Badge>
+              )}
             </Button>
             <Tabs value={view} onValueChange={(v) => setView(v as 'kanban' | 'table')}>
               <TabsList>
