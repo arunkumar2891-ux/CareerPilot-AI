@@ -689,6 +689,33 @@ export class ExecutionService {
     }
     return run;
   }
+  async deleteRun(runId: string): Promise<void> {
+    const userId = await requireUserId();
+    const { error: stepError } = await supabase.from('workflow_step_queue').delete().eq('run_id', runId);
+    if (stepError) throw stepError;
+    const { error: nodeError } = await supabase.from('workflow_run_nodes').delete().eq('run_id', runId);
+    if (nodeError) throw nodeError;
+    const { error: logError } = await supabase.from('workflow_logs').delete().eq('run_id', runId);
+    if (logError) throw logError;
+    const { error } = await supabase.from('workflow_runs').delete().eq('id', runId).eq('user_id', userId);
+    if (error) throw error;
+  }
+  async deleteAllRuns(): Promise<number> {
+    const userId = await requireUserId();
+    const { data: runs, error: listError } = await supabase.from('workflow_runs').select('id').eq('user_id', userId);
+    if (listError) throw listError;
+    const runIds = (runs || []).map((r) => r.id as string);
+    if (!runIds.length) return 0;
+    const { error: stepError } = await supabase.from('workflow_step_queue').delete().in('run_id', runIds);
+    if (stepError) throw stepError;
+    const { error: nodeError } = await supabase.from('workflow_run_nodes').delete().in('run_id', runIds);
+    if (nodeError) throw nodeError;
+    const { error: logError } = await supabase.from('workflow_logs').delete().in('run_id', runIds);
+    if (logError) throw logError;
+    const { error, count } = await supabase.from('workflow_runs').delete({ count: 'exact' }).eq('user_id', userId);
+    if (error) throw error;
+    return count ?? runIds.length;
+  }
 }
 
 export class AgentService {

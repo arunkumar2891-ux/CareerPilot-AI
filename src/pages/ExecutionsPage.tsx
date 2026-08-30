@@ -1,19 +1,23 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Play, Clock, CheckCircle2, XCircle, AlertCircle, Activity,
-  ChevronRight, Inbox, Loader2,
+  ChevronRight, Inbox, Loader2, Trash2, RefreshCw,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { useState } from 'react';
 import { services } from '@/services';
 import { computeRunDurationMs, formatDurationMs, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { toast } from 'sonner';
 import type { Workflow, WorkflowRunStatus } from '@/types';
 
 function NodeStatusIcon({ status }: { status: WorkflowRunStatus }) {
@@ -26,6 +30,7 @@ function NodeStatusIcon({ status }: { status: WorkflowRunStatus }) {
 }
 
 export function ExecutionsPage() {
+  const qc = useQueryClient();
   const { data: runs } = useQuery({
     queryKey: ['runs'],
     queryFn: () => services.execution.listRuns(),
@@ -36,9 +41,13 @@ export function ExecutionsPage() {
     },
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const allRuns = (runs || []).slice(0, 20);
   const selected = selectedId ? allRuns.find((r) => r.id === selectedId) : null;
+  const deleteTarget = deleteTargetId ? allRuns.find((r) => r.id === deleteTargetId) : null;
 
   const { data: workflow } = useQuery({
     queryKey: ['workflow', selected?.workflowId],
@@ -48,9 +57,97 @@ export function ExecutionsPage() {
 
   const nodeLabel = (nodeId: string) => workflow?.nodes.find((n) => n.id === nodeId)?.name ?? nodeId;
 
+  const refreshRuns = async () => {
+    await qc.invalidateQueries({ queryKey: ['runs'] });
+  };
+
+  const deleteRun = async (runId: string) => {
+    setDeleting(true);
+    try {
+      await services.execution.deleteRun(runId);
+      if (selectedId === runId) setSelectedId(null);
+      await refreshRuns();
+      toast.success('Execution deleted');
+      setDeleteTargetId(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete execution');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const deleteAllRuns = async () => {
+    setDeleting(true);
+    try {
+      const count = await services.execution.deleteAllRuns();
+      setSelectedId(null);
+      await refreshRuns();
+      toast.success(`Deleted ${count} execution${count === 1 ? '' : 's'}`);
+      setShowClearConfirm(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete executions');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
-      <PageHeader title="Execution Center" description="Real-time execution logs and history" />
+      <PageHeader
+        title="Execution Center"
+        description="Real-time execution logs and history"
+        actions={
+          <Button
+            variant="outline"
+            onClick={() => setShowClearConfirm(true)}
+            className="gap-2"
+            disabled={!allRuns.length}
+          >
+            <Trash2 className="h-4 w-4" /> Clear All
+          </Button>
+        }
+      />
+
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete all executions?</DialogTitle>
+            <DialogDescription>
+              This permanently removes execution history, node results, and logs from Supabase. Running workflows may behave unpredictably if deleted mid-run.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearConfirm(false)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={deleteAllRuns} disabled={deleting} className="gap-2">
+              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this execution?</DialogTitle>
+            <DialogDescription>
+              {deleteTarget?.workflowName || 'Workflow'} — started {deleteTarget ? timeAgo(deleteTarget.startedAt) : ''}. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTargetId(null)} disabled={deleting}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTargetId && deleteRun(deleteTargetId)}
+              disabled={deleting || !deleteTargetId}
+              className="gap-2"
+            >
+              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><CheckCircle2 className="h-5 w-5 text-success" /></div><div><p className="text-xs text-muted-foreground">Successful</p><p className="text-xl font-semibold">{allRuns.filter((r) => r.status === 'success').length}</p></div></div></CardContent></Card>
@@ -74,6 +171,18 @@ export function ExecutionsPage() {
                 </div>
                 <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{formatDurationMs(computeRunDurationMs(run))}</Badge>
                 <StatusBadge status={run.status} />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTargetId(run.id);
+                  }}
+                  aria-label="Delete execution"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </CardContent>
             </Card>
@@ -85,10 +194,12 @@ export function ExecutionsPage() {
         <Dialog open onOpenChange={(o) => !o && setSelectedId(null)}>
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> {selected.workflowName || 'Workflow'}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-primary" /> {selected.workflowName || 'Workflow'}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4">
                 <StatusBadge status={selected.status} />
                 <span className="text-xs text-muted-foreground">Started {timeAgo(selected.startedAt)}</span>
                 <span className="text-xs text-muted-foreground">
@@ -97,6 +208,14 @@ export function ExecutionsPage() {
                     <span className="ml-1 text-primary">(live)</span>
                   )}
                 </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-destructive hover:text-destructive"
+                  onClick={() => setDeleteTargetId(selected.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </Button>
               </div>
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Node Results</p>
