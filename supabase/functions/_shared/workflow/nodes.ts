@@ -6,7 +6,7 @@ import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/promp
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildLinkedInJobSearchUrl, inferJobWorkplace, postedWithinCutoffIso } from '../job-url.ts';
-import { geminiGenerateContentUrl } from '../gemini.ts';
+import { geminiGenerateContentUrl, callGeminiGenerateContent } from '../gemini.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -22,20 +22,7 @@ function stripHtml(html: string): string {
 }
 
 async function callGemini(systemPrompt: string, userPrompt: string): Promise<string> {
-  const res = await fetch(
-    geminiGenerateContentUrl(),
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      }),
-    },
-  );
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message || 'Gemini API error');
-  return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  return await callGeminiGenerateContent(systemPrompt, userPrompt);
 }
 
 export const nodeExecutors: Record<string, NodeExecutor> = {

@@ -189,6 +189,9 @@ export interface WorkflowRun {
   startedAt: string;
   finishedAt?: string;
   duration: number;
+  currentNodeId?: string;
+  errorMessage?: string;
+  batchProgress?: { node: string; index: number; total: number };
   nodeResults: { nodeId: string; status: WorkflowRunStatus; duration: number; output?: string }[];
   logs: ExecutionLog[];
 }

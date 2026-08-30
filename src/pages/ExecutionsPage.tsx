@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  Play, Clock, CheckCircle2, XCircle, AlertCircle, Activity,
+  Clock, CheckCircle2, XCircle, AlertCircle, Activity,
   ChevronRight, Inbox, Loader2, Trash2, RefreshCw,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -16,17 +16,42 @@ import {
 import { useState } from 'react';
 import { services } from '@/services';
 import { computeRunDurationMs, formatDurationMs, timeAgo } from '@/utils';
+import {
+  getActiveExecutionStep,
+  buildPipelineSteps,
+  type PipelineStepView,
+} from '@/utils/execution';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
-import type { Workflow, WorkflowRunStatus } from '@/types';
+import type { WorkflowRun, WorkflowRunStatus } from '@/types';
 
-function NodeStatusIcon({ status }: { status: WorkflowRunStatus }) {
+function NodeStatusIcon({ status }: { status: WorkflowRunStatus | 'pending' }) {
   if (status === 'success') return <CheckCircle2 className="h-3.5 w-3.5 text-success" />;
   if (status === 'failed') return <XCircle className="h-3.5 w-3.5 text-destructive" />;
   if (status === 'running' || status === 'queued') {
     return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />;
   }
+  if (status === 'pending') return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
   return <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />;
+}
+
+function PipelineStepRow({ step }: { step: PipelineStepView }) {
+  const isActive = step.status === 'running' || step.status === 'queued';
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-lg border p-2 text-xs ${
+        isActive ? 'border-primary bg-primary/5 ring-1 ring-primary/20' : 'border-border'
+      }`}
+    >
+      <NodeStatusIcon status={step.status} />
+      <span className="flex-1 truncate font-medium">{step.name}</span>
+      {step.status === 'pending' ? (
+        <span className="text-muted-foreground">pending</span>
+      ) : (
+        <span className="text-muted-foreground">{formatDurationMs(step.duration)}</span>
+      )}
+    </div>
+  );
 }
 
 export function ExecutionsPage() {
@@ -37,7 +62,7 @@ export function ExecutionsPage() {
     refetchInterval: (query) => {
       const items = query.state.data;
       if (!items?.some((r) => r.status === 'running' || r.status === 'queued')) return false;
-      return 2000;
+      return 5000;
     },
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -55,7 +80,14 @@ export function ExecutionsPage() {
     enabled: Boolean(selected?.workflowId),
   });
 
-  const nodeLabel = (nodeId: string) => workflow?.nodes.find((n) => n.id === nodeId)?.name ?? nodeId;
+  const activeStep = selected ? getActiveExecutionStep(selected) : null;
+  const pipelineSteps = workflow
+    ? buildPipelineSteps(
+        workflow.nodes.map((n) => ({ id: n.id, name: n.name, positionX: n.position.x })),
+        selected?.nodeResults ?? [],
+        activeStep,
+      )
+    : [];
 
   const refreshRuns = async () => {
     await qc.invalidateQueries({ queryKey: ['runs'] });
@@ -91,11 +123,22 @@ export function ExecutionsPage() {
     }
   };
 
+  const describeRunProgress = (run: WorkflowRun) => {
+    const step = getActiveExecutionStep(run);
+    if (!step) return `${run.nodeResults.length} nodes completed`;
+    const elapsed = formatDurationMs(Date.now() - new Date(step.startedAt).getTime());
+    const batch = run.batchProgress;
+    const detail = batch
+      ? `Job ${batch.index}/${batch.total}`
+      : step.detail;
+    return `${step.name}${detail ? ` · ${detail}` : ''} · ${elapsed}`;
+  };
+
   return (
     <div className="space-y-6 p-6">
       <PageHeader
         title="Execution Center"
-        description="Real-time execution logs and history"
+        description="Status updates every 5s while a run is active (not re-running the workflow)"
         actions={
           <Button
             variant="outline"
@@ -167,7 +210,11 @@ export function ExecutionsPage() {
                   : <Loader2 className="h-4 w-4 animate-spin text-primary" />}
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
-                  <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} · {run.nodeResults.length} nodes</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {run.status === 'running' || run.status === 'queued'
+                      ? describeRunProgress(run)
+                      : `${timeAgo(run.startedAt)} · ${run.nodeResults.length} nodes`}
+                  </p>
                 </div>
                 <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{formatDurationMs(computeRunDurationMs(run))}</Badge>
                 <StatusBadge status={run.status} />
@@ -192,59 +239,121 @@ export function ExecutionsPage() {
 
       {selected && (
         <Dialog open onOpenChange={(o) => !o && setSelectedId(null)}>
-          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden">
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5 text-primary" /> {selected.workflowName || 'Workflow'}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <StatusBadge status={selected.status} />
-                <span className="text-xs text-muted-foreground">Started {timeAgo(selected.startedAt)}</span>
-                <span className="text-xs text-muted-foreground">
-                  Duration: {formatDurationMs(computeRunDurationMs(selected))}
-                  {(selected.status === 'running' || selected.status === 'queued') && (
-                    <span className="ml-1 text-primary">(live)</span>
-                  )}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-destructive hover:text-destructive"
-                  onClick={() => setDeleteTargetId(selected.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </Button>
-              </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Node Results</p>
-                <div className="space-y-1">
-                  {selected.nodeResults.map((nr) => (
-                    <div key={nr.nodeId} className="flex items-center gap-3 rounded-lg border border-border p-2 text-xs">
-                      <NodeStatusIcon status={nr.status} />
-                      <span className="flex-1 truncate">{nodeLabel(nr.nodeId)}</span>
-                      <span className="font-mono text-[10px] text-muted-foreground">{nr.nodeId.slice(0, 8)}…</span>
-                      <span className="text-muted-foreground">{formatDurationMs(nr.duration)}</span>
-                    </div>
-                  ))}
+            <ScrollArea className="flex-1 pr-3">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-4">
+                  <StatusBadge status={selected.status} />
+                  <span className="text-xs text-muted-foreground">Started {timeAgo(selected.startedAt)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Duration: {formatDurationMs(computeRunDurationMs(selected))}
+                    {(selected.status === 'running' || selected.status === 'queued') && (
+                      <span className="ml-1 text-primary">(live)</span>
+                    )}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-destructive hover:text-destructive"
+                    onClick={() => setDeleteTargetId(selected.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </Button>
+                </div>
+
+                {selected.errorMessage && (
+                  <Card className="border-destructive/50">
+                    <CardContent className="py-3 text-sm text-destructive">{selected.errorMessage}</CardContent>
+                  </Card>
+                )}
+
+                {activeStep && (selected.status === 'running' || selected.status === 'queued') && (
+                  <Card className="border-primary/40 bg-primary/5">
+                    <CardContent className="flex items-start gap-3 py-4">
+                      <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-primary" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-primary">Running now</p>
+                        <p className="text-sm font-medium">{activeStep.name}</p>
+                        {activeStep.type && (
+                          <p className="text-xs text-muted-foreground">Type: {activeStep.type}</p>
+                        )}
+                        {activeStep.detail && !selected.batchProgress && (
+                          <p className="text-xs text-muted-foreground">{activeStep.detail}</p>
+                        )}
+                        {selected.batchProgress && (
+                          <p className="text-xs text-muted-foreground">
+                            Job {selected.batchProgress.index} of {selected.batchProgress.total} ({selected.batchProgress.node})
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Step started {timeAgo(activeStep.startedAt)} (
+                          {formatDurationMs(Date.now() - new Date(activeStep.startedAt).getTime())})
+                        </p>
+                        {activeStep.type === 'gemini' && (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Gemini tailoring can take 1–3 minutes per job. If this exceeds 5 minutes, check GEMINI_API_KEY and Edge Function logs.
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pipeline progress</p>
+                  <div className="space-y-1">
+                    {pipelineSteps.length > 0 ? (
+                      pipelineSteps.map((step) => <PipelineStepRow key={step.nodeId} step={step} />)
+                    ) : (
+                      selected.nodeResults.map((nr) => (
+                        <div key={nr.nodeId} className="flex items-center gap-3 rounded-lg border border-border p-2 text-xs">
+                          <NodeStatusIcon status={nr.status} />
+                          <span className="flex-1 truncate">{nr.nodeId}</span>
+                          <span className="text-muted-foreground">{formatDurationMs(nr.duration)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Logs</p>
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 font-mono text-xs space-y-1 max-h-56 overflow-y-auto">
+                    {selected.logs.map((log) => {
+                      const isHighlight =
+                        log.message.startsWith('Executing node:') ||
+                        log.message.startsWith('Processing item') ||
+                        log.message.startsWith('Completed node:') ||
+                        log.message.startsWith('Waiting until') ||
+                        log.level === 'error';
+                      return (
+                        <div
+                          key={log.id}
+                          className={`flex gap-2 rounded px-1 py-0.5 ${isHighlight ? 'bg-background/80' : ''}`}
+                        >
+                          <span className="text-muted-foreground shrink-0">
+                            {new Date(log.timestamp).toLocaleTimeString()}
+                          </span>
+                          <span className={
+                            log.level === 'error' ? 'text-destructive shrink-0'
+                              : log.message.startsWith('Completed node:') ? 'text-success shrink-0'
+                              : 'text-foreground shrink-0'
+                          }>
+                            [{log.level.toUpperCase()}]
+                          </span>
+                          <span className={log.level === 'error' ? 'text-destructive' : ''}>{log.message}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Logs</p>
-                <ScrollArea className="h-48 rounded-lg border border-border bg-muted/30 p-3">
-                  <div className="space-y-1 font-mono text-xs">
-                    {selected.logs.map((log) => (
-                      <div key={log.id} className="flex gap-2">
-                        <span className="text-muted-foreground">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                        <span className={log.level === 'error' ? 'text-destructive' : log.level === 'warn' ? 'text-warning' : 'text-foreground'}>[{log.level.toUpperCase()}]</span>
-                        <span>{log.message}</span>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            </div>
+            </ScrollArea>
           </DialogContent>
         </Dialog>
       )}

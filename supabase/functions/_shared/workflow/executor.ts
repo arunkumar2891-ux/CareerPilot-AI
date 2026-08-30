@@ -183,16 +183,28 @@ export async function executeWorkflow(
           continue;
         }
         const results: unknown[] = [];
-        for (const item of items) {
-          ctx.variables.currentItem = item;
-          const itemResult = await executor.execute(ctx, node, item, edges);
+        for (let i = 0; i < items.length; i++) {
+          ctx.variables.currentItem = items[i];
+          ctx.variables.batchProgress = { node: node.name, index: i + 1, total: items.length };
+          if (items.length > 1) {
+            await logStep(runId, userId, node.id, 'info', `Processing item ${i + 1}/${items.length}: ${node.name}`);
+          }
+          await saveRunContext(runId, ctx);
+          await touchRunDuration(admin, runId);
+          const itemResult = await executor.execute(ctx, node, items[i], edges);
           if (itemResult.status === 'failed') throw new Error(itemResult.error || 'Node failed');
           results.push(itemResult.output);
+          if (items.length > 1) {
+            await logStep(runId, userId, node.id, 'info', `Finished item ${i + 1}/${items.length}: ${node.name}`);
+          }
+          await saveRunContext(runId, ctx);
+          await touchRunDuration(admin, runId);
         }
         ctx.nodeOutputs[node.id] = results;
         const batchDuration = Date.now() - start;
         await recordNodeRun(admin, runId, userId, node.id, 'success', batchDuration, results);
         await touchRunDuration(admin, runId);
+        await logStep(runId, userId, node.id, 'info', `Completed node: ${node.name} (${node.type}) in ${batchDuration}ms`);
         await saveRunContext(runId, ctx);
         const nextId = getNextNodeId(node.id, edges);
         if (nextId) {
@@ -216,6 +228,7 @@ export async function executeWorkflow(
           status: 'pending',
         });
         await saveRunContext(runId, ctx);
+        await logStep(runId, userId, node.id, 'info', `Waiting until ${result.resumeAt.toISOString()}: ${node.name}`);
         return { runId, status: 'running' };
       }
 
@@ -223,6 +236,7 @@ export async function executeWorkflow(
 
       await recordNodeRun(admin, runId, userId, node.id, 'success', duration, result.output);
       await touchRunDuration(admin, runId);
+      await logStep(runId, userId, node.id, 'info', `Completed node: ${node.name} (${node.type}) in ${duration}ms`);
 
       ctx.nodeOutputs[node.id] = result.output;
 

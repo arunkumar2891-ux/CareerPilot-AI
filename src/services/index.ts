@@ -646,13 +646,20 @@ export class ExecutionService {
       .order('created_at', { ascending: false })
       .limit(20);
     if (error) throw error;
-    return (data || []).map((r) => ({
+    return (data || []).map((r) => {
+      const stored = (r.context as Record<string, unknown>) || {};
+      const variables = (stored.variables as Record<string, unknown>) || {};
+      const batchProgress = variables.batchProgress as { node: string; index: number; total: number } | undefined;
+      return {
       id: String(r.id),
       workflowId: String(r.workflow_id),
       status: (r.status as Workflow['runs'][number]['status']) ?? 'success',
       startedAt: (r.started_at as string) ?? '',
       finishedAt: r.finished_at as string | undefined,
       duration: Number(r.duration_ms ?? 0),
+      currentNodeId: r.current_node_id ? String(r.current_node_id) : undefined,
+      errorMessage: r.error_message ? String(r.error_message) : undefined,
+      batchProgress: batchProgress?.node ? batchProgress : undefined,
       nodeResults: mergeNodeResults(
         ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
           nodeId: String(n.node_id ?? ''),
@@ -669,7 +676,8 @@ export class ExecutionService {
         nodeId: l.node_id as string | undefined,
       })),
       workflowName: (r.workflow as Record<string, unknown>)?.name as string | undefined,
-    })) as unknown as Workflow['runs'];
+    };
+    }) as unknown as Workflow['runs'];
   }
   async runWorkflow(id: string): Promise<Workflow['runs'][number]> {
     const { data, error } = await supabase.functions.invoke('workflow-run', { body: { workflowId: id } });
