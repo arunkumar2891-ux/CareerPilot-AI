@@ -6,7 +6,7 @@ import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/promp
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildLinkedInJobSearchUrl, inferJobWorkplace, postedWithinCutoffIso } from '../job-url.ts';
-import { geminiGenerateContentUrl, callGeminiGenerateContent } from '../gemini.ts';
+import { callGeminiGenerateContent } from '../gemini.ts';
 
 function stripHtml(html: string): string {
   return html

@@ -668,13 +668,15 @@ export class ExecutionService {
           output: n.output as string | undefined,
         })),
       ),
-      logs: ((r.workflow_logs as Record<string, unknown>[]) ?? []).map((l) => ({
-        id: String(l.id),
-        level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',
-        message: String(l.message ?? ''),
-        timestamp: (l.timestamp as string) ?? '',
-        nodeId: l.node_id as string | undefined,
-      })),
+      logs: ((r.workflow_logs as Record<string, unknown>[]) ?? [])
+        .map((l) => ({
+          id: String(l.id),
+          level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',
+          message: String(l.message ?? ''),
+          timestamp: (l.timestamp as string) ?? '',
+          nodeId: l.node_id as string | undefined,
+        }))
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
       workflowName: (r.workflow as Record<string, unknown>)?.name as string | undefined,
     };
     }) as unknown as Workflow['runs'];

@@ -1,24 +1,11 @@
 import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
-import { geminiGenerateContentUrl } from '../_shared/gemini.ts';
+import { callGeminiGenerateContent } from '../_shared/gemini.ts';
 
 async function callGemini(messages: { role: string; content: string }[], systemPrompt?: string): Promise<string> {
-  const contents = messages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const body: Record<string, unknown> = { contents };
-  if (systemPrompt) body.system_instruction = { parts: [{ text: systemPrompt }] };
-
-  const res = await fetch(
-    geminiGenerateContentUrl(),
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-  );
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message || 'Gemini API error');
-  return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const userText = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n');
+  return await callGeminiGenerateContent(systemPrompt || 'You are a helpful assistant.', userText);
 }
 
 Deno.serve(async (req) => {

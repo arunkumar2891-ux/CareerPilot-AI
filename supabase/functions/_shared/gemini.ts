@@ -30,14 +30,14 @@ export async function callGeminiGenerateContent(
         body: JSON.stringify({
           system_instruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            thinkingConfig: { thinkingBudget: 0 },
-          },
         }),
       },
     );
     const json = await res.json();
-    if (!res.ok) throw new Error(json.error?.message || 'Gemini API error');
+    if (!res.ok) {
+      const detail = json.error?.message || JSON.stringify(json.error || json).slice(0, 300);
+      throw new Error(detail || 'Gemini API error');
+    }
     return json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
