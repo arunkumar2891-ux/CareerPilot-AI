@@ -6,6 +6,7 @@ import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/promp
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl } from '../job-url.ts';
+import { geminiGenerateContentUrl } from '../gemini.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -21,10 +22,8 @@ function stripHtml(html: string): string {
 }
 
 async function callGemini(systemPrompt: string, userPrompt: string): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    geminiGenerateContentUrl(),
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

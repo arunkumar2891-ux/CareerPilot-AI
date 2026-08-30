@@ -58,6 +58,51 @@ async function saveRunContext(runId: string, ctx: RunContext) {
   }).eq('id', runId);
 }
 
+async function touchRunDuration(admin: ReturnType<typeof createAdminClient>, runId: string) {
+  const { data: run } = await admin.from('workflow_runs').select('started_at').eq('id', runId).single();
+  if (!run?.started_at) return;
+  const duration = Date.now() - new Date(run.started_at as string).getTime();
+  await admin.from('workflow_runs').update({ duration_ms: duration }).eq('id', runId);
+}
+
+async function recordNodeRun(
+  admin: ReturnType<typeof createAdminClient>,
+  runId: string,
+  userId: string,
+  nodeId: string,
+  status: string,
+  durationMs: number,
+  output?: unknown,
+) {
+  const row = {
+    status,
+    duration_ms: durationMs,
+    output: output !== undefined ? JSON.stringify(output).slice(0, 10000) : null,
+  };
+  const { data: existing } = await admin
+    .from('workflow_run_nodes')
+    .select('id')
+    .eq('run_id', runId)
+    .eq('node_id', nodeId)
+    .maybeSingle();
+  if (existing?.id) {
+    await admin.from('workflow_run_nodes').update(row).eq('id', existing.id);
+  } else {
+    await admin.from('workflow_run_nodes').insert({
+      run_id: runId,
+      user_id: userId,
+      node_id: nodeId,
+      ...row,
+    });
+  }
+}
+
+async function runDurationMs(admin: ReturnType<typeof createAdminClient>, runId: string): Promise<number> {
+  const { data: run } = await admin.from('workflow_runs').select('started_at').eq('id', runId).single();
+  if (!run?.started_at) return 0;
+  return Date.now() - new Date(run.started_at as string).getTime();
+}
+
 export async function executeWorkflow(
   workflowId: string,
   userId: string,
@@ -125,6 +170,9 @@ export async function executeWorkflow(
         const items = inputData.filter((item) => item != null);
         if (items.length === 0) {
           ctx.nodeOutputs[node.id] = [];
+          const duration = Date.now() - start;
+          await recordNodeRun(admin, runId, userId, node.id, 'success', duration, []);
+          await touchRunDuration(admin, runId);
           await logStep(runId, userId, node.id, 'info', `Skipped: no items to process`);
           await saveRunContext(runId, ctx);
           const nextId = getNextNodeId(node.id, edges);
@@ -142,6 +190,9 @@ export async function executeWorkflow(
           results.push(itemResult.output);
         }
         ctx.nodeOutputs[node.id] = results;
+        const batchDuration = Date.now() - start;
+        await recordNodeRun(admin, runId, userId, node.id, 'success', batchDuration, results);
+        await touchRunDuration(admin, runId);
         await saveRunContext(runId, ctx);
         const nextId = getNextNodeId(node.id, edges);
         if (nextId) {
@@ -154,16 +205,9 @@ export async function executeWorkflow(
       const result = await executor.execute(ctx, node, inputData, edges);
       const duration = Date.now() - start;
 
-      await admin.from('workflow_run_nodes').insert({
-        run_id: runId,
-        user_id: userId,
-        node_id: node.id,
-        status: result.status === 'waiting' ? 'running' : result.status,
-        duration_ms: duration,
-        output: JSON.stringify(result.output).slice(0, 10000),
-      });
-
       if (result.status === 'waiting' && result.resumeAt) {
+        await recordNodeRun(admin, runId, userId, node.id, 'running', duration, result.output);
+        await touchRunDuration(admin, runId);
         await admin.from('workflow_step_queue').insert({
           run_id: runId,
           user_id: userId,
@@ -176,6 +220,9 @@ export async function executeWorkflow(
       }
 
       if (result.status === 'failed') throw new Error(result.error || 'Node failed');
+
+      await recordNodeRun(admin, runId, userId, node.id, 'success', duration, result.output);
+      await touchRunDuration(admin, runId);
 
       ctx.nodeOutputs[node.id] = result.output;
 
@@ -203,11 +250,14 @@ export async function executeWorkflow(
       await saveRunContext(runId, ctx);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const duration = await runDurationMs(admin, runId);
+      await recordNodeRun(admin, runId, userId, node.id, 'failed', duration);
       await logStep(runId, userId, node.id, 'error', message);
       await admin.from('workflow_runs').update({
         status: 'failed',
         finished_at: new Date().toISOString(),
         error_message: message,
+        duration_ms: duration,
       }).eq('id', runId);
       return { runId, status: 'failed' };
     }

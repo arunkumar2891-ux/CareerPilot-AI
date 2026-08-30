@@ -277,7 +277,12 @@ function mapProfile(row: Record<string, unknown>): UserProfile {
 
 export class JobSearchService {
   async list(_config?: Partial<JobSearchConfig>): Promise<Job[]> {
-    const { data, error } = await supabase.from('jobs').select('*').order('created_at', { ascending: false });
+    const userId = await requireUserId();
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
     if (error) throw error;
     return (data || []).map(mapJob);
   }
@@ -309,6 +314,19 @@ export class JobSearchService {
   async updateStatus(id: string, status: Job['status']): Promise<void> {
     const { error } = await supabase.from('jobs').update({ status }).eq('id', id);
     if (error) throw error;
+  }
+  async deleteAll(): Promise<number> {
+    const userId = await requireUserId();
+    const { data: jobs, error: listError } = await supabase.from('jobs').select('id').eq('user_id', userId);
+    if (listError) throw listError;
+    const jobIds = (jobs || []).map((j) => j.id as string);
+    if (jobIds.length) {
+      const { error: appError } = await supabase.from('applications').delete().in('job_id', jobIds);
+      if (appError) throw appError;
+    }
+    const { error, count } = await supabase.from('jobs').delete({ count: 'exact' }).eq('user_id', userId);
+    if (error) throw error;
+    return count ?? jobIds.length;
   }
 }
 
@@ -604,6 +622,22 @@ export class WorkflowService {
   }
 }
 
+function mergeNodeResults(
+  nodes: Workflow['runs'][number]['nodeResults'],
+): Workflow['runs'][number]['nodeResults'] {
+  const rank: Record<string, number> = { success: 4, failed: 3, running: 2, queued: 1, idle: 0, paused: 0 };
+  const byNode = new Map<string, Workflow['runs'][number]['nodeResults'][number]>();
+  for (const n of nodes) {
+    const existing = byNode.get(n.nodeId);
+    const nRank = rank[n.status] ?? 0;
+    const eRank = existing ? rank[existing.status] ?? 0 : -1;
+    if (!existing || nRank > eRank || (nRank === eRank && n.duration > existing.duration)) {
+      byNode.set(n.nodeId, n);
+    }
+  }
+  return Array.from(byNode.values());
+}
+
 export class ExecutionService {
   async listRuns(): Promise<Workflow['runs']> {
     const { data, error } = await supabase
@@ -619,12 +653,14 @@ export class ExecutionService {
       startedAt: (r.started_at as string) ?? '',
       finishedAt: r.finished_at as string | undefined,
       duration: Number(r.duration_ms ?? 0),
-      nodeResults: ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
-        nodeId: String(n.node_id ?? ''),
-        status: (n.status as Workflow['runs'][number]['nodeResults'][number]['status']) ?? 'success',
-        duration: Number(n.duration_ms ?? 0),
-        output: n.output as string | undefined,
-      })),
+      nodeResults: mergeNodeResults(
+        ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
+          nodeId: String(n.node_id ?? ''),
+          status: (n.status as Workflow['runs'][number]['nodeResults'][number]['status']) ?? 'success',
+          duration: Number(n.duration_ms ?? 0),
+          output: n.output as string | undefined,
+        })),
+      ),
       logs: ((r.workflow_logs as Record<string, unknown>[]) ?? []).map((l) => ({
         id: String(l.id),
         level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',

@@ -20,6 +20,22 @@ export function formatDateTime(iso: string): string {
   }
 }
 
+export function computeRunDurationMs(run: {
+  startedAt: string;
+  duration: number;
+  status: string;
+}): number {
+  if (run.status === 'running' || run.status === 'queued') {
+    const elapsed = Date.now() - new Date(run.startedAt).getTime();
+    return elapsed > 0 ? elapsed : run.duration;
+  }
+  return run.duration;
+}
+
+export function formatDurationMs(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 export function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);

@@ -1,11 +1,9 @@
 import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
+import { geminiGenerateContentUrl } from '../_shared/gemini.ts';
 
 async function callGemini(messages: { role: string; content: string }[], systemPrompt?: string): Promise<string> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
-
   const contents = messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
@@ -15,7 +13,7 @@ async function callGemini(messages: { role: string; content: string }[], systemP
   if (systemPrompt) body.system_instruction = { parts: [{ text: systemPrompt }] };
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    geminiGenerateContentUrl(),
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
   );
   const json = await res.json();

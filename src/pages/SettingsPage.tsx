@@ -194,6 +194,7 @@ export function SettingsPage() {
               <ul className="list-disc space-y-1 pl-5">
                 <li><code>APIFY_TOKEN</code> — Apify API token</li>
                 <li><code>GEMINI_API_KEY</code> — Google Gemini API key</li>
+                <li><code>GEMINI_MODEL</code> — optional; defaults to <code>gemini-3.6-flash</code></li>
                 <li><code>RESEND_API_KEY</code> — Resend email API key</li>
                 <li><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> — Google OAuth</li>
                 <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — Service role key</li>

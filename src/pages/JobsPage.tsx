@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Briefcase, MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
-  Table as TableIcon, Zap, RefreshCw, ExternalLink, Copy, FileText, SearchX,
+  Table as TableIcon, Zap, RefreshCw, ExternalLink, Copy, FileText, SearchX, Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -16,7 +16,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { services } from '@/services';
 import { JOB_BOARDS, EXPERIENCE_LEVELS } from '@/constants';
@@ -31,10 +31,12 @@ export function JobsPage() {
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [filters, setFilters] = useState({
     keywords: '',
     location: '',
-    remote: true,
+    remote: false,
     hybrid: false,
     experience: '',
     salaryMin: '',
@@ -43,7 +45,7 @@ export function JobsPage() {
     maxJobs: '30',
   });
 
-  const { data: jobs, isLoading } = useQuery({ queryKey: ['jobs'], queryFn: () => services.jobSearch.list() });
+  const { data: jobs, isLoading, error: jobsError } = useQuery({ queryKey: ['jobs'], queryFn: () => services.jobSearch.list() });
 
   const filtered = (jobs || []).filter((j) => {
     if (search && !j.role.toLowerCase().includes(search.toLowerCase()) && !j.company.toLowerCase().includes(search.toLowerCase())) return false;
@@ -66,6 +68,20 @@ export function JobsPage() {
     }
   };
 
+  const clearAllJobs = async () => {
+    setClearing(true);
+    try {
+      const count = await services.jobSearch.deleteAll();
+      await qc.invalidateQueries({ queryKey: ['jobs', 'applications', 'metrics'] });
+      toast.success(`Deleted ${count} job${count === 1 ? '' : 's'} from Supabase`);
+      setShowClearConfirm(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete jobs');
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const columns = [
     { key: 'discovered', label: 'Discovered', status: 'discovered' },
     { key: 'queued', label: 'Queued', status: 'queued' },
@@ -81,11 +97,53 @@ export function JobsPage() {
         title="Job Discovery"
         description="Autonomous job search across multiple boards"
         actions={
-          <Button onClick={runSearch} className="gap-2">
-            <Zap className="h-4 w-4" /> Run Search
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowClearConfirm(true)} className="gap-2" disabled={!jobs?.length}>
+              <Trash2 className="h-4 w-4" /> Clear All Jobs
+            </Button>
+            <Button onClick={runSearch} className="gap-2">
+              <Zap className="h-4 w-4" /> Run Search
+            </Button>
+          </div>
         }
       />
+
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete all jobs?</DialogTitle>
+            <DialogDescription>
+              This removes every job from the app and Supabase for your account, including linked applications. Tailored resumes are kept.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearConfirm(false)} disabled={clearing}>Cancel</Button>
+            <Button variant="destructive" onClick={clearAllJobs} disabled={clearing} className="gap-2">
+              {clearing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete all jobs
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {jobsError && (
+        <Card className="border-destructive/50">
+          <CardContent className="py-3 text-sm text-destructive">
+            Could not load jobs: {jobsError instanceof Error ? jobsError.message : 'Unknown error'}
+          </CardContent>
+        </Card>
+      )}
+
+      {!isLoading && jobs && jobs.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          Showing {filtered.length} of {jobs.length} jobs
+          {filtered.length < jobs.length && (
+            <Button variant="link" className="h-auto p-0 pl-1 text-sm" onClick={() => setFilters({ ...filters, remote: false, hybrid: false })}>
+              Clear filters
+            </Button>
+          )}
+        </p>
+      )}
 
       <Card>
         <CardContent className="pt-6">
@@ -140,8 +198,8 @@ export function JobsPage() {
                 <Input type="number" value={filters.maxJobs} onChange={(e) => setFilters({ ...filters, maxJobs: e.target.value })} />
               </div>
               <div className="flex items-center gap-4 pt-6">
-                <div className="flex items-center gap-2"><Switch checked={filters.remote} onCheckedChange={(c) => setFilters({ ...filters, remote: c })} /><Label className="text-xs">Remote</Label></div>
-                <div className="flex items-center gap-2"><Switch checked={filters.hybrid} onCheckedChange={(c) => setFilters({ ...filters, hybrid: c })} /><Label className="text-xs">Hybrid</Label></div>
+                <div className="flex items-center gap-2"><Switch checked={filters.remote} onCheckedChange={(c) => setFilters({ ...filters, remote: c })} /><Label className="text-xs">Remote only</Label></div>
+                <div className="flex items-center gap-2"><Switch checked={filters.hybrid} onCheckedChange={(c) => setFilters({ ...filters, hybrid: c })} /><Label className="text-xs">Hybrid only</Label></div>
               </div>
             </motion.div>
           )}
@@ -152,7 +210,16 @@ export function JobsPage() {
         filtered.length === 0 ? (
           <Card>
             <CardContent>
-              <EmptyState icon={SearchX} title="No jobs found" description="Run a search or adjust your filters to discover jobs." action={<Button onClick={runSearch} className="gap-2"><Zap className="h-4 w-4" /> Run Search</Button>} />
+              <EmptyState
+                icon={SearchX}
+                title={jobs?.length ? 'No jobs match your filters' : 'No jobs found'}
+                description={
+                  jobs?.length
+                    ? 'Turn off Remote/Hybrid filters or clear filters to see all jobs.'
+                    : 'Run a search to discover jobs, or check that jobs in Supabase belong to your signed-in user.'
+                }
+                action={<Button onClick={runSearch} className="gap-2"><Zap className="h-4 w-4" /> Run Search</Button>}
+              />
             </CardContent>
           </Card>
         ) : (
