@@ -69,7 +69,7 @@ export function ExecutionsPage() {
                   : run.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" />
                   : <Loader2 className="h-4 w-4 animate-spin text-primary" />}
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium">{run.workflowName}</p>
+                  <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
                   <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} · {run.nodeResults.length} nodes</p>
                 </div>
                 <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{formatDurationMs(computeRunDurationMs(run))}</Badge>
@@ -85,7 +85,7 @@ export function ExecutionsPage() {
         <Dialog open onOpenChange={(o) => !o && setSelectedId(null)}>
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> {selected.workflowName}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-primary" /> {selected.workflowName || 'Workflow'}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="flex items-center gap-4">

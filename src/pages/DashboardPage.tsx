@@ -120,7 +120,7 @@ export function DashboardPage() {
                   : run.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" />
                   : <Play className="h-4 w-4 text-primary" />}
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium">{(run as any).workflowName || 'Workflow'}</p>
+                  <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
                   <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} · {formatDurationMs(computeRunDurationMs(run))}</p>
                 </div>
                 <StatusBadge status={run.status} />

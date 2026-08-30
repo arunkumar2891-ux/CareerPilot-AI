@@ -184,6 +184,7 @@ export interface WorkflowEdge {
 export interface WorkflowRun {
   id: string;
   workflowId: string;
+  workflowName?: string;
   status: WorkflowRunStatus;
   startedAt: string;
   finishedAt?: string;
