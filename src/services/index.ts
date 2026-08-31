@@ -625,7 +625,7 @@ export class WorkflowService {
 function mergeNodeResults(
   nodes: Workflow['runs'][number]['nodeResults'],
 ): Workflow['runs'][number]['nodeResults'] {
-  const rank: Record<string, number> = { success: 4, failed: 3, running: 2, queued: 1, idle: 0, paused: 0 };
+  const rank: Record<string, number> = { success: 4, failed: 3, cancelled: 3, running: 2, queued: 1, idle: 0, paused: 0 };
   const byNode = new Map<string, Workflow['runs'][number]['nodeResults'][number]>();
   for (const n of nodes) {
     const existing = byNode.get(n.nodeId);
@@ -698,6 +698,13 @@ export class ExecutionService {
       };
     }
     return run;
+  }
+  async cancelRun(runId: string): Promise<void> {
+    const { data, error } = await supabase.functions.invoke('workflow-cancel', { body: { runId } });
+    if (error) throw error;
+    if (data && typeof data === 'object' && 'error' in data && data.error) {
+      throw new Error(String(data.error));
+    }
   }
   async deleteRun(runId: string): Promise<void> {
     const userId = await requireUserId();

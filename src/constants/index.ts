@@ -67,6 +67,7 @@ export const STATUS_COLORS: Record<string, string> = {
   running: 'bg-primary/15 text-primary',
   success: 'bg-success/15 text-success',
   failed: 'bg-destructive/15 text-destructive',
+  cancelled: 'bg-warning/15 text-warning',
   paused: 'bg-muted text-muted-foreground',
   idle: 'bg-muted text-muted-foreground',
   active: 'bg-success/15 text-success',

@@ -22,6 +22,7 @@ export type WorkflowRunStatus =
   | 'running'
   | 'success'
   | 'failed'
+  | 'cancelled'
   | 'paused'
   | 'queued';
 

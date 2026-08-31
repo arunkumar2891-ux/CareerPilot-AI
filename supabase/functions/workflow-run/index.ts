@@ -3,7 +3,8 @@ import { createRun, executeWorkflow } from '../_shared/workflow/executor.ts';
 
 async function markRunFailed(runId: string, message: string) {
   const admin = createAdminClient();
-  const { data: run } = await admin.from('workflow_runs').select('started_at').eq('id', runId).single();
+  const { data: run } = await admin.from('workflow_runs').select('started_at, status').eq('id', runId).single();
+  if (run?.status === 'cancelled') return;
   const duration = run?.started_at
     ? Date.now() - new Date(run.started_at as string).getTime()
     : 0;

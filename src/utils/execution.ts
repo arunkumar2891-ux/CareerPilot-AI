@@ -50,7 +50,18 @@ export function getActiveExecutionStep(run: WorkflowRun): ActiveExecutionStep | 
 
   const execMatch = anchor.message.match(/Executing node:\s*(.+?)\s*\(([^)]+)\)/);
   const procMatch = anchor.message.match(/Processing item (\d+)\/(\d+):\s*(.+)/);
+  const jobPipelineMatch = anchor.message.match(/\[job (\d+)\/(\d+)\]/);
   const waitMatch = anchor.message.match(/Waiting until .+:\s*(.+)/);
+
+  if (jobPipelineMatch && execMatch) {
+    return {
+      nodeId: anchor.nodeId,
+      name: execMatch[1].trim(),
+      type: execMatch[2],
+      detail: `Job ${jobPipelineMatch[1]} of ${jobPipelineMatch[2]}`,
+      startedAt: anchor.timestamp,
+    };
+  }
 
   if (procMatch) {
     return {

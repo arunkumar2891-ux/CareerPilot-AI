@@ -2,6 +2,12 @@ import { createAdminClient } from '../supabase-admin.ts';
 import { getUserSettings } from '../credentials.ts';
 import { getEntryNodes, getNextNodeId } from './graph.ts';
 import { getExecutor } from './nodes.ts';
+import {
+  buildPerJobPipelineChain,
+  executePerJobPipeline,
+  isJobPipelineStart,
+} from './job-pipeline.ts';
+import { RunCancelledError, assertRunActive, isRunCancelled } from './run-lifecycle.ts';
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 
 export async function loadWorkflow(workflowId: string, userId: string) {
@@ -48,6 +54,49 @@ async function logStep(
     message,
     timestamp: new Date().toISOString(),
   });
+}
+
+export async function cancelWorkflowRun(runId: string, userId: string): Promise<{ status: string }> {
+  const admin = createAdminClient();
+  const { data: run, error } = await admin
+    .from('workflow_runs')
+    .select('*')
+    .eq('id', runId)
+    .eq('user_id', userId)
+    .single();
+  if (error || !run) throw new Error('Run not found');
+  if (run.status !== 'running' && run.status !== 'queued') {
+    throw new Error(`Cannot stop run with status: ${run.status}`);
+  }
+
+  const duration = run.started_at
+    ? Date.now() - new Date(run.started_at as string).getTime()
+    : 0;
+
+  await admin.from('workflow_runs').update({
+    status: 'cancelled',
+    finished_at: new Date().toISOString(),
+    error_message: 'Stopped by user',
+    duration_ms: duration,
+    current_node_id: null,
+  }).eq('id', runId);
+
+  await admin.from('workflow_step_queue').delete().eq('run_id', runId);
+
+  let logNodeId = run.current_node_id as string | null;
+  if (!logNodeId) {
+    const { data: nodes } = await admin
+      .from('workflow_nodes')
+      .select('id')
+      .eq('workflow_id', run.workflow_id)
+      .limit(1);
+    logNodeId = (nodes?.[0]?.id as string) || null;
+  }
+  if (logNodeId) {
+    await logStep(runId, userId, logNodeId, 'warn', 'Execution stopped by user');
+  }
+
+  return { status: 'cancelled' };
 }
 
 async function saveRunContext(runId: string, ctx: RunContext) {
@@ -147,6 +196,7 @@ export async function executeWorkflow(
 
   while (queue.length && iterations < maxIterations) {
     iterations++;
+    await assertRunActive(admin, runId);
     const node = queue.shift()!;
     if (visited.has(node.id) && !resumeNodeId) continue;
     visited.add(node.id);
@@ -161,6 +211,41 @@ export async function executeWorkflow(
     try {
       const executor = getExecutor(node.type);
       let inputData = prevOutput;
+
+      // Run each job through Store → ATS → LaTeX → PDF → Storage → Drive before the next job starts.
+      if (Array.isArray(inputData) && isJobPipelineStart(node)) {
+        const chain = buildPerJobPipelineChain(node.id, nodes, edges);
+        const items = inputData.filter((item) => item != null);
+        if (chain.length > 0 && items.length > 0) {
+          const pipelineHelpers = {
+            logStep,
+            saveRunContext,
+            touchRunDuration,
+            recordNodeRun,
+          };
+          const results = await executePerJobPipeline(
+            runId,
+            userId,
+            ctx,
+            chain,
+            items,
+            edges,
+            admin,
+            pipelineHelpers,
+          );
+          for (const chainNode of chain) visited.add(chainNode.id);
+          ctx.nodeOutputs[node.id] = results;
+          const tail = chain[chain.length - 1];
+          ctx.nodeOutputs[tail.id] = results;
+          await saveRunContext(runId, ctx);
+          const nextId = getNextNodeId(tail.id, edges);
+          if (nextId) {
+            const nextNode = nodes.find((n) => n.id === nextId);
+            if (nextNode) queue.push(nextNode);
+          }
+          continue;
+        }
+      }
 
       // Process array items sequentially for per-job nodes
       const perItemTypes = ['gemini', 'resume_optimizer', 'supabase', 'function', 'pdf', 'storage', 'gdrive'];
@@ -184,6 +269,7 @@ export async function executeWorkflow(
         }
         const results: unknown[] = [];
         for (let i = 0; i < items.length; i++) {
+          await assertRunActive(admin, runId);
           ctx.variables.currentItem = items[i];
           ctx.variables.batchProgress = { node: node.name, index: i + 1, total: items.length };
           if (items.length > 1) {
@@ -263,6 +349,9 @@ export async function executeWorkflow(
 
       await saveRunContext(runId, ctx);
     } catch (err) {
+      if (err instanceof RunCancelledError || await isRunCancelled(admin, runId)) {
+        return { runId, status: 'cancelled' };
+      }
       const message = err instanceof Error ? err.message : String(err);
       const duration = await runDurationMs(admin, runId);
       await recordNodeRun(admin, runId, userId, node.id, 'failed', duration);
@@ -275,6 +364,10 @@ export async function executeWorkflow(
       }).eq('id', runId);
       return { runId, status: 'failed' };
     }
+  }
+
+  if (await isRunCancelled(admin, runId)) {
+    return { runId, status: 'cancelled' };
   }
 
   const started = await admin.from('workflow_runs').select('started_at').eq('id', runId).single();
@@ -310,8 +403,16 @@ export async function processDueSteps(): Promise<number> {
 
   for (const step of steps) {
     await admin.from('workflow_step_queue').update({ status: 'processing' }).eq('id', step.id);
-    const { data: run } = await admin.from('workflow_runs').select('workflow_id, user_id, current_node_id').eq('id', step.run_id).single();
+    const { data: run } = await admin
+      .from('workflow_runs')
+      .select('workflow_id, user_id, current_node_id, status')
+      .eq('id', step.run_id)
+      .single();
     if (!run) continue;
+    if (run.status === 'cancelled') {
+      await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
+      continue;
+    }
 
     const { nodes, edges } = await loadWorkflow(run.workflow_id, run.user_id);
     const currentNode = nodes.find((n) => n.id === step.node_id);

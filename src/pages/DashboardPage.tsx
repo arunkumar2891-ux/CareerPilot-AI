@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import {
   Briefcase, FileCheck, Send, FileText, Sparkles, Activity,
   TrendingUp, Zap, ArrowRight, Play, Clock, CheckCircle2,
-  XCircle, AlertCircle, Inbox,
+  XCircle, AlertCircle, Inbox, StopCircle,
 } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -118,7 +118,9 @@ export function DashboardPage() {
               <div key={run.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
                 {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 text-success" />
                   : run.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" />
-                  : <Play className="h-4 w-4 text-primary" />}
+                  : run.status === 'cancelled' ? <StopCircle className="h-4 w-4 text-warning" />
+                  : run.status === 'running' || run.status === 'queued' ? <Play className="h-4 w-4 text-primary" />
+                  : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
                   <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} · {formatDurationMs(computeRunDurationMs(run))}</p>

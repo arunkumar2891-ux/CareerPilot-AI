@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Clock, CheckCircle2, XCircle, AlertCircle, Activity,
-  ChevronRight, Inbox, Loader2, Trash2, RefreshCw,
+  ChevronRight, Inbox, Loader2, Trash2, RefreshCw, StopCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -28,6 +28,7 @@ import type { WorkflowRun, WorkflowRunStatus } from '@/types';
 function NodeStatusIcon({ status }: { status: WorkflowRunStatus | 'pending' }) {
   if (status === 'success') return <CheckCircle2 className="h-3.5 w-3.5 text-success" />;
   if (status === 'failed') return <XCircle className="h-3.5 w-3.5 text-destructive" />;
+  if (status === 'cancelled') return <StopCircle className="h-3.5 w-3.5 text-warning" />;
   if (status === 'running' || status === 'queued') {
     return <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />;
   }
@@ -69,6 +70,9 @@ export function ExecutionsPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+
+  const isActiveRun = (status: WorkflowRunStatus) => status === 'running' || status === 'queued';
 
   const allRuns = (runs || []).slice(0, 20);
   const selected = selectedId ? allRuns.find((r) => r.id === selectedId) : null;
@@ -91,6 +95,19 @@ export function ExecutionsPage() {
 
   const refreshRuns = async () => {
     await qc.invalidateQueries({ queryKey: ['runs'] });
+  };
+
+  const stopRun = async (runId: string) => {
+    setStoppingRunId(runId);
+    try {
+      await services.execution.cancelRun(runId);
+      await refreshRuns();
+      toast.success('Execution stopped');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to stop execution');
+    } finally {
+      setStoppingRunId(null);
+    }
   };
 
   const deleteRun = async (runId: string) => {
@@ -207,16 +224,35 @@ export function ExecutionsPage() {
               <CardContent className="flex items-center gap-4 py-3">
                 {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 text-success" />
                   : run.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" />
-                  : <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                  : run.status === 'cancelled' ? <StopCircle className="h-4 w-4 text-warning" />
+                  : isActiveRun(run.status) ? <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                  : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {run.status === 'running' || run.status === 'queued'
+                    {isActiveRun(run.status)
                       ? describeRunProgress(run)
                       : `${timeAgo(run.startedAt)} · ${run.nodeResults.length} nodes`}
                   </p>
                 </div>
                 <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{formatDurationMs(computeRunDurationMs(run))}</Badge>
+                {isActiveRun(run.status) && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    disabled={stoppingRunId === run.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      stopRun(run.id);
+                    }}
+                    aria-label="Stop execution"
+                  >
+                    {stoppingRunId === run.id
+                      ? <RefreshCw className="h-4 w-4 animate-spin" />
+                      : <StopCircle className="h-4 w-4 text-warning" />}
+                  </Button>
+                )}
                 <StatusBadge status={run.status} />
                 <Button
                   variant="ghost"
@@ -252,10 +288,24 @@ export function ExecutionsPage() {
                   <span className="text-xs text-muted-foreground">Started {timeAgo(selected.startedAt)}</span>
                   <span className="text-xs text-muted-foreground">
                     Duration: {formatDurationMs(computeRunDurationMs(selected))}
-                    {(selected.status === 'running' || selected.status === 'queued') && (
+                    {isActiveRun(selected.status) && (
                       <span className="ml-1 text-primary">(live)</span>
                     )}
                   </span>
+                  {isActiveRun(selected.status) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={stoppingRunId === selected.id}
+                      onClick={() => stopRun(selected.id)}
+                    >
+                      {stoppingRunId === selected.id
+                        ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        : <StopCircle className="h-3.5 w-3.5 text-warning" />}
+                      Stop
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -272,7 +322,7 @@ export function ExecutionsPage() {
                   </Card>
                 )}
 
-                {activeStep && (selected.status === 'running' || selected.status === 'queued') && (
+                {activeStep && isActiveRun(selected.status) && (
                   <Card className="border-primary/40 bg-primary/5">
                     <CardContent className="flex items-start gap-3 py-4">
                       <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-primary" />
@@ -296,7 +346,7 @@ export function ExecutionsPage() {
                         </p>
                         {activeStep.type === 'gemini' && (
                           <p className="mt-2 text-xs text-muted-foreground">
-                            Gemini tailoring can take 1–3 minutes per job. If this exceeds 5 minutes, check GEMINI_API_KEY and Edge Function logs.
+                            Each job runs Store → ATS → PDF independently. Completed jobs are not blocked by slower ones. Gemini may take 1–3 min per job (120s timeout).
                           </p>
                         )}
                       </div>
@@ -330,7 +380,9 @@ export function ExecutionsPage() {
                         log.message.startsWith('Processing item') ||
                         log.message.startsWith('Completed node:') ||
                         log.message.startsWith('Waiting until') ||
-                        log.level === 'error';
+                        log.message.includes('stopped by user') ||
+                        log.level === 'error' ||
+                        log.level === 'warn';
                       return (
                         <div
                           key={log.id}
@@ -341,12 +393,17 @@ export function ExecutionsPage() {
                           </span>
                           <span className={
                             log.level === 'error' ? 'text-destructive shrink-0'
+                              : log.level === 'warn' ? 'text-warning shrink-0'
                               : log.message.startsWith('Completed node:') ? 'text-success shrink-0'
                               : 'text-foreground shrink-0'
                           }>
                             [{log.level.toUpperCase()}]
                           </span>
-                          <span className={log.level === 'error' ? 'text-destructive' : ''}>{log.message}</span>
+                          <span className={
+                            log.level === 'error' ? 'text-destructive'
+                              : log.level === 'warn' ? 'text-warning'
+                              : ''
+                          }>{log.message}</span>
                         </div>
                       );
                     })}
