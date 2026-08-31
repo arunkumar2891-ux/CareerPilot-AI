@@ -5,7 +5,7 @@ import { createAdminClient } from '../supabase-admin.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
-import { flattenJobItems, normalizeLinkedInJobUrl, buildLinkedInJobSearchUrl, inferJobWorkplace, postedWithinCutoffIso } from '../job-url.ts';
+import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 
 function stripHtml(html: string): string {
@@ -47,10 +47,19 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const action = node.config.action as string;
       if (action === 'build_linkedin_url') {
         const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
-        const query = node.config.query as string || jobSearch.query || 'Software Engineer';
+        const query = expandJobSearchQuery(node.config.query as string || jobSearch.query || 'Software Engineer');
         const location = node.config.location as string || jobSearch.location || 'United States';
-        const linkedinUrl = buildLinkedInJobSearchUrl(query, location, jobSearch.postedWithin);
-        return { output: { linkedinUrl, query, location, postedWithin: jobSearch.postedWithin || '1d' }, status: 'success' };
+        const apifyInput = buildApifyJobSearchInput(query, location, jobSearch.postedWithin);
+        return {
+          output: {
+            linkedinUrl: apifyInput.linkedinUrl,
+            query,
+            location,
+            datePosted: apifyInput.datePosted,
+            postedWithin: jobSearch.postedWithin || '1d',
+          },
+          status: 'success',
+        };
       }
       if (action === 'limit') {
         const items = Array.isArray(input) ? input : (Array.isArray(ctx.items) ? ctx.items : [input]);
@@ -88,8 +97,10 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const jobs: Record<string, unknown>[] = [];
         const seen = new Set<string>();
         const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
+        const searchQuery = expandJobSearchQuery(jobSearch.query || '');
         const postedCutoff = postedWithinCutoffIso(jobSearch.postedWithin);
         ctx.variables.jobsScraped = rawItems.length;
+        let skippedQuery = 0;
         for (const j of rawItems) {
           const jobLink = normalizeLinkedInJobUrl(String(j.link || j.jobUrl || j.url || ''));
           if (seen.has(jobLink) || !jobLink) continue;
@@ -114,8 +125,13 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             if (fallback.length >= 20) jobDescription = fallback;
           }
           if (!jobDescription || jobDescription.length < 20) continue;
+          const title = String(j.title || 'No Title');
+          if (searchQuery && !jobMatchesSearchQuery(title, jobDescription, searchQuery)) {
+            skippedQuery++;
+            continue;
+          }
           jobs.push({
-            title: j.title || 'No Title',
+            title,
             company: j.companyName || j.company || 'Unknown Company',
             location: j.location || 'Unknown Location',
             postedAt,
@@ -128,6 +144,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           seen.add(jobLink);
           if (jobs.length >= 20) break;
         }
+        ctx.variables.jobsSkippedQueryMismatch = skippedQuery;
         ctx.variables.jobsParsed = jobs.length;
         return { output: jobs, status: 'success' };
       }
@@ -151,7 +168,10 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           if (scraped === 0) {
             detail = 'Apify returned no job listings for your LinkedIn search URL. Try broadening location or keywords in Settings.';
           } else if (parsed === 0) {
-            detail = `Apify returned ${scraped} listings but none could be parsed into jobs (missing descriptions or links).`;
+            const skippedQuery = Number(ctx.variables.jobsSkippedQueryMismatch ?? 0);
+            detail = skippedQuery > 0
+              ? `Apify returned ${scraped} listings but ${skippedQuery} did not match your search query — try a more specific title in Settings.`
+              : `Apify returned ${scraped} listings but none could be parsed into jobs (missing descriptions or links).`;
           } else if (afterDedupe === 0 && skippedDuplicate > 0) {
             detail = `All ${skippedDuplicate} new job(s) were already in your jobs table — no new listings to process.`;
           } else if (afterDedupe === 0 && skippedNoLink > 0) {
@@ -191,25 +211,41 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const actorId = String(node.config.actorId || 'curious_coder~linkedin-jobs-scraper');
 
       if (action === 'start_run') {
-        let linkedinUrl = (input as Record<string, unknown>)?.linkedinUrl as string | undefined;
-        if (!linkedinUrl) {
+        const prev = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+        let linkedinUrl = prev.linkedinUrl as string | undefined;
+        let query = prev.query as string | undefined;
+        let location = prev.location as string | undefined;
+        if (!linkedinUrl || !query) {
           for (const out of Object.values(ctx.nodeOutputs)) {
             const o = out as Record<string, unknown>;
-            if (o?.linkedinUrl) { linkedinUrl = String(o.linkedinUrl); break; }
+            if (o?.linkedinUrl && !linkedinUrl) linkedinUrl = String(o.linkedinUrl);
+            if (o?.query && !query) query = String(o.query);
+            if (o?.location && !location) location = String(o.location);
           }
         }
         const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
         const scrapeLimit = Number(
           jobSearch.maxJobs || (node.config.limitPerSource ?? node.config.count ?? 10),
         );
+        const apifyInput = buildApifyJobSearchInput(
+          query || jobSearch.query || 'Software Engineer',
+          location || jobSearch.location || 'United States',
+          jobSearch.postedWithin,
+          scrapeLimit,
+        );
+        ctx.variables.jobSearchQuery = apifyInput.keywords;
+        ctx.variables.linkedinSearchUrl = apifyInput.linkedinUrl;
+
         const res = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            urls: [linkedinUrl],
+            keywords: apifyInput.keywords,
+            location: apifyInput.location,
+            datePosted: apifyInput.datePosted,
             scrapeCompany: true,
             autoConvertToAiSearch: true,
-            limitPerSource: scrapeLimit,
+            limitPerSource: apifyInput.limitPerSource ?? scrapeLimit,
           }),
         });
         const json = await res.json();

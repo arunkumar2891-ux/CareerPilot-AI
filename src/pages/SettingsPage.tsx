@@ -150,7 +150,13 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground">Used by the built-in Daily Job Search Pipeline (auto-provisioned on login).</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-1.5"><Label>Search Query</Label><Input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="AI Product Manager" /></div>
+              <div className="space-y-1.5">
+                <Label>Search Query</Label>
+                <Input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="Forward Deployed Engineer" />
+                <p className="text-xs text-muted-foreground">
+                  Job title keywords sent to LinkedIn (e.g. Forward Deployed Engineer). Short aliases like FDE work too. Irrelevant results are filtered after scrape.
+                </p>
+              </div>
               <div className="space-y-1.5"><Label>Location</Label><Input value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="San Francisco, CA" /></div>
               <div className="space-y-1.5">
                 <Label>Posted within</Label>

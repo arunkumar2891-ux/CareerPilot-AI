@@ -61,6 +61,71 @@ const POSTED_WITHIN_TO_SECONDS: Record<string, number | null> = {
 
 export const DEFAULT_JOB_POSTED_WITHIN = '1d';
 
+const QUERY_ALIASES: Record<string, string> = {
+  fde: 'Forward Deployed Engineer',
+  fd: 'Forward Deployed Engineer',
+  'forward deployment engineer': 'Forward Deployed Engineer',
+  'forward deployed engineer': 'Forward Deployed Engineer',
+  genai: 'Generative AI Engineer',
+  swe: 'Software Engineer',
+  sde: 'Software Development Engineer',
+  pm: 'Product Manager',
+  em: 'Engineering Manager',
+};
+
+/** Expand short role aliases (e.g. FDE) before searching LinkedIn. */
+export function expandJobSearchQuery(query: string): string {
+  const trimmed = String(query || '').trim();
+  if (!trimmed) return 'Software Engineer';
+  const aliasKey = trimmed.toLowerCase();
+  if (QUERY_ALIASES[aliasKey]) return QUERY_ALIASES[aliasKey];
+  return trimmed;
+}
+
+export function extractSearchTerms(query: string): string[] {
+  const expanded = expandJobSearchQuery(query);
+  return expanded
+    .toLowerCase()
+    .split(/[^a-z0-9+#.]+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 3)
+    .filter((w) => !['and', 'the', 'for', 'with'].includes(w));
+}
+
+/** Post-filter scraped jobs so location-only LinkedIn results do not pollute the pipeline. */
+export function jobMatchesSearchQuery(title: string, description: string, query: string): boolean {
+  const terms = extractSearchTerms(query);
+  if (terms.length === 0) return true;
+
+  const expanded = expandJobSearchQuery(query).toLowerCase().trim();
+  const hay = `${title} ${description}`.toLowerCase();
+  const titleLower = title.toLowerCase();
+
+  if (expanded.length >= 10 && hay.includes(expanded)) return true;
+
+  const titleHits = terms.filter((t) => titleLower.includes(t)).length;
+  const totalHits = terms.filter((t) => hay.includes(t)).length;
+
+  if (terms.length === 1) return titleHits >= 1 || totalHits >= 1;
+  if (terms.length === 2) return titleHits >= 1 || totalHits >= 2;
+  return titleHits >= 2 || totalHits >= Math.ceil(terms.length * 0.67);
+}
+
+const POSTED_WITHIN_TO_APIFY: Record<string, string> = {
+  '1d': 'past24Hours',
+  '24h': 'past24Hours',
+  '86400': 'past24Hours',
+  '3d': 'pastWeek',
+  '7d': 'pastWeek',
+  '30d': 'pastMonth',
+  'any': 'anyTime',
+};
+
+export function postedWithinToApifyDatePosted(postedWithin?: string): string {
+  const key = normalizePostedWithin(postedWithin);
+  return POSTED_WITHIN_TO_APIFY[key] || 'past24Hours';
+}
+
 function normalizePostedWithin(postedWithin?: string): string {
   const key = String(postedWithin || DEFAULT_JOB_POSTED_WITHIN).trim().toLowerCase();
   if (key in POSTED_WITHIN_TO_F_TPR) return key;
@@ -79,20 +144,42 @@ export function postedWithinCutoffIso(postedWithin?: string): string | null {
   return new Date(Date.now() - seconds * 1000).toISOString().slice(0, 10);
 }
 
-/** LinkedIn search with no work-type filter — on-site, remote, and hybrid. */
+/** LinkedIn search URL for reference / manual verification (no deprecated sort filters). */
 export function buildLinkedInJobSearchUrl(
   query: string,
   location: string,
   postedWithin?: string,
 ): string {
   const params = new URLSearchParams({
-    keywords: query.trim() || 'Software Engineer',
+    keywords: expandJobSearchQuery(query),
     location: location.trim() || 'United States',
-    sortBy: 'DD',
   });
   const fTPR = linkedInPostedWithinFilter(postedWithin);
   if (fTPR) params.set('f_TPR', fTPR);
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
+}
+
+export function buildApifyJobSearchInput(
+  query: string,
+  location: string,
+  postedWithin?: string,
+  limitPerSource?: number,
+): {
+  keywords: string;
+  location: string;
+  datePosted: string;
+  linkedinUrl: string;
+  limitPerSource?: number;
+} {
+  const keywords = expandJobSearchQuery(query);
+  const loc = location.trim() || 'United States';
+  return {
+    keywords,
+    location: loc,
+    datePosted: postedWithinToApifyDatePosted(postedWithin),
+    linkedinUrl: buildLinkedInJobSearchUrl(keywords, loc, postedWithin),
+    limitPerSource: limitPerSource && limitPerSource > 0 ? limitPerSource : undefined,
+  };
 }
 
 export function inferJobWorkplace(
