@@ -1,3 +1,9 @@
+/** Keep ATS prompts bounded — full master bank in DB can be 50k+ chars and slow Gemini. */
+export function trimForAts(text: string, maxChars: number, label: string): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n[${label} truncated for ATS — select bullets from the text above only]`;
+}
+
 export const ATS_SYSTEM_PROMPT = `You are an expert ATS resume optimizer for Arun Kumar.
 
 RULES (non-negotiable):
@@ -27,15 +33,19 @@ export function buildResumeUserPrompt(input: {
   contactBlock: string;
   googleHeader?: string;
 }): string {
+  const jobDescription = trimForAts(input.jobDescription, 8000, 'Job description');
+  const twoPageTemplate = trimForAts(input.twoPageTemplate, 8000, '2-page template');
+  const masterResume = trimForAts(input.masterResume, 32000, 'Master bullet bank');
+
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
     `MATCHED PLAYBOOK: ${input.playbookTitle || 'none — infer from JD'}`,
     input.playbookInstructions ? `PLAYBOOK INSTRUCTIONS:\n${input.playbookInstructions}` : '',
-    `JOB DESCRIPTION:\n${input.jobDescription}`,
+    `JOB DESCRIPTION:\n${jobDescription}`,
     input.contactBlock ? `CONTACT:\n${input.contactBlock}` : '',
     input.googleHeader ? `GOOGLE DOC HEADER OVERRIDE:\n${input.googleHeader}` : '',
-    `2-PAGE TEMPLATE (length/layout target):\n${input.twoPageTemplate}`,
-    `MASTER BULLET BANK (source of truth — select from these bullets only):\n${input.masterResume}`,
+    `2-PAGE TEMPLATE (length/layout target):\n${twoPageTemplate}`,
+    `MASTER BULLET BANK (source of truth — select from these bullets only):\n${masterResume}`,
     input.evidence ? `EVIDENCE CHUNKS (allowed metrics only):\n${input.evidence}` : '',
   ].filter(Boolean).join('\n\n');
 }

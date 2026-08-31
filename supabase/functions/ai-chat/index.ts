@@ -1,7 +1,7 @@
 import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
-import { callGeminiGenerateContent } from '../_shared/gemini.ts';
+import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../_shared/gemini.ts';
 
 async function callGemini(messages: { role: string; content: string }[], systemPrompt?: string): Promise<string> {
   const userText = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n');
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
         evidence: corpus.evidence,
         contactBlock: corpus.contactBlock,
       });
-      const reply = await callGemini([{ role: 'user', content: userPrompt }], ATS_SYSTEM_PROMPT);
+      const reply = await callGeminiAtsGenerateContent(ATS_SYSTEM_PROMPT, userPrompt);
       return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });
     }
 

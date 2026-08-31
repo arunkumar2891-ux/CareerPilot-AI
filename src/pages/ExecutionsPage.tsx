@@ -346,7 +346,7 @@ export function ExecutionsPage() {
                         </p>
                         {activeStep.type === 'gemini' && (
                           <p className="mt-2 text-xs text-muted-foreground">
-                            Each job runs Store → ATS → PDF independently. Completed jobs are not blocked by slower ones. Gemini may take 1–3 min per job (120s timeout).
+                            Each job runs Store → ATS → PDF independently. Completed jobs are not blocked by slower ones. ATS uses Gemini with up to 3 min per attempt (2 attempts on timeout).
                           </p>
                         )}
                       </div>

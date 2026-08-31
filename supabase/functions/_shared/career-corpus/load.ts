@@ -1,6 +1,7 @@
 import { createAdminClient } from '../supabase-admin.ts';
 import { getUserSettings } from '../credentials.ts';
 import { ROLE_PLAYBOOKS, EVIDENCE_CHUNKS } from './data.ts';
+import { selectMasterResumeForJob } from './resume-bank.ts';
 import {
   applyContactOverlay,
   formatContact,
@@ -16,6 +17,8 @@ export interface CareerCorpusBundle {
   masterResume: string;
   twoPageTemplate: string;
   playbookTitle: string;
+  playbookId: string;
+  masterResumeSource: 'role-bank' | 'generated';
   playbookInstructions: string;
   evidence: string;
   contactBlock: string;
@@ -55,16 +58,26 @@ export async function loadCareerCorpus(userId: string, jobDescription: string): 
     text: String(c.content || ''),
   }));
   const pool = dbChunks.length ? dbChunks : [...EVIDENCE_CHUNKS];
-  const selected = selectEvidence(jobDescription, pool);
+  const evidenceChunks = selectEvidence(jobDescription, pool);
 
   const { playbook } = pickPlaybook(jobDescription, [...ROLE_PLAYBOOKS]);
 
+  const fullMaster = applyContactOverlay(String(masterRow.content), contact);
+  const resumeRows = (resumes || []).map((r) => ({
+    name: String(r.name),
+    content: r.content as string | null,
+  }));
+  const selectedResume = selectMasterResumeForJob(fullMaster, playbook, resumeRows);
+  const masterResume = applyContactOverlay(selectedResume.content, contact);
+
   return {
-    masterResume: applyContactOverlay(String(masterRow.content), contact),
+    masterResume,
     twoPageTemplate: applyContactOverlay(String(twoPageRow?.content || ''), contact),
     playbookTitle: playbook.title,
+    playbookId: playbook.id,
+    masterResumeSource: selectedResume.source,
     playbookInstructions: playbookInstructions(playbook),
-    evidence: selected.map((c) => `- ${c.text}`).join('\n'),
+    evidence: evidenceChunks.map((c) => `- ${c.text}`).join('\n'),
     contactBlock: formatContact(contact),
     contact,
   };

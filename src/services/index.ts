@@ -13,6 +13,7 @@ import {
   TWO_PAGE_RESUME_NAME,
   applyContactOverlay,
 } from '@/content/career-corpus';
+import { buildFocusedMasterResume, resumeBankName } from '@/content/career-corpus/resume-bank';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
 /* ── helpers ── */
@@ -1311,8 +1312,33 @@ export class BootstrapService {
       }
     };
 
+    const masterExisting = byName.get(MASTER_RESUME_NAME);
+    const masterWasPlaceholder = masterExisting
+      && String(masterExisting.content || '').includes(BootstrapService.CORPUS_PLACEHOLDER);
+
     await upsertResume(MASTER_RESUME_NAME, 'technical', CAREER_CORPUS.masterResume);
     await upsertResume(TWO_PAGE_RESUME_NAME, 'general', CAREER_CORPUS.twoPageTemplate);
+
+    for (const playbook of CAREER_CORPUS.rolePlaybooks) {
+      const bankName = resumeBankName(playbook);
+      const focused = buildFocusedMasterResume(CAREER_CORPUS.masterResume, playbook);
+      const overlayed = applyContactOverlay(focused, overlay);
+      const existingBank = byName.get(bankName);
+      if (!existingBank) {
+        await supabase.from('resumes').insert({
+          user_id: userId,
+          name: bankName,
+          type: 'technical',
+          content: overlayed,
+          ats_score: 0,
+        });
+      } else if (masterWasPlaceholder) {
+        await supabase
+          .from('resumes')
+          .update({ content: overlayed, updated_at: new Date().toISOString() })
+          .eq('id', existingBank.id);
+      }
+    }
 
     const { count } = await supabase
       .from('knowledge_chunks')

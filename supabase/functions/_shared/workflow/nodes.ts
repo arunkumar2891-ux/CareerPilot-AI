@@ -6,7 +6,7 @@ import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/promp
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildLinkedInJobSearchUrl, inferJobWorkplace, postedWithinCutoffIso } from '../job-url.ts';
-import { callGeminiGenerateContent } from '../gemini.ts';
+import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -21,7 +21,8 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-async function callGemini(systemPrompt: string, userPrompt: string): Promise<string> {
+async function callGemini(systemPrompt: string, userPrompt: string, forAts = false): Promise<string> {
+  if (forAts) return await callGeminiAtsGenerateContent(systemPrompt, userPrompt);
   return await callGeminiGenerateContent(systemPrompt, userPrompt);
 }
 
@@ -377,9 +378,10 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         contactBlock: corpus.contactBlock,
         googleHeader: String(ctx.variables.googleHeader || ''),
       });
-      const output = await callGemini(systemPrompt, userPrompt);
+      const output = await callGemini(systemPrompt, userPrompt, true);
       ctx.variables.lastAgentOutput = output;
       ctx.variables.playbook = corpus.playbookTitle;
+      ctx.variables.masterResumeSource = corpus.masterResumeSource;
       return { output: { ...job, output }, status: 'success' };
     },
   },
