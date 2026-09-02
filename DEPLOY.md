@@ -114,6 +114,23 @@ supabase functions deploy --project-ref YOUR_PROJECT_REF
 
 > Run `supabase functions deploy` in your **terminal**, not the Supabase SQL Editor.
 
+Function settings such as `verify_jwt` are read from `supabase/config.toml` during deploy — you do not need `--no-verify-jwt` flags when that file is present.
+
+### Automated deploy (GitHub Actions)
+
+Merges to `main` that touch `supabase/functions/**` or `supabase/config.toml` trigger `.github/workflows/deploy-supabase-functions.yml`, which deploys all Edge Functions to your linked Supabase project.
+
+**One-time setup** — add these repository secrets in GitHub → **Settings** → **Secrets and variables** → **Actions**:
+
+| Secret | Value |
+|--------|--------|
+| `SUPABASE_ACCESS_TOKEN` | [Supabase access token](https://supabase.com/dashboard/account/tokens) with **Edge Functions (read-write)** scope |
+| `SUPABASE_PROJECT_REF` | Project ref from your Supabase URL (`https://<ref>.supabase.co`) |
+
+After saving secrets, either merge a backend change to `main` or run the workflow manually from **Actions** → **Deploy Supabase Edge Functions** → **Run workflow**.
+
+Frontend deploys (Vercel/Render) are unchanged — this workflow only updates Supabase Edge Functions.
+
 ### Google OAuth (Supabase Auth + Drive/Docs)
 
 1. Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com/)
