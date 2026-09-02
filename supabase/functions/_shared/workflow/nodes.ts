@@ -8,6 +8,7 @@ import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 import { buildLatexFromAtsText } from '../resume-latex.ts';
+import { parseGoogleDriveFolderId, parseGoogleDocFileId, buildResumePdfFileName } from '../google-drive.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -334,7 +335,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   gdocs: {
     async execute(ctx, node) {
-      const fileId = resolveTemplate(String(node.config.fileId || ''), ctx).trim();
+      const fileId = parseGoogleDocFileId(resolveTemplate(String(node.config.fileId || ''), ctx));
       if (!fileId || fileId.includes('{{') || fileId.includes('YOUR_GOOGLE')) {
         return { output: { skipped: true, reason: 'no_google_doc' }, status: 'success' };
       }
@@ -365,8 +366,31 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       if (action === 'upload') {
         const data = input as Record<string, unknown>;
         const pdfBytes = data.pdfBytes as Uint8Array;
-        const fileName = String(data.docTitle || data.title || 'resume') + '.pdf';
-        const metadata = { name: fileName, mimeType: 'application/pdf' };
+        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
+        const folderRaw = resolveTemplate(String(node.config.folderId || ''), ctx)
+          || String(jobSearch.driveFolderId || '');
+        const folderId = parseGoogleDriveFolderId(folderRaw);
+        if (!folderId) {
+          throw new Error(
+            'Google Drive folder is not set. Paste a folder link in Settings → Job Search, save, then retry.',
+          );
+        }
+        const contact = (ctx.settings.contact as Record<string, string> | undefined) || {};
+        const admin = createAdminClient();
+        const { data: profile } = await admin
+          .from('profiles')
+          .select('full_name')
+          .eq('user_id', ctx.userId)
+          .maybeSingle();
+        const personName = String(profile?.full_name || contact.fullName || '').trim() || 'Resume';
+        const company = String(data.company || data.companyName || 'Company').trim();
+        const role = String(data.title || data.role || data.docTitle || 'Role').trim();
+        const fileName = buildResumePdfFileName({ company, personName, role });
+        const metadata: Record<string, unknown> = {
+          name: fileName,
+          mimeType: 'application/pdf',
+          parents: [folderId],
+        };
         const boundary = 'careerpilot_boundary';
         const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
         const enc = new TextEncoder();
@@ -376,21 +400,27 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         full.set(part1);
         if (pdfBytes) full.set(pdfBytes, part1.length);
         full.set(part2, part1.length + (pdfBytes?.length || 0));
-        const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        const uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true';
+        const res = await fetch(uploadUrl, {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
           body: full,
         });
         const file = await res.json();
-        if (!res.ok) throw new Error(file.error?.message || 'Drive upload failed');
-        await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions`, {
+        if (!res.ok) {
+          const detail = file.error?.message || 'Drive upload failed';
+          throw new Error(
+            `${detail}. Reconnect Google in Integrations if this folder is not accessible, then retry.`,
+          );
+        }
+        await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions?supportsAllDrives=true`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: 'reader', type: 'anyone' }),
         });
         const pdfLink = `https://drive.google.com/file/d/${file.id}/view`;
         const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
-        processed.push({ ...data, pdfLink, pdf_url: pdfLink });
+        processed.push({ ...data, pdfLink, pdf_url: pdfLink, driveFolderId: folderId });
         ctx.variables.processedJobs = processed;
         return { output: { ...data, id: file.id, pdfLink }, status: 'success' };
       }

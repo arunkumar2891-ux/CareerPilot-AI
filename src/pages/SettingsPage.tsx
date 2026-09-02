@@ -15,6 +15,7 @@ import { useUIStore, useAuthStore } from '@/store';
 import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
 import { JOB_POSTED_WITHIN_OPTIONS, DEFAULT_JOB_POSTED_WITHIN } from '@/constants';
+import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '@/utils/google';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -29,6 +30,7 @@ export function SettingsPage() {
   const [maxJobs, setMaxJobs] = useState('5');
   const [postedWithin, setPostedWithin] = useState(DEFAULT_JOB_POSTED_WITHIN);
   const [resumeFileId, setResumeFileId] = useState('');
+  const [driveFolderId, setDriveFolderId] = useState('');
   const [notifyEmail, setNotifyEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState('');
   const [location, setLocation] = useState('');
@@ -48,6 +50,8 @@ export function SettingsPage() {
       if (js?.postedWithin) setPostedWithin(js.postedWithin);
       else setPostedWithin(DEFAULT_JOB_POSTED_WITHIN);
       if (js?.resumeFileId) setResumeFileId(js.resumeFileId);
+      else setResumeFileId('');
+      setDriveFolderId(js?.driveFolderId ?? '');
       if (notif?.email) setNotifyEmail(notif.email);
       const contact = settings.contact as Record<string, string> | undefined;
       if (contact?.phone) setPhone(contact.phone);
@@ -81,12 +85,23 @@ export function SettingsPage() {
   };
 
   const saveJobSearch = async () => {
+    const parsedResumeId = parseGoogleDocFileId(resumeFileId);
+    const parsedFolderId = parseGoogleDriveFolderId(driveFolderId);
+    setResumeFileId(parsedResumeId);
+    setDriveFolderId(parsedFolderId);
     await services.settings.update({
-      jobSearch: { query: jobQuery, location: jobLocation, maxJobs, postedWithin, resumeFileId },
+      jobSearch: {
+        query: jobQuery,
+        location: jobLocation,
+        maxJobs,
+        postedWithin,
+        resumeFileId: parsedResumeId,
+        driveFolderId: parsedFolderId,
+      },
       notifications: { email: notifyEmail },
       userEmail: notifyEmail,
     });
-    const fileId = resumeFileId.trim();
+    const fileId = parsedResumeId;
     if (fileId) {
       try {
         const res = await supabase.functions.invoke('ai-chat', {
@@ -173,8 +188,19 @@ export function SettingsPage() {
               <div className="space-y-1.5"><Label>Max Jobs Per Run</Label><Input value={maxJobs} onChange={(e) => setMaxJobs(e.target.value)} type="number" /></div>
               <div className="space-y-1.5">
                 <Label>Google Doc Resume ID</Label>
-                <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="From docs.google.com/document/d/THIS_PART/edit" />
-                <p className="text-xs text-muted-foreground">Syncs your master resume from Google Docs before each workflow run. Requires Google connection in Integrations.</p>
+                <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="docs.google.com/document/d/FILE_ID/edit" />
+                <p className="text-xs text-muted-foreground">Paste a Google Doc link or the file ID. Synced before each pipeline run.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Google Drive folder for PDFs</Label>
+                <Input
+                  value={driveFolderId}
+                  onChange={(e) => setDriveFolderId(e.target.value)}
+                  placeholder="https://drive.google.com/drive/folders/FOLDER_ID"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Paste a folder link or folder ID — same as the resume Doc field. PDFs are named Company_YourName_Role_ddmmyyyy.pdf. Change anytime and Save.
+                </p>
               </div>
               <p className="text-xs text-muted-foreground">
                 Searches all work types (on-site, remote, hybrid) in your location. Tailoring uses the in-app Master ATS corpus.

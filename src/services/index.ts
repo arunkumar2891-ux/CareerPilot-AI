@@ -1265,6 +1265,7 @@ export class BootstrapService {
           maxJobs: '5',
           postedWithin: '1d',
           resumeFileId: jobSearch?.resumeFileId ?? '',
+          driveFolderId: jobSearch?.driveFolderId ?? '',
         },
         notifications: { email: user.email ?? '' },
         userEmail: user.email ?? '',

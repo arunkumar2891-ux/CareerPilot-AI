@@ -29,7 +29,7 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
     { type: 'function', name: 'Build LaTeX', x: 2200, y: 200, config: { builtin: 'build_latex' } },
     { type: 'pdf', name: 'Compile PDF', x: 2400, y: 200, config: {} },
     { type: 'storage', name: 'Upload to Storage', x: 2600, y: 200, config: {} },
-    { type: 'gdrive', name: 'Upload to Drive', x: 2800, y: 200, config: { action: 'upload' } },
+    { type: 'gdrive', name: 'Upload to Drive', x: 2800, y: 200, config: { action: 'upload', folderId: '{{settings.jobSearch.driveFolderId}}' } },
     { type: 'function', name: 'Email Summary', x: 3000, y: 200, config: { builtin: 'email_summary' } },
     { type: 'email', name: 'Send Email', x: 3200, y: 200, config: {} },
   ] as SeedNode[],
