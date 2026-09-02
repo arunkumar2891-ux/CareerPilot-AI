@@ -244,10 +244,14 @@ export function SettingsPage() {
               <p>Configure these as Supabase Edge Function secrets (Dashboard → Edge Functions → Secrets):</p>
               <ul className="list-disc space-y-1 pl-5">
                 <li><code>APIFY_TOKEN</code> — Apify API token</li>
-                <li><code>GEMINI_API_KEY</code> — Google Gemini API key</li>
+                <li><code>GEMINI_API_KEY</code> — Google Gemini API key (primary AI)</li>
                 <li><code>GEMINI_MODEL</code> — optional; defaults to <code>gemini-3.6-flash</code></li>
-                <li><code>GEMINI_TIMEOUT_MS</code> — optional; default 180000 (3 min)</li>
-                <li><code>GEMINI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 180000, retries once on timeout</li>
+                <li><code>GROQ_API_KEY</code> — Groq API key (fallback if Gemini times out or is unavailable)</li>
+                <li><code>GROQ_MODEL</code> — optional; defaults to <code>openai/gpt-oss-120b</code></li>
+                <li><code>AI_PRIMARY_PROVIDER</code> — optional; default <code>gemini</code></li>
+                <li><code>AI_FALLBACK_PROVIDER</code> — optional; default <code>groq</code></li>
+                <li><code>AI_TIMEOUT_MS</code> — optional per-request timeout; default 30000</li>
+                <li><code>AI_MAX_RETRIES</code> — optional; default 1 (one Gemini attempt, then Groq)</li>
                 <li><code>RESEND_API_KEY</code> — Resend email API key</li>
                 <li><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> — Google OAuth</li>
                 <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — Service role key</li>

@@ -13,7 +13,7 @@ async function markRunFailed(runId: string, message: string) {
     finished_at: new Date().toISOString(),
     error_message: message,
     duration_ms: duration,
-  }).eq('id', runId);
+  }).eq('id', runId).in('status', ['running', 'queued']);
 }
 
 Deno.serve(async (req) => {

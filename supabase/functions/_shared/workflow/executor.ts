@@ -73,13 +73,19 @@ export async function cancelWorkflowRun(runId: string, userId: string): Promise<
     ? Date.now() - new Date(run.started_at as string).getTime()
     : 0;
 
-  await admin.from('workflow_runs').update({
+  const { error: updateError } = await admin.from('workflow_runs').update({
     status: 'cancelled',
     finished_at: new Date().toISOString(),
     error_message: 'Stopped by user',
     duration_ms: duration,
     current_node_id: null,
-  }).eq('id', runId);
+  }).eq('id', runId).eq('user_id', userId);
+  if (updateError) throw updateError;
+
+  const { data: verify } = await admin.from('workflow_runs').select('status').eq('id', runId).single();
+  if (verify?.status !== 'cancelled') {
+    throw new Error('Stop did not persist. Run the 008_workflow_runs_cancel.sql migration, then try again.');
+  }
 
   await admin.from('workflow_step_queue').delete().eq('run_id', runId);
 
@@ -104,14 +110,15 @@ async function saveRunContext(runId: string, ctx: RunContext) {
   await admin.from('workflow_runs').update({
     context: { variables: ctx.variables, nodeOutputs: ctx.nodeOutputs },
     current_node_id: ctx.currentNodeId || null,
-  }).eq('id', runId);
+  }).eq('id', runId).in('status', ['running', 'queued']);
 }
 
 async function touchRunDuration(admin: ReturnType<typeof createAdminClient>, runId: string) {
-  const { data: run } = await admin.from('workflow_runs').select('started_at').eq('id', runId).single();
+  const { data: run } = await admin.from('workflow_runs').select('started_at, status').eq('id', runId).single();
   if (!run?.started_at) return;
+  if (run.status === 'cancelled') return;
   const duration = Date.now() - new Date(run.started_at as string).getTime();
-  await admin.from('workflow_runs').update({ duration_ms: duration }).eq('id', runId);
+  await admin.from('workflow_runs').update({ duration_ms: duration }).eq('id', runId).in('status', ['running', 'queued']);
 }
 
 async function recordNodeRun(
@@ -146,6 +153,38 @@ async function recordNodeRun(
   }
 }
 
+async function enqueueNextPipelineSlice(runId: string, userId: string, nodeId: string) {
+  const admin = createAdminClient();
+  if (await isRunCancelled(admin, runId)) return;
+  await admin.from('workflow_step_queue').delete().eq('run_id', runId).eq('status', 'pending');
+  await admin.from('workflow_step_queue').insert({
+    run_id: runId,
+    user_id: userId,
+    node_id: nodeId,
+    execute_after: new Date().toISOString(),
+    status: 'pending',
+  });
+
+  const base = Deno.env.get('SUPABASE_URL');
+  const secret = Deno.env.get('WORKFLOW_SCHEDULER_SECRET');
+  if (!base || !secret) return;
+
+  const next = fetch(`${base.replace(/\/$/, '')}/functions/v1/workflow-step`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${secret}`,
+    },
+    body: '{}',
+  }).then(async (res) => {
+    if (!res.ok) await res.text().catch(() => '');
+  }).catch(() => undefined);
+
+  const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(next);
+  else await next;
+}
+
 async function runDurationMs(admin: ReturnType<typeof createAdminClient>, runId: string): Promise<number> {
   const { data: run } = await admin.from('workflow_runs').select('started_at').eq('id', runId).single();
   if (!run?.started_at) return 0;
@@ -168,6 +207,7 @@ export async function executeWorkflow(
   if (existingRunId) {
     const { data: run } = await admin.from('workflow_runs').select('*').eq('id', existingRunId).single();
     if (!run) throw new Error('Run not found');
+    if (run.status === 'cancelled') return { runId: run.id, status: 'cancelled' };
     runId = run.id;
     const stored = (run.context as Record<string, unknown>) || {};
     ctx = {
@@ -211,8 +251,14 @@ export async function executeWorkflow(
     try {
       const executor = getExecutor(node.type);
       let inputData = prevOutput;
+      if (
+        isJobPipelineStart(node)
+        && Array.isArray(ctx.variables.pendingJobItems)
+      ) {
+        inputData = ctx.variables.pendingJobItems;
+      }
 
-      // Run each job through Store → ATS → LaTeX → PDF → Storage → Drive before the next job starts.
+      // One job per Edge Function slice: Store → ATS → LaTeX → PDF → Storage → Drive, then checkpoint.
       if (Array.isArray(inputData) && isJobPipelineStart(node)) {
         const chain = buildPerJobPipelineChain(node.id, nodes, edges);
         const items = inputData.filter((item) => item != null);
@@ -223,7 +269,7 @@ export async function executeWorkflow(
             touchRunDuration,
             recordNodeRun,
           };
-          const results = await executePerJobPipeline(
+          const { results, yieldForNext } = await executePerJobPipeline(
             runId,
             userId,
             ctx,
@@ -233,11 +279,17 @@ export async function executeWorkflow(
             admin,
             pipelineHelpers,
           );
-          for (const chainNode of chain) visited.add(chainNode.id);
           ctx.nodeOutputs[node.id] = results;
           const tail = chain[chain.length - 1];
           ctx.nodeOutputs[tail.id] = results;
           await saveRunContext(runId, ctx);
+
+          if (yieldForNext) {
+            await enqueueNextPipelineSlice(runId, userId, node.id);
+            return { runId, status: 'running' };
+          }
+
+          for (const chainNode of chain) visited.add(chainNode.id);
           const nextId = getNextNodeId(tail.id, edges);
           if (nextId) {
             const nextNode = nodes.find((n) => n.id === nextId);
@@ -361,7 +413,7 @@ export async function executeWorkflow(
         finished_at: new Date().toISOString(),
         error_message: message,
         duration_ms: duration,
-      }).eq('id', runId);
+      }).eq('id', runId).in('status', ['running', 'queued']);
       return { runId, status: 'failed' };
     }
   }
@@ -380,7 +432,7 @@ export async function executeWorkflow(
     finished_at: new Date().toISOString(),
     duration_ms: duration,
     current_node_id: null,
-  }).eq('id', runId);
+  }).eq('id', runId).eq('status', 'running');
 
   await admin.from('workflows').update({
     last_run: new Date().toISOString(),
@@ -409,7 +461,7 @@ export async function processDueSteps(): Promise<number> {
       .eq('id', step.run_id)
       .single();
     if (!run) continue;
-    if (run.status === 'cancelled') {
+    if (run.status !== 'running' && run.status !== 'queued') {
       await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
       continue;
     }

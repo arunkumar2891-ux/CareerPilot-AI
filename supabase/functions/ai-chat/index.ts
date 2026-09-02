@@ -2,6 +2,7 @@ import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../_shared/gemini.ts';
+import { sanitizeAiErrorMessage } from '../_shared/ai/errors.ts';
 
 async function callGemini(messages: { role: string; content: string }[], systemPrompt?: string): Promise<string> {
   const userText = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n');
@@ -23,9 +24,10 @@ Deno.serve(async (req) => {
     const { messages, systemPrompt, mode, content, agentId } = body;
 
     if (mode === 'ats_score') {
-      const result = await callGemini(
-        [{ role: 'user', content: `Score this resume 0-100 for ATS compatibility. Return JSON: {"score": number, "feedback": string[]}\n\n${content}` }],
+      const result = await callGeminiGenerateContent(
         'Return valid JSON only.',
+        `Score this resume 0-100 for ATS compatibility. Return JSON: {"score": number, "feedback": string[]}\n\n${content}`,
+        { operation: 'ats_score' },
       );
       try {
         const parsed = JSON.parse(result.replace(/```json\n?|\n?```/g, ''));
@@ -82,7 +84,7 @@ Deno.serve(async (req) => {
     const reply = await callGemini(messages || [{ role: 'user', content: content || '' }], prompt);
     return jsonResponse({ reply, tokens: reply.length / 4 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = sanitizeAiErrorMessage(err instanceof Error ? err.message : String(err));
     return jsonResponse({ error: message }, 500);
   }
 });

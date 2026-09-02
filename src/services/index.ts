@@ -701,10 +701,42 @@ export class ExecutionService {
     return run;
   }
   async cancelRun(runId: string): Promise<void> {
-    const { data, error } = await supabase.functions.invoke('workflow-cancel', { body: { runId } });
-    if (error) throw error;
-    if (data && typeof data === 'object' && 'error' in data && data.error) {
-      throw new Error(String(data.error));
+    const userId = await requireUserId();
+    const finishedAt = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabase
+      .from('workflow_runs')
+      .update({
+        status: 'cancelled',
+        finished_at: finishedAt,
+        error_message: 'Stopped by user',
+        current_node_id: null,
+      })
+      .eq('id', runId)
+      .eq('user_id', userId)
+      .in('status', ['running', 'queued'])
+      .select('id, status')
+      .maybeSingle();
+    if (updateError) throw updateError;
+
+    const { error: queueError } = await supabase.from('workflow_step_queue').delete().eq('run_id', runId);
+    if (queueError) throw queueError;
+
+    try {
+      await supabase.functions.invoke('workflow-cancel', { body: { runId } });
+    } catch {
+      // Edge Function may be unavailable; the row update above is the source of truth.
+    }
+
+    if (!updated) {
+      const { data: current } = await supabase
+        .from('workflow_runs')
+        .select('status')
+        .eq('id', runId)
+        .maybeSingle();
+      if (current?.status === 'cancelled') return;
+      throw new Error(
+        'Could not stop this run. Apply migration 008_workflow_runs_cancel.sql in the Supabase SQL editor, then try again.',
+      );
     }
   }
   async deleteRun(runId: string): Promise<void> {

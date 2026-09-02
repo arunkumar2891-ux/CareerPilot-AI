@@ -101,6 +101,13 @@ export function ExecutionsPage() {
     setStoppingRunId(runId);
     try {
       await services.execution.cancelRun(runId);
+      qc.setQueryData(['runs'], (prev: WorkflowRun[] | undefined) =>
+        (prev || []).map((r) =>
+          r.id === runId
+            ? { ...r, status: 'cancelled' as const, errorMessage: 'Stopped by user', currentNodeId: undefined }
+            : r,
+        ),
+      );
       await refreshRuns();
       toast.success('Execution stopped');
     } catch (err) {
@@ -346,7 +353,7 @@ export function ExecutionsPage() {
                         </p>
                         {activeStep.type === 'gemini' && (
                           <p className="mt-2 text-xs text-muted-foreground">
-                            Each job runs Store → ATS → PDF independently. Completed jobs are not blocked by slower ones. ATS uses Gemini with up to 3 min per attempt (2 attempts on timeout).
+                            Each job is a separate slice (Store → ATS → PDF → Drive) so a long Gemini call cannot freeze the rest of the batch. ATS timeout is 75s per job.
                           </p>
                         )}
                       </div>
