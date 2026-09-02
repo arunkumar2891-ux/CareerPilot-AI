@@ -27,11 +27,24 @@ export interface CareerCorpusBundle {
 
 export async function loadCareerCorpus(userId: string, jobDescription: string): Promise<CareerCorpusBundle> {
   const admin = createAdminClient();
-  const [{ data: resumes }, { data: chunks }, settings] = await Promise.all([
+  const [{ data: resumes }, chunksQuery, settings] = await Promise.all([
     admin.from('resumes').select('name, content').eq('user_id', userId),
     admin.from('knowledge_chunks').select('source_id, tags, content').eq('user_id', userId).eq('collection', 'career'),
     getUserSettings(userId),
   ]);
+
+  let chunks = chunksQuery.data;
+  if (chunksQuery.error && /tags/i.test(chunksQuery.error.message || '')) {
+    const fallback = await admin
+      .from('knowledge_chunks')
+      .select('source_id, content')
+      .eq('user_id', userId)
+      .eq('collection', 'career');
+    if (fallback.error) throw fallback.error;
+    chunks = fallback.data;
+  } else if (chunksQuery.error) {
+    throw chunksQuery.error;
+  }
 
   const masterRow = (resumes || []).find((r) => r.name === MASTER_NAME);
   const twoPageRow = (resumes || []).find((r) => r.name === TWO_PAGE_NAME);

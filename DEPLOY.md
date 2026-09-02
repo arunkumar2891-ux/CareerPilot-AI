@@ -86,6 +86,7 @@ supabase secrets set \
   AI_PRIMARY_PROVIDER=gemini \
   AI_FALLBACK_PROVIDER=groq \
   AI_TIMEOUT_MS=30000 \
+  AI_ATS_TIMEOUT_MS=75000 \
   AI_MAX_RETRIES=1 \
   RESEND_API_KEY=your_resend_key \
   RESEND_FROM_EMAIL="CareerPilot <onboarding@resend.dev>" \

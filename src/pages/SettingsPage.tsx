@@ -250,7 +250,8 @@ export function SettingsPage() {
                 <li><code>GROQ_MODEL</code> — optional; defaults to <code>openai/gpt-oss-120b</code></li>
                 <li><code>AI_PRIMARY_PROVIDER</code> — optional; default <code>gemini</code></li>
                 <li><code>AI_FALLBACK_PROVIDER</code> — optional; default <code>groq</code></li>
-                <li><code>AI_TIMEOUT_MS</code> — optional per-request timeout; default 30000</li>
+                <li><code>AI_TIMEOUT_MS</code> — optional chat timeout; default 30000</li>
+                <li><code>AI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 75000</li>
                 <li><code>AI_MAX_RETRIES</code> — optional; default 1 (one Gemini attempt, then Groq)</li>
                 <li><code>RESEND_API_KEY</code> — Resend email API key</li>
                 <li><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> — Google OAuth</li>

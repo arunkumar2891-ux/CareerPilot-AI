@@ -332,7 +332,8 @@ Set via `supabase secrets set` (see [DEPLOY.md](DEPLOY.md)):
 | `GROQ_MODEL` | Optional; default `openai/gpt-oss-120b` |
 | `AI_PRIMARY_PROVIDER` | Optional; default `gemini` |
 | `AI_FALLBACK_PROVIDER` | Optional; default `groq` |
-| `AI_TIMEOUT_MS` | Optional per-provider request timeout; default `30000` |
+| `AI_TIMEOUT_MS` | Optional chat timeout; default `30000` |
+| `AI_ATS_TIMEOUT_MS` | Optional ATS/Gemini tailoring timeout; default `75000` |
 | `AI_MAX_RETRIES` | Optional; default `1` (do not stack long Gemini retries) |
 | `APIFY_TOKEN` | LinkedIn job scraping via Apify actor |
 | `RESEND_API_KEY` | Email summaries |

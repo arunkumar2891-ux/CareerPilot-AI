@@ -1,4 +1,4 @@
-import { createAdminClient } from './supabase-admin.ts';
+import { fetchWithTimeout } from './fetch-timeout.ts';
 
 export async function getIntegrationCredentials(
   userId: string,
@@ -37,16 +37,21 @@ export async function refreshGoogleToken(userId: string): Promise<string> {
   const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
   if (!clientId || !clientSecret) throw new Error('GOOGLE_CLIENT_ID/SECRET not configured');
 
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: 'refresh_token',
-    }),
-  });
+  const res = await fetchWithTimeout(
+    'https://oauth2.googleapis.com/token',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    },
+    20000,
+    'Google token refresh',
+  );
   const json = await res.json();
   if (!res.ok) throw new Error(json.error_description || 'Google token refresh failed');
 

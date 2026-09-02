@@ -1,4 +1,4 @@
-import { getAiTimeoutMs, getGeminiApiKey, getGeminiModel as configuredGeminiModel } from './ai/config.ts';
+import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiApiKey, getGeminiModel as configuredGeminiModel } from './ai/config.ts';
 import { generateText } from './ai/router.ts';
 import type { AiOperation } from './ai/types.ts';
 
@@ -11,7 +11,7 @@ export function getGeminiTimeoutMs(): number {
 }
 
 export function getGeminiAtsTimeoutMs(): number {
-  return getAiTimeoutMs();
+  return getAtsTimeoutMs();
 }
 
 export function geminiGenerateContentUrl(): string {

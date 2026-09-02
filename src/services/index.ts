@@ -845,9 +845,18 @@ export class EmbeddingService {
     let q = supabase.from('knowledge_chunks').select('content, collection, tags').ilike('content', `%${query}%`).limit(20);
     if (collection && collection !== 'all') q = q.eq('collection', collection);
     const { data, error } = await q;
-    if (error) throw error;
+    let rows: { content?: unknown; collection?: unknown; tags?: unknown }[] | null = data;
+    let queryError = error;
+    if (queryError && /tags/i.test(queryError.message || '')) {
+      let q2 = supabase.from('knowledge_chunks').select('content, collection').ilike('content', `%${query}%`).limit(20);
+      if (collection && collection !== 'all') q2 = q2.eq('collection', collection);
+      const retry = await q2;
+      rows = retry.data;
+      queryError = retry.error;
+    }
+    if (queryError) throw queryError;
     const needle = query.toLowerCase();
-    return (data || []).map((c) => {
+    return (rows || []).map((c) => {
       const text = String(c.content ?? '');
       const hits = needle.split(/\s+/).filter((w) => w.length > 2 && text.toLowerCase().includes(w)).length;
       return {
@@ -1386,7 +1395,14 @@ export class BootstrapService {
         tags: c.tags,
         content: c.text,
       }));
-      await supabase.from('knowledge_chunks').insert(toInsert);
+      const { error } = await supabase.from('knowledge_chunks').insert(toInsert);
+      if (error && /tags/i.test(error.message || '')) {
+        const withoutTags = toInsert.map(({ tags: _tags, ...row }) => row);
+        const retry = await supabase.from('knowledge_chunks').insert(withoutTags);
+        if (retry.error) throw retry.error;
+      } else if (error) {
+        throw error;
+      }
     }
   }
 }

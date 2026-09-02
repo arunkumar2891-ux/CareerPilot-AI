@@ -1,5 +1,6 @@
 import { createAdminClient } from './supabase-admin.ts';
 import { refreshGoogleToken, getUserSettings } from './credentials.ts';
+import { fetchWithTimeout } from './fetch-timeout.ts';
 import { ROLE_PLAYBOOKS } from './career-corpus/data.ts';
 import { applyContactOverlay } from './career-corpus/prompt.ts';
 import { buildFocusedMasterResume, resumeBankName } from './career-corpus/resume-bank.ts';
@@ -79,9 +80,11 @@ export function extractChunksFromDoc(docContent: string): { id: string; tags: st
 
 export async function fetchGoogleDocText(userId: string, fileId: string): Promise<string> {
   const accessToken = await refreshGoogleToken(userId);
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
+    30000,
+    'Google Doc export',
   );
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -173,7 +176,14 @@ export async function syncGoogleDocToCorpus(userId: string, fileId: string): Pro
     }));
 
   if (toInsert.length > 0) {
-    await admin.from('knowledge_chunks').insert(toInsert);
+    const { error } = await admin.from('knowledge_chunks').insert(toInsert);
+    if (error && /tags/i.test(error.message || '')) {
+      const withoutTags = toInsert.map(({ tags: _tags, ...row }) => row);
+      const retry = await admin.from('knowledge_chunks').insert(withoutTags);
+      if (retry.error) throw retry.error;
+    } else if (error) {
+      throw error;
+    }
   }
 
   const { data: updated } = await admin

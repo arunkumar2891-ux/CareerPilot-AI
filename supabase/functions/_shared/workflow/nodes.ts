@@ -8,7 +8,7 @@ import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 import { buildLatexFromAtsText } from '../resume-latex.ts';
-import { parseGoogleDriveFolderId, parseGoogleDocFileId, buildResumePdfFileName } from '../google-drive.ts';
+import { fetchWithTimeout } from '../fetch-timeout.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -365,7 +365,15 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const accessToken = await refreshGoogleToken(ctx.userId);
       if (action === 'upload') {
         const data = input as Record<string, unknown>;
-        const pdfBytes = data.pdfBytes as Uint8Array;
+        const rawPdf = data.pdfBytes;
+        const pdfBytes = rawPdf instanceof Uint8Array
+          ? rawPdf
+          : Array.isArray(rawPdf)
+            ? new Uint8Array(rawPdf as number[])
+            : null;
+        if (!pdfBytes?.length) {
+          throw new Error('Drive upload skipped: PDF bytes are missing. The PDF step may have failed.');
+        }
         const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
         const folderRaw = resolveTemplate(String(node.config.folderId || ''), ctx)
           || String(jobSearch.driveFolderId || '');
@@ -396,28 +404,42 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const enc = new TextEncoder();
         const part1 = enc.encode(body);
         const part2 = enc.encode(`\r\n--${boundary}--`);
-        const full = new Uint8Array(part1.length + (pdfBytes?.length || 0) + part2.length);
+        const full = new Uint8Array(part1.length + pdfBytes.length + part2.length);
         full.set(part1);
-        if (pdfBytes) full.set(pdfBytes, part1.length);
-        full.set(part2, part1.length + (pdfBytes?.length || 0));
+        full.set(pdfBytes, part1.length);
+        full.set(part2, part1.length + pdfBytes.length);
         const uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true';
-        const res = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
-          body: full,
-        });
-        const file = await res.json();
+        const res = await fetchWithTimeout(
+          uploadUrl,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+            body: full,
+          },
+          45000,
+          'Google Drive upload',
+        );
+        const file = await res.json().catch(() => ({}));
         if (!res.ok) {
           const detail = file.error?.message || 'Drive upload failed';
           throw new Error(
             `${detail}. Reconnect Google in Integrations if this folder is not accessible, then retry.`,
           );
         }
-        await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions?supportsAllDrives=true`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-        });
+        try {
+          await fetchWithTimeout(
+            `https://www.googleapis.com/drive/v3/files/${file.id}/permissions?supportsAllDrives=true`,
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+            },
+            10000,
+            'Google Drive permissions',
+          );
+        } catch {
+          // Link-sharing is optional; a hang here previously blocked the whole job slice.
+        }
         const pdfLink = `https://drive.google.com/file/d/${file.id}/view`;
         const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
         processed.push({ ...data, pdfLink, pdf_url: pdfLink, driveFolderId: folderId });
@@ -509,11 +531,16 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const data = input as Record<string, unknown>;
       const latex = String(data.latex || '');
       const compilerUrl = Deno.env.get('LATEX_COMPILER_URL') || 'https://latex.ytotech.com/builds/sync';
-      const res = await fetch(compilerUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ compiler: 'lualatex', resources: [{ main: true, content: latex }] }),
-      });
+      const res = await fetchWithTimeout(
+        compilerUrl,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ compiler: 'lualatex', resources: [{ main: true, content: latex }] }),
+        },
+        60000,
+        'LaTeX compile',
+      );
       if (!res.ok) {
         const err = await res.text();
         throw new Error(`LaTeX compile failed: ${err.slice(0, 200)}`);

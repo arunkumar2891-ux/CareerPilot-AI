@@ -1,4 +1,4 @@
-import { getAiMaxRetries, getAiTimeoutMs, getFallbackProvider, getPrimaryProvider } from './config.ts';
+import { getAiMaxRetries, getAiTimeoutMs, getAtsTimeoutMs, getFallbackProvider, getPrimaryProvider } from './config.ts';
 import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
 import { geminiAdapter } from './gemini.ts';
 import { groqAdapter } from './groq.ts';
@@ -94,7 +94,8 @@ export async function generateWithProviders(
   deps: GenerateDeps = {},
 ): Promise<string> {
   const log = (message: string) => (deps.log ?? console.log)(sanitizeAiErrorMessage(message));
-  const timeoutMs = req.timeoutMs ?? deps.timeoutMs ?? getAiTimeoutMs();
+  const defaultTimeout = req.operation === 'resume_tailoring' ? getAtsTimeoutMs() : getAiTimeoutMs();
+  const timeoutMs = req.timeoutMs ?? deps.timeoutMs ?? defaultTimeout;
   const request: GenerateRequest = { ...req, timeoutMs };
   const adapters = deps.adapters ?? defaultAdapters;
   const primaryName = (deps.primary ?? getPrimaryProvider()).toLowerCase();
@@ -129,7 +130,7 @@ export async function generateWithProviders(
 
   if (fallback?.isConfigured()) {
     try {
-      return await tryProvider(fallback, request, 'fallback', 1, log);
+      return await tryProvider(fallback, { ...request, timeoutMs: getAiTimeoutMs() }, 'fallback', 1, log);
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${fallback.name}: ${message}`);

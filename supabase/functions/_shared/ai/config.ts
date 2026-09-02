@@ -9,6 +9,15 @@ export function getAiTimeoutMs(): number {
   return parsePositiveInt(Deno.env.get('AI_TIMEOUT_MS'), 30000, 120000);
 }
 
+/** ATS prompts are large; 30s often expires before Groq can help. Default 75s for Gemini tailoring only. */
+export function getAtsTimeoutMs(): number {
+  return parsePositiveInt(
+    Deno.env.get('AI_ATS_TIMEOUT_MS') || Deno.env.get('GEMINI_ATS_TIMEOUT_MS'),
+    75000,
+    120000,
+  );
+}
+
 export function getAiMaxRetries(): number {
   return parsePositiveInt(Deno.env.get('AI_MAX_RETRIES'), 1, 2);
 }
