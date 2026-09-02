@@ -53,7 +53,7 @@ async function callGeminiOnce(
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
           generationConfig: {
             maxOutputTokens: 8192,
-            temperature: 0.4,
+            temperature: 0.55,
           },
         }),
       },

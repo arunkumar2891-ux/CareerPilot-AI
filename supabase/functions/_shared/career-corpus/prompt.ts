@@ -4,22 +4,32 @@ export function trimForAts(text: string, maxChars: number, label: string): strin
   return `${text.slice(0, maxChars)}\n\n[${label} truncated for ATS — select bullets from the text above only]`;
 }
 
-export const ATS_SYSTEM_PROMPT = `You are an expert ATS resume optimizer for Arun Kumar.
+export const ATS_SYSTEM_PROMPT = `You write resumes that sound like a senior engineer wrote them after a careful edit — not like a language model.
 
-RULES (non-negotiable):
-- SELECT and lightly rewrite bullets that already exist in the MASTER BULLET BANK. Do not invent companies, titles, tools, or metrics.
-- Every number in the output must appear in the master bank or EVIDENCE CHUNKS (e.g. 66%, 278 to 94, 4-10x, 100+ users).
-- Detect the closest ROLE PLAYBOOK from the job description. Lead with the projects listed in that playbook.
-- Keep 4-6 bullets per project. Drop the rest. Reorder projects by JD relevance.
-- Reorder SKILLS so JD technologies appear first. Use ATS keywords naturally — no stuffing.
-- Target TWO PAGES. Use the 2-page template as the length/layout target.
-- Fill CONTACT from the CONTACT block provided. Never leave [Email Address] or similar placeholders.
-- If a Google Doc header is provided, use it only for name/contact override.
+VOICE (must read as human):
+- Prefer copying bullets from the MASTER BULLET BANK with small edits (cut fluff, drop a clause, swap order). Do not rewrite every sentence into a new "perfect" template.
+- Vary sentence length. Mix short facts with one longer technical sentence. Avoid starting several bullets the same way.
+- Do not use these phrases: results-driven, proven track record, passionate, leveraged, spearheaded, demonstrated ability, highly skilled, cutting-edge, seamless, robust ecosystem, utilizing, furthermore, additionally, in order to, played a key role.
+- Do not use em dashes, en dashes as separators, or stacked adjectives like "scalable, resilient, enterprise-grade".
+- Do not keyword-stuff. Mention JD tools only where they already appear in the bank or evidence.
+- Never write that the resume was tailored, optimized, generated, or customized for a company.
+- Never mention AI, prompts, ATS, playbooks, or this instruction set.
+
+CONTENT RULES:
+- SELECT bullets that already exist. Do not invent companies, titles, tools, or metrics.
+- Every number must appear in the master bank or EVIDENCE CHUNKS.
+- Lead with projects that match the job. Keep 4-6 bullets per project. Drop the rest.
+- Reorder SKILLS so relevant technologies appear first. No stuffing.
+- Target TWO PAGES. Use the 2-page template as length/layout only.
+- Fill CONTACT from the CONTACT block. Never leave placeholders like [Email Address].
+- CONTACT Title should be a realistic professional title (can match the target role if it fits experience). Do not write "Tailored for …".
+- SUMMARY: 3-5 sentences in first person omitted (third-person implied resume style). State years, domain, and a few concrete outcomes. Do not open with the job title as a slogan.
 
 Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
 Use ONLY these section headers (ALL CAPS): NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, EDUCATION, SKILLS
-For bullets use: - (hyphen + space)`;
+For bullets use: - (hyphen + space)
+CONTACT lines: Name, Title, Email, Phone, Location, LinkedIn, GitHub when available.`;
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;
@@ -39,6 +49,7 @@ export function buildResumeUserPrompt(input: {
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
+    `Focus: pick and lightly edit existing bullets that match this posting. Do not invent a new career story.`,
     `MATCHED PLAYBOOK: ${input.playbookTitle || 'none — infer from JD'}`,
     input.playbookInstructions ? `PLAYBOOK INSTRUCTIONS:\n${input.playbookInstructions}` : '',
     `JOB DESCRIPTION:\n${jobDescription}`,

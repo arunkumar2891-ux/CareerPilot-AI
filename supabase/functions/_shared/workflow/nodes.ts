@@ -7,6 +7,7 @@ import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
+import { buildLatexFromAtsText } from '../resume-latex.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -151,7 +152,10 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       if (fn === 'build_latex') {
         const data = input as Record<string, unknown>;
         const raw = String(data.output ?? '').trim();
-        const latex = buildLatex(raw);
+        const latex = buildLatexFromAtsText(raw, {
+          targetRole: String(data.title || data.role || ''),
+          targetCompany: String(data.company || data.companyName || ''),
+        });
         return { output: { ...data, latex }, status: 'success' };
       }
       if (fn === 'email_summary') {
@@ -655,39 +659,6 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     },
   },
 };
-
-function buildLatex(raw: string): string {
-  function esc(s: string): string {
-    return String(s ?? '')
-      .replace(/\\/g, '\\textbackslash{}')
-      .replace(/&/g, '\\&').replace(/%/g, '\\%').replace(/\$/g, '\\$')
-      .replace(/#/g, '\\#').replace(/_/g, '\\_').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
-  }
-  function section(text: string, header: string): string {
-    const re = new RegExp(`(?:^|\\n)${header.replace(/ /g, '\\s+')}\\s*\\n([\\s\\S]*?)(?=\\n[A-Z][A-Z ]{2,}\\s*\\n|$)`, 'i');
-    const m = text.match(re);
-    return m ? m[1].trim() : '';
-  }
-  const summaryRaw = section(raw, 'SUMMARY');
-  const experienceRaw = section(raw, 'PROFESSIONAL EXPERIENCE');
-  const nameRaw = section(raw, 'NAME');
-  const fullName = (nameRaw.split('\n')[0] || 'Your Name').trim();
-  const parts = fullName.split(' ');
-  const firstName = esc(parts.length > 1 ? parts.slice(0, -1).join(' ') : fullName);
-  const lastName = esc(parts.length > 1 ? parts[parts.length - 1] : '');
-  return `\\documentclass[11pt,a4paper,sans]{moderncv}
-\\moderncvstyle{banking}
-\\moderncvcolor{blue}
-\\usepackage[scale=0.88]{geometry}
-\\name{${firstName}}{${lastName}}
-\\begin{document}
-\\makecvtitle
-\\section{Summary}
-\\cvitem{}{${esc(summaryRaw.replace(/\n/g, ' '))}}
-\\section{Professional Experience}
-\\cvitem{}{${esc(experienceRaw.slice(0, 2000))}}
-\\end{document}`;
-}
 
 export function getExecutor(type: string): NodeExecutor {
   const exec = nodeExecutors[type];
