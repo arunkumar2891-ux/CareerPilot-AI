@@ -1,3 +1,4 @@
+import { createAdminClient } from './supabase-admin.ts';
 import { fetchWithTimeout } from './fetch-timeout.ts';
 
 export async function getIntegrationCredentials(
