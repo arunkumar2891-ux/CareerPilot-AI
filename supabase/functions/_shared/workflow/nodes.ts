@@ -9,6 +9,7 @@ import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, exp
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 import { buildLatexFromAtsText } from '../resume-latex.ts';
 import { fetchWithTimeout } from '../fetch-timeout.ts';
+import { buildResumePdfFileName, parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
 
 function stripHtml(html: string): string {
   return html
