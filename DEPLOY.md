@@ -124,7 +124,7 @@ Merges to `main` that touch `supabase/functions/**` or `supabase/config.toml` tr
 
 | Secret | Value |
 |--------|--------|
-| `SUPABASE_ACCESS_TOKEN` | [Supabase access token](https://supabase.com/dashboard/account/tokens) (Account → Access Tokens) |
+| `SUPABASE_ACCESS_TOKEN` | [Supabase access token](https://supabase.com/dashboard/account/tokens) with **Edge Functions (read-write)** scope |
 | `SUPABASE_PROJECT_REF` | Project ref from your Supabase URL (`https://<ref>.supabase.co`) |
 
 After saving secrets, either merge a backend change to `main` or run the workflow manually from **Actions** → **Deploy Supabase Edge Functions** → **Run workflow**.
