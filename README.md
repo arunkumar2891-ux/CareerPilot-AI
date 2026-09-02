@@ -385,7 +385,7 @@ The frontend is a static SPA deployable to any static host:
 | **Vercel** | `vercel.json` (SPA rewrite) |
 | **Netlify** | `public/_redirects` |
 
-Backend (Supabase) is managed via the Supabase dashboard or CLI. See **[DEPLOY.md](DEPLOY.md)** for the full end-to-end deployment guide.
+Backend (Supabase) is managed via the Supabase dashboard or CLI. Merges to `main` that change `supabase/functions/**` auto-deploy Edge Functions via GitHub Actions once `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` repo secrets are set. See **[DEPLOY.md](DEPLOY.md)** for the full end-to-end deployment guide.
 
 ---
 
