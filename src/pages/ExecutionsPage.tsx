@@ -339,12 +339,17 @@ export function ExecutionsPage() {
                         {activeStep.type && (
                           <p className="text-xs text-muted-foreground">Type: {activeStep.type}</p>
                         )}
-                        {activeStep.detail && !selected.batchProgress && (
+                        {activeStep.detail && (!selected.batchProgress || selected.batchProgress.node === activeStep.name) && (
                           <p className="text-xs text-muted-foreground">{activeStep.detail}</p>
                         )}
-                        {selected.batchProgress && (
+                        {selected.batchProgress && selected.batchProgress.node === activeStep.name && (
                           <p className="text-xs text-muted-foreground">
                             Job {selected.batchProgress.index} of {selected.batchProgress.total} ({selected.batchProgress.node})
+                          </p>
+                        )}
+                        {activeStep.startedAt && Date.now() - new Date(activeStep.startedAt).getTime() > 5 * 60 * 1000 && (
+                          <p className="mt-2 text-xs text-warning">
+                            This step has been running over 5 minutes. Edge Functions time out around 2–4 minutes per slice — use Stop and re-run if it does not finish soon.
                           </p>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
