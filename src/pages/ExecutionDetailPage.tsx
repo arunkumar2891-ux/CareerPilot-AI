@@ -36,7 +36,7 @@ export function ExecutionDetailPage() {
     },
   });
 
-  const { data: workflow } = useQuery({
+  const { data: workflow, isLoading: workflowLoading } = useQuery({
     queryKey: ['workflow', run?.workflowId],
     queryFn: () => services.workflow.get(run!.workflowId),
     enabled: Boolean(run?.workflowId),
@@ -44,6 +44,7 @@ export function ExecutionDetailPage() {
 
   const graph = useMemo(() => {
     if (!run) return null;
+    if (run.workflowId && workflowLoading) return null;
     return buildExecutionGraph({
       snapshot: run.workflowSnapshot,
       workflowNodes: workflow?.nodes.map((n) => ({
@@ -66,7 +67,7 @@ export function ExecutionDetailPage() {
       triggerType: run.triggerType,
       run,
     });
-  }, [run, workflow]);
+  }, [run, workflow, workflowLoading]);
 
   const isActive = run?.status === 'running' || run?.status === 'queued';
   const canRetry = run && !isActive && (run.jobsFailed ?? graph?.jobsFailed ?? 0) > 0;
@@ -201,14 +202,22 @@ export function ExecutionDetailPage() {
         </CardContent>
       </Card>
 
-      {graph && (
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Execution graph
-          </p>
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Execution graph
+        </p>
+        {workflowLoading ? (
+          <div className="flex items-center justify-center rounded-lg border border-border bg-card py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" />
+          </div>
+        ) : graph ? (
           <ExecutionGraph graph={graph} onSelectNode={setSelectedNode} />
-        </div>
-      )}
+        ) : (
+          <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+            Unable to load workflow graph for this execution.
+          </div>
+        )}
+      </div>
 
       <ExecutionNodeDetailSheet
         open={Boolean(selectedNode)}

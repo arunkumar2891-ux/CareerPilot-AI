@@ -61,14 +61,25 @@ export interface WorkflowEdgeRef {
   label?: string;
 }
 
+const NODE_LOG_RE = /(?:Executing|Completed) node:\s*(.+?)\s*\(([^)]+)\)/;
+
+export function effectiveTriggerType(triggerType?: string): string {
+  return triggerType || 'manual';
+}
+
 export function buildNodeNameLookup(input: {
   workflowNodes?: WorkflowNodeRef[];
   nodeExecutions?: NodeExecution[];
   logs?: WorkflowRun['logs'];
-}): Map<string, { name: string; type?: string; positionX?: number }> {
-  const map = new Map<string, { name: string; type?: string; positionX?: number }>();
+}): Map<string, { name: string; type?: string; positionX?: number; positionY?: number }> {
+  const map = new Map<string, { name: string; type?: string; positionX?: number; positionY?: number }>();
   for (const node of input.workflowNodes ?? []) {
-    map.set(node.id, { name: node.name, type: node.type, positionX: node.positionX });
+    map.set(node.id, {
+      name: node.name,
+      type: node.type,
+      positionX: node.positionX,
+      positionY: node.positionY,
+    });
   }
   for (const exec of input.nodeExecutions ?? []) {
     if (exec.nodeName) {
@@ -76,21 +87,58 @@ export function buildNodeNameLookup(input: {
         name: exec.nodeName,
         type: exec.nodeType,
         positionX: map.get(exec.workflowNodeId)?.positionX,
+        positionY: map.get(exec.workflowNodeId)?.positionY,
       });
     }
   }
   for (const log of input.logs ?? []) {
-    if (!log.nodeId) continue;
-    const match = log.message.match(/(?:Executing|Completed) node:\s*(.+?)\s*\(([^)]+)\)/);
+    const match = log.message.match(NODE_LOG_RE);
     if (!match) continue;
-    const existing = map.get(log.nodeId);
-    map.set(log.nodeId, {
-      name: match[1].trim(),
-      type: match[2].trim(),
-      positionX: existing?.positionX,
-    });
+    const name = match[1].trim();
+    const type = match[2].trim();
+    if (log.nodeId) {
+      const existing = map.get(log.nodeId);
+      map.set(log.nodeId, {
+        name,
+        type,
+        positionX: existing?.positionX,
+        positionY: existing?.positionY,
+      });
+    }
   }
   return map;
+}
+
+export interface LogNodeRef {
+  nodeId?: string;
+  name: string;
+  type: string;
+}
+
+/** First-seen execution order and names parsed from workflow logs. */
+export function extractLogNodeSequence(logs: WorkflowRun['logs'] = []): LogNodeRef[] {
+  const order: LogNodeRef[] = [];
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const sorted = [...logs].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+  for (const log of sorted) {
+    const match = log.message.match(NODE_LOG_RE);
+    if (!match) continue;
+    const name = match[1].trim();
+    const type = match[2].trim();
+    if (log.nodeId) {
+      if (seenIds.has(log.nodeId)) continue;
+      seenIds.add(log.nodeId);
+      order.push({ nodeId: log.nodeId, name, type });
+      continue;
+    }
+    if (seenNames.has(name)) continue;
+    seenNames.add(name);
+    order.push({ name, type });
+  }
+  return order;
 }
 
 function snapshotFromWorkflow(
@@ -113,6 +161,7 @@ function snapshotFromWorkflow(
     edges: workflowEdges,
   };
 }
+
 function isPipelineStart(node: WorkflowSnapshotNode): boolean {
   return node.type === 'supabase' && (node.config.action as string || 'insert_job') === 'insert_job';
 }
@@ -121,8 +170,46 @@ function isAggregateNode(node: WorkflowSnapshotNode): boolean {
   return node.type === 'function' && node.config.builtin === 'email_summary';
 }
 
-function sortNodes(nodes: WorkflowSnapshotNode[]): WorkflowSnapshotNode[] {
-  return [...nodes].sort((a, b) => a.positionX - b.positionX);
+function sortNodesByLayout(nodes: WorkflowSnapshotNode[]): WorkflowSnapshotNode[] {
+  return [...nodes].sort((a, b) => {
+    if (a.positionX !== b.positionX) return a.positionX - b.positionX;
+    return a.positionY - b.positionY;
+  });
+}
+
+function pickNextEdge(
+  edges: WorkflowSnapshot['edges'],
+  sourceId: string,
+): WorkflowSnapshot['edges'][number] | undefined {
+  const outbound = edges.filter((e) => e.sourceId === sourceId);
+  if (!outbound.length) return undefined;
+  return (
+    outbound.find((e) => e.label === 'true')
+    ?? outbound.find((e) => !e.label)
+    ?? outbound.find((e) => e.label !== 'false')
+    ?? outbound[0]
+  );
+}
+
+function findEntryNode(
+  nodes: WorkflowSnapshotNode[],
+  edges: WorkflowSnapshot['edges'],
+): WorkflowSnapshotNode | undefined {
+  const targets = new Set(edges.map((e) => e.targetId));
+  const roots = nodes.filter((n) => !targets.has(n.id));
+  const trigger = roots.find((n) => isTriggerNode(n));
+  if (trigger) return trigger;
+  if (roots.length) return sortNodesByLayout(roots)[0];
+  return sortNodesByLayout(nodes)[0];
+}
+
+function nodesBeforePipeline(
+  nodes: WorkflowSnapshotNode[],
+  pipelineStart: WorkflowSnapshotNode,
+): WorkflowSnapshotNode[] {
+  return sortNodesByLayout(
+    nodes.filter((n) => n.id !== pipelineStart.id && !isAggregateNode(n) && n.positionX < pipelineStart.positionX),
+  );
 }
 
 function buildChainFrom(
@@ -140,7 +227,7 @@ function buildChainFrom(
     if (!node) break;
     if (stopBeforeAggregate && isAggregateNode(node)) break;
     chain.push(node);
-    const edge = edges.find((e) => e.sourceId === currentId);
+    const edge = pickNextEdge(edges, currentId);
     currentId = edge?.targetId ?? null;
     const next = currentId ? nodes.find((n) => n.id === currentId) : undefined;
     if (next && stopBeforeAggregate && isAggregateNode(next)) break;
@@ -157,13 +244,6 @@ export function latestJobAttempts(jobs: JobExecution[]): JobExecution[] {
   return Array.from(byIndex.values()).sort((a, b) => a.jobIndex - b.jobIndex);
 }
 
-function nodeStatusFromExecution(
-  exec: NodeExecution | undefined,
-  fallback: WorkflowRunStatus | 'pending' = 'pending',
-): WorkflowRunStatus | 'pending' {
-  return exec?.status ?? fallback;
-}
-
 function isTriggerNode(node: Pick<WorkflowSnapshotNode, 'type'>): boolean {
   return ['schedule', 'trigger', 'webhook'].includes(node.type);
 }
@@ -173,25 +253,61 @@ export function resolveTriggerNodeDisplayName(
   triggerType?: string,
 ): string {
   if (!isTriggerNode(node)) return node.name;
-  if (triggerType === 'schedule') return node.name;
-  if (triggerType === 'manual') return 'Manual Trigger';
-  if (triggerType === 'retry') return 'Retry Failed Jobs';
+  const effective = effectiveTriggerType(triggerType);
+  if (effective === 'schedule') return node.name;
+  if (effective === 'manual') return 'Manual Trigger';
+  if (effective === 'retry') return 'Retry Failed Jobs';
   return node.name;
+}
+
+function resolveNodeStatus(
+  exec: NodeExecution | undefined,
+  result: { status: WorkflowRunStatus; duration: number } | undefined,
+  options: {
+    workflowNodeId: string;
+    currentNodeId?: string;
+    runStatus?: WorkflowRunStatus;
+  },
+): WorkflowRunStatus | 'pending' {
+  if (exec?.status) return exec.status;
+  if (result?.status) return result.status;
+  if (
+    options.runStatus === 'running'
+    && options.currentNodeId
+    && options.currentNodeId === options.workflowNodeId
+  ) {
+    return 'running';
+  }
+  return 'pending';
+}
+
+function latestCommonExecution(
+  nodeExecutions: NodeExecution[],
+  workflowNodeId: string,
+): NodeExecution | undefined {
+  return nodeExecutions
+    .filter((n) => n.workflowNodeId === workflowNodeId && !n.jobExecutionId)
+    .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
 }
 
 function toGraphNode(
   template: WorkflowSnapshotNode,
   exec: NodeExecution | undefined,
   scope: { jobIndex?: number; attempt?: number; jobExecutionId?: string },
-  result?: { status: WorkflowRunStatus; duration: number },
-  triggerType?: string,
+  result: { status: WorkflowRunStatus; duration: number } | undefined,
+  triggerType: string,
+  runMeta: { currentNodeId?: string; runStatus?: WorkflowRunStatus },
 ): GraphNodeView {
   return {
     key: `${template.id}-${scope.jobIndex ?? 'common'}-${scope.attempt ?? 1}`,
     workflowNodeId: template.id,
     name: resolveTriggerNodeDisplayName(template, triggerType),
     type: template.type,
-    status: nodeStatusFromExecution(exec, result?.status ?? 'pending'),
+    status: resolveNodeStatus(exec, result, {
+      workflowNodeId: template.id,
+      currentNodeId: runMeta.currentNodeId,
+      runStatus: runMeta.runStatus,
+    }),
     jobIndex: scope.jobIndex,
     attempt: scope.attempt ?? exec?.attempt,
     nodeExecutionId: exec?.id,
@@ -213,8 +329,18 @@ export function buildExecutionGraph(input: {
   nodeExecutions: NodeExecution[];
   logs?: WorkflowRun['logs'];
   triggerType?: string;
-  run: Pick<WorkflowRun, 'nodeResults' | 'jobsTotal' | 'jobsSuccessful' | 'jobsFailed' | 'jobsSkipped'>;
+  run: Pick<
+    WorkflowRun,
+    | 'nodeResults'
+    | 'jobsTotal'
+    | 'jobsSuccessful'
+    | 'jobsFailed'
+    | 'jobsSkipped'
+    | 'currentNodeId'
+    | 'status'
+  >;
 }): ExecutionGraphView {
+  const triggerType = effectiveTriggerType(input.triggerType);
   const latestJobs = latestJobAttempts(input.jobExecutions);
   const jobsTotal = input.run.jobsTotal ?? latestJobs.length;
   const jobsSuccessful = input.run.jobsSuccessful ?? latestJobs.filter((j) => j.status === 'success').length;
@@ -222,6 +348,7 @@ export function buildExecutionGraph(input: {
   const jobsSkipped = input.run.jobsSkipped ?? latestJobs.filter((j) => j.status === 'skipped').length;
   const usedPersistedSnapshot = Boolean(input.snapshot?.nodes?.length);
   const isLegacy = !usedPersistedSnapshot;
+  const runMeta = { currentNodeId: input.run.currentNodeId, runStatus: input.run.status };
 
   const nameLookup = buildNodeNameLookup({
     workflowNodes: input.workflowNodes,
@@ -235,33 +362,45 @@ export function buildExecutionGraph(input: {
   }
 
   if (!snapshot?.nodes?.length) {
-    return buildLegacyGraph(input.run, latestJobs, input.nodeExecutions, nameLookup, input.triggerType, {
-      jobsTotal,
-      jobsSuccessful,
-      jobsFailed,
-      jobsSkipped,
-    });
+    return buildLegacyGraph(
+      input.run,
+      latestJobs,
+      input.nodeExecutions,
+      nameLookup,
+      triggerType,
+      input.logs,
+      {
+        jobsTotal,
+        jobsSuccessful,
+        jobsFailed,
+        jobsSkipped,
+      },
+    );
   }
 
   const resultMap = new Map(input.run.nodeResults.map((n) => [n.nodeId, n]));
-  const nodes = sortNodes(snapshot.nodes);
+  const nodes = snapshot.nodes;
   const edges = snapshot.edges || [];
   const pipelineStart = nodes.find(isPipelineStart);
   const aggregate = nodes.find(isAggregateNode);
 
   const commonNodes: GraphNodeView[] = [];
   if (pipelineStart) {
-    const beforePipeline = nodes.filter((n) => n.positionX < pipelineStart.positionX);
-    for (const node of beforePipeline) {
-      const exec = input.nodeExecutions
-        .filter((n) => n.workflowNodeId === node.id && !n.jobExecutionId)
-        .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
-      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id), input.triggerType));
+    const prefixNodes = nodesBeforePipeline(nodes, pipelineStart);
+    for (const node of prefixNodes) {
+      const exec = latestCommonExecution(input.nodeExecutions, node.id);
+      commonNodes.push(
+        toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
+      );
     }
   } else {
-    for (const node of nodes.filter((n) => !isAggregateNode(n))) {
-      const exec = input.nodeExecutions.find((n) => n.workflowNodeId === node.id && !n.jobExecutionId);
-      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id), input.triggerType));
+    const entry = findEntryNode(nodes, edges);
+    const chain = entry ? buildChainFrom(entry.id, nodes, edges) : sortNodesByLayout(nodes);
+    for (const node of chain.filter((n) => !isAggregateNode(n))) {
+      const exec = latestCommonExecution(input.nodeExecutions, node.id);
+      commonNodes.push(
+        toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
+      );
     }
   }
 
@@ -270,10 +409,10 @@ export function buildExecutionGraph(input: {
   if (aggregate) {
     const tail = buildChainFrom(aggregate.id, nodes, edges, false);
     for (const node of tail) {
-      const exec = input.nodeExecutions
-        .filter((n) => n.workflowNodeId === node.id && !n.jobExecutionId)
-        .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
-      fanInNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id), input.triggerType));
+      const exec = latestCommonExecution(input.nodeExecutions, node.id);
+      fanInNodes.push(
+        toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
+      );
     }
   }
 
@@ -284,11 +423,18 @@ export function buildExecutionGraph(input: {
         .filter((n) => n.workflowNodeId === template.id && n.attempt === job.attempt)
         .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0]
         || jobNodeExecs.find((n) => n.workflowNodeId === template.id);
-      return toGraphNode(template, exec, {
-        jobIndex: job.jobIndex,
-        attempt: job.attempt,
-        jobExecutionId: job.id,
-      }, resultMap.get(template.id), input.triggerType);
+      return toGraphNode(
+        template,
+        exec,
+        {
+          jobIndex: job.jobIndex,
+          attempt: job.attempt,
+          jobExecutionId: job.id,
+        },
+        resultMap.get(template.id),
+        triggerType,
+        runMeta,
+      );
     });
     return {
       jobIndex: job.jobIndex,
@@ -313,31 +459,59 @@ export function buildExecutionGraph(input: {
 }
 
 function buildLegacyGraph(
-  run: Pick<WorkflowRun, 'nodeResults'>,
+  run: Pick<WorkflowRun, 'nodeResults' | 'currentNodeId' | 'status'>,
   jobs: JobExecution[],
   nodeExecutions: NodeExecution[],
-  nameLookup: Map<string, { name: string; type?: string; positionX?: number }>,
-  triggerType: string | undefined,
+  nameLookup: Map<string, { name: string; type?: string; positionX?: number; positionY?: number }>,
+  triggerType: string,
+  logs: WorkflowRun['logs'] | undefined,
   counters: { jobsTotal: number; jobsSuccessful: number; jobsFailed: number; jobsSkipped: number },
 ): ExecutionGraphView {
-  const commonNodes: GraphNodeView[] = [...run.nodeResults]
-    .sort((a, b) => {
-      const posA = nameLookup.get(a.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
-      const posB = nameLookup.get(b.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
-      return posA - posB;
-    })
-    .map((nr) => {
-      const meta = nameLookup.get(nr.nodeId);
-      const type = meta?.type || 'legacy';
-      return {
-        key: `legacy-${nr.nodeId}`,
-        workflowNodeId: nr.nodeId,
-        name: resolveTriggerNodeDisplayName({ type, name: meta?.name || nr.nodeId }, triggerType),
-        type,
-        status: nr.status,
-        durationMs: nr.duration,
-      };
+  const logSequence = extractLogNodeSequence(logs);
+  const logOrder = new Map<string, number>();
+  logSequence.forEach((entry, index) => {
+    if (entry.nodeId) logOrder.set(entry.nodeId, index);
+  });
+
+  const resultById = new Map(run.nodeResults.map((nr) => [nr.nodeId, nr]));
+  const orderedNodeIds = logSequence.length
+    ? [
+      ...logSequence.map((entry) => entry.nodeId).filter((id): id is string => Boolean(id)),
+      ...run.nodeResults
+        .map((nr) => nr.nodeId)
+        .filter((id) => !logOrder.has(id)),
+    ]
+    : [...run.nodeResults]
+      .sort((a, b) => {
+        const posA = nameLookup.get(a.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
+        const posB = nameLookup.get(b.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
+        if (posA !== posB) return posA - posB;
+        const yA = nameLookup.get(a.nodeId)?.positionY ?? 0;
+        const yB = nameLookup.get(b.nodeId)?.positionY ?? 0;
+        return yA - yB;
+      })
+      .map((nr) => nr.nodeId);
+
+  const seen = new Set<string>();
+  const commonNodes: GraphNodeView[] = [];
+  for (const nodeId of orderedNodeIds) {
+    if (seen.has(nodeId)) continue;
+    seen.add(nodeId);
+    const nr = resultById.get(nodeId);
+    const logEntry = logSequence.find((entry) => entry.nodeId === nodeId);
+    const meta = nameLookup.get(nodeId);
+    const type = meta?.type || logEntry?.type || 'legacy';
+    const name = meta?.name || logEntry?.name || nodeId;
+    commonNodes.push({
+      key: `legacy-${nodeId}`,
+      workflowNodeId: nodeId,
+      name: resolveTriggerNodeDisplayName({ type, name }, triggerType),
+      type,
+      status: nr?.status
+        ?? (run.status === 'running' && run.currentNodeId === nodeId ? 'running' : 'pending'),
+      durationMs: nr?.duration,
     });
+  }
 
   const jobBranches: JobBranchView[] = jobs.map((job) => ({
     jobIndex: job.jobIndex,

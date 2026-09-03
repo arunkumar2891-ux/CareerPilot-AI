@@ -665,7 +665,7 @@ function mapRunRow(r: Record<string, unknown>): WorkflowRun {
     jobsSuccessful: Number(r.jobs_successful ?? 0) || undefined,
     jobsFailed: Number(r.jobs_failed ?? 0) || undefined,
     jobsSkipped: Number(r.jobs_skipped ?? 0) || undefined,
-    triggerType: r.trigger_type as string | undefined,
+    triggerType: (r.trigger_type as string | undefined) || 'manual',
     isLegacy: jobExecutions.length === 0,
     nodeResults: mergeNodeResults(
       ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
