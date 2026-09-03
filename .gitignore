@@ -38,6 +38,8 @@ supabase/.temp/
 !.cursor/skills/**
 !.cursor/references/
 !.cursor/references/**
+!.cursor/mcp.json
+!.cursor/environment.json
 
 # Sensitive performance-review / incident dumps (use src/content/career-corpus instead)
 src/resources/GPT/Daily_Status*

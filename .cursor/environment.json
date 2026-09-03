@@ -1,0 +1,24 @@
+{
+  "name": "CareerPilot-AI",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "dev-server",
+      "command": "npm run dev -- --host 0.0.0.0 --port 5173",
+      "description": "Vite dev server for browser testing at http://localhost:5173"
+    }
+  ],
+  "ports": [
+    {
+      "name": "vite",
+      "port": 5173
+    }
+  ],
+  "chromeExecutablePath": "/usr/local/bin/google-chrome",
+  "mcpServerAllowlist": [
+    {
+      "name": "chrome-devtools",
+      "command": "npx"
+    }
+  ]
+}
