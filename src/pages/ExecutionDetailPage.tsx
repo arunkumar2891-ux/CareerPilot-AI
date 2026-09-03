@@ -36,15 +36,36 @@ export function ExecutionDetailPage() {
     },
   });
 
+  const { data: workflow } = useQuery({
+    queryKey: ['workflow', run?.workflowId],
+    queryFn: () => services.workflow.get(run!.workflowId),
+    enabled: Boolean(run?.workflowId),
+  });
+
   const graph = useMemo(() => {
     if (!run) return null;
     return buildExecutionGraph({
       snapshot: run.workflowSnapshot,
+      workflowNodes: workflow?.nodes.map((n) => ({
+        id: n.id,
+        name: n.name,
+        type: n.type,
+        positionX: n.position.x,
+        positionY: n.position.y,
+        config: n.config,
+      })),
+      workflowEdges: workflow?.edges.map((e) => ({
+        id: e.id,
+        sourceId: e.source,
+        targetId: e.target,
+        label: e.label,
+      })),
       jobExecutions: run.jobExecutions,
       nodeExecutions: run.nodeExecutions,
+      logs: run.logs,
       run,
     });
-  }, [run]);
+  }, [run, workflow]);
 
   const isActive = run?.status === 'running' || run?.status === 'queued';
   const canRetry = run && !isActive && (run.jobsFailed ?? graph?.jobsFailed ?? 0) > 0;

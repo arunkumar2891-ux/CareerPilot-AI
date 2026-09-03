@@ -45,6 +45,74 @@ export interface ExecutionGraphView {
   jobsSkipped: number;
 }
 
+export interface WorkflowNodeRef {
+  id: string;
+  name: string;
+  type: string;
+  positionX: number;
+  positionY?: number;
+  config?: Record<string, unknown>;
+}
+
+export interface WorkflowEdgeRef {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  label?: string;
+}
+
+export function buildNodeNameLookup(input: {
+  workflowNodes?: WorkflowNodeRef[];
+  nodeExecutions?: NodeExecution[];
+  logs?: WorkflowRun['logs'];
+}): Map<string, { name: string; type?: string; positionX?: number }> {
+  const map = new Map<string, { name: string; type?: string; positionX?: number }>();
+  for (const node of input.workflowNodes ?? []) {
+    map.set(node.id, { name: node.name, type: node.type, positionX: node.positionX });
+  }
+  for (const exec of input.nodeExecutions ?? []) {
+    if (exec.nodeName) {
+      map.set(exec.workflowNodeId, {
+        name: exec.nodeName,
+        type: exec.nodeType,
+        positionX: map.get(exec.workflowNodeId)?.positionX,
+      });
+    }
+  }
+  for (const log of input.logs ?? []) {
+    if (!log.nodeId) continue;
+    const match = log.message.match(/(?:Executing|Completed) node:\s*(.+?)\s*\(([^)]+)\)/);
+    if (!match) continue;
+    const existing = map.get(log.nodeId);
+    map.set(log.nodeId, {
+      name: match[1].trim(),
+      type: match[2].trim(),
+      positionX: existing?.positionX,
+    });
+  }
+  return map;
+}
+
+function snapshotFromWorkflow(
+  workflowNodes: WorkflowNodeRef[],
+  workflowEdges: WorkflowEdgeRef[] = [],
+  base?: WorkflowSnapshot,
+): WorkflowSnapshot {
+  return {
+    workflowId: base?.workflowId ?? '',
+    workflowName: base?.workflowName ?? 'Workflow',
+    capturedAt: base?.capturedAt ?? '',
+    nodes: workflowNodes.map((n) => ({
+      id: n.id,
+      name: n.name,
+      type: n.type,
+      positionX: n.positionX,
+      positionY: n.positionY ?? 0,
+      config: n.config ?? {},
+    })),
+    edges: workflowEdges,
+  };
+}
 function isPipelineStart(node: WorkflowSnapshotNode): boolean {
   return node.type === 'supabase' && (node.config.action as string || 'insert_job') === 'insert_job';
 }
@@ -100,18 +168,19 @@ function toGraphNode(
   template: WorkflowSnapshotNode,
   exec: NodeExecution | undefined,
   scope: { jobIndex?: number; attempt?: number; jobExecutionId?: string },
+  result?: { status: WorkflowRunStatus; duration: number },
 ): GraphNodeView {
   return {
     key: `${template.id}-${scope.jobIndex ?? 'common'}-${scope.attempt ?? 1}`,
     workflowNodeId: template.id,
     name: template.name,
     type: template.type,
-    status: nodeStatusFromExecution(exec),
+    status: nodeStatusFromExecution(exec, result?.status ?? 'pending'),
     jobIndex: scope.jobIndex,
     attempt: scope.attempt ?? exec?.attempt,
     nodeExecutionId: exec?.id,
     jobExecutionId: scope.jobExecutionId ?? exec?.jobExecutionId,
-    durationMs: exec?.durationMs,
+    durationMs: exec?.durationMs ?? result?.duration,
     errorType: exec?.errorType,
     errorCode: exec?.errorCode,
     errorMessage: exec?.errorMessage,
@@ -122,8 +191,11 @@ function toGraphNode(
 
 export function buildExecutionGraph(input: {
   snapshot?: WorkflowSnapshot;
+  workflowNodes?: WorkflowNodeRef[];
+  workflowEdges?: WorkflowEdgeRef[];
   jobExecutions: JobExecution[];
   nodeExecutions: NodeExecution[];
+  logs?: WorkflowRun['logs'];
   run: Pick<WorkflowRun, 'nodeResults' | 'jobsTotal' | 'jobsSuccessful' | 'jobsFailed' | 'jobsSkipped'>;
 }): ExecutionGraphView {
   const latestJobs = latestJobAttempts(input.jobExecutions);
@@ -131,9 +203,22 @@ export function buildExecutionGraph(input: {
   const jobsSuccessful = input.run.jobsSuccessful ?? latestJobs.filter((j) => j.status === 'success').length;
   const jobsFailed = input.run.jobsFailed ?? latestJobs.filter((j) => j.status === 'failed').length;
   const jobsSkipped = input.run.jobsSkipped ?? latestJobs.filter((j) => j.status === 'skipped').length;
+  const usedPersistedSnapshot = Boolean(input.snapshot?.nodes?.length);
+  const isLegacy = !usedPersistedSnapshot;
 
-  if (!input.snapshot?.nodes?.length) {
-    return buildLegacyGraph(input.run, latestJobs, input.nodeExecutions, {
+  const nameLookup = buildNodeNameLookup({
+    workflowNodes: input.workflowNodes,
+    nodeExecutions: input.nodeExecutions,
+    logs: input.logs,
+  });
+
+  let snapshot = input.snapshot;
+  if (!snapshot?.nodes?.length && input.workflowNodes?.length) {
+    snapshot = snapshotFromWorkflow(input.workflowNodes, input.workflowEdges, input.snapshot);
+  }
+
+  if (!snapshot?.nodes?.length) {
+    return buildLegacyGraph(input.run, latestJobs, input.nodeExecutions, nameLookup, {
       jobsTotal,
       jobsSuccessful,
       jobsFailed,
@@ -141,8 +226,9 @@ export function buildExecutionGraph(input: {
     });
   }
 
-  const nodes = sortNodes(input.snapshot.nodes);
-  const edges = input.snapshot.edges || [];
+  const resultMap = new Map(input.run.nodeResults.map((n) => [n.nodeId, n]));
+  const nodes = sortNodes(snapshot.nodes);
+  const edges = snapshot.edges || [];
   const pipelineStart = nodes.find(isPipelineStart);
   const aggregate = nodes.find(isAggregateNode);
 
@@ -153,12 +239,12 @@ export function buildExecutionGraph(input: {
       const exec = input.nodeExecutions
         .filter((n) => n.workflowNodeId === node.id && !n.jobExecutionId)
         .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
-      commonNodes.push(toGraphNode(node, exec, {}));
+      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id)));
     }
   } else {
     for (const node of nodes.filter((n) => !isAggregateNode(n))) {
       const exec = input.nodeExecutions.find((n) => n.workflowNodeId === node.id && !n.jobExecutionId);
-      commonNodes.push(toGraphNode(node, exec, {}));
+      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id)));
     }
   }
 
@@ -170,7 +256,7 @@ export function buildExecutionGraph(input: {
       const exec = input.nodeExecutions
         .filter((n) => n.workflowNodeId === node.id && !n.jobExecutionId)
         .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
-      fanInNodes.push(toGraphNode(node, exec, {}));
+      fanInNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id)));
     }
   }
 
@@ -185,7 +271,7 @@ export function buildExecutionGraph(input: {
         jobIndex: job.jobIndex,
         attempt: job.attempt,
         jobExecutionId: job.id,
-      });
+      }, resultMap.get(template.id));
     });
     return {
       jobIndex: job.jobIndex,
@@ -201,7 +287,7 @@ export function buildExecutionGraph(input: {
     commonNodes,
     jobBranches,
     fanInNodes,
-    isLegacy: latestJobs.length === 0,
+    isLegacy,
     jobsTotal,
     jobsSuccessful,
     jobsFailed,
@@ -213,17 +299,26 @@ function buildLegacyGraph(
   run: Pick<WorkflowRun, 'nodeResults'>,
   jobs: JobExecution[],
   nodeExecutions: NodeExecution[],
+  nameLookup: Map<string, { name: string; type?: string; positionX?: number }>,
   counters: { jobsTotal: number; jobsSuccessful: number; jobsFailed: number; jobsSkipped: number },
 ): ExecutionGraphView {
-  const resultMap = new Map(run.nodeResults.map((n) => [n.nodeId, n]));
-  const commonNodes: GraphNodeView[] = run.nodeResults.map((nr) => ({
-    key: `legacy-${nr.nodeId}`,
-    workflowNodeId: nr.nodeId,
-    name: nr.nodeId,
-    type: 'legacy',
-    status: nr.status,
-    durationMs: nr.duration,
-  }));
+  const commonNodes: GraphNodeView[] = [...run.nodeResults]
+    .sort((a, b) => {
+      const posA = nameLookup.get(a.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
+      const posB = nameLookup.get(b.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
+      return posA - posB;
+    })
+    .map((nr) => {
+      const meta = nameLookup.get(nr.nodeId);
+      return {
+        key: `legacy-${nr.nodeId}`,
+        workflowNodeId: nr.nodeId,
+        name: meta?.name || nr.nodeId,
+        type: meta?.type || 'legacy',
+        status: nr.status,
+        durationMs: nr.duration,
+      };
+    });
 
   const jobBranches: JobBranchView[] = jobs.map((job) => ({
     jobIndex: job.jobIndex,
@@ -236,8 +331,8 @@ function buildLegacyGraph(
       .map((exec) => ({
         key: `${exec.workflowNodeId}-${job.jobIndex}-${exec.attempt}`,
         workflowNodeId: exec.workflowNodeId,
-        name: exec.nodeName,
-        type: exec.nodeType,
+        name: exec.nodeName || nameLookup.get(exec.workflowNodeId)?.name || exec.workflowNodeId,
+        type: exec.nodeType || nameLookup.get(exec.workflowNodeId)?.type || 'legacy',
         status: exec.status,
         jobIndex: job.jobIndex,
         attempt: exec.attempt,
