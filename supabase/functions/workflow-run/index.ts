@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     const workflowId = body.workflowId as string;
     if (!workflowId) return jsonResponse({ error: 'workflowId required' }, 400);
 
-    const run = await createRun(workflowId, user.id);
+    const run = await createRun(workflowId, user.id, { triggerType: 'manual', triggeredBy: user.id });
     const runId = run.id as string;
 
     const task = executeWorkflow(workflowId, user.id, runId).catch(async (err) => {

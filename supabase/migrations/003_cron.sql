@@ -24,7 +24,11 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 
 -- Schedule: every minute, POST to workflow-scheduler Edge Function
--- Replace YOUR_PROJECT_REF and YOUR_SCHEDULER_SECRET before running
+-- REQUIRED: replace <YOUR_SCHEDULER_SECRET> with the same value as the
+-- WORKFLOW_SCHEDULER_SECRET Edge Function secret before running this migration.
+-- Verify after deploy: SELECT jobid, jobname, schedule, active FROM cron.job;
+-- Test manually: curl -X POST https://YOUR_PROJECT_REF.supabase.co/functions/v1/workflow-scheduler \
+--   -H "Authorization: Bearer YOUR_SCHEDULER_SECRET" -H "Content-Type: application/json" -d '{}'
 SELECT cron.schedule(
   'careerpilot-workflow-scheduler',
   '* * * * *',

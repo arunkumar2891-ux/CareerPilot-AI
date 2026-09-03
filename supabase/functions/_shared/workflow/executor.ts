@@ -17,6 +17,7 @@ import {
   startNodeExecution,
 } from './execution-persistence.ts';
 import { deriveRunStatus } from './execution-status.ts';
+import { computeNextCronRun, isAutomationDue } from '../cron-schedule.ts';
 import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 
@@ -34,7 +35,11 @@ export async function loadWorkflow(workflowId: string, userId: string) {
   return { workflow, nodes, edges };
 }
 
-export async function createRun(workflowId: string, userId: string) {
+export async function createRun(
+  workflowId: string,
+  userId: string,
+  options?: { triggerType?: string; triggeredBy?: string },
+) {
   const admin = createAdminClient();
   const { data, error } = await admin.from('workflow_runs').insert({
     workflow_id: workflowId,
@@ -43,6 +48,7 @@ export async function createRun(workflowId: string, userId: string) {
     started_at: new Date().toISOString(),
     duration_ms: 0,
     context: {},
+    trigger_type: options?.triggerType ?? null,
   }).select().single();
   if (error) throw error;
   return data;
@@ -215,6 +221,7 @@ export async function executeWorkflow(
   userId: string,
   existingRunId?: string,
   resumeNodeId?: string,
+  options?: { triggerType?: string },
 ): Promise<{ runId: string; status: string }> {
   const admin = createAdminClient();
   const { workflow, nodes, edges } = await loadWorkflow(workflowId, userId);
@@ -239,7 +246,7 @@ export async function executeWorkflow(
       currentNodeId: resumeNodeId || run.current_node_id,
     };
   } else {
-    const run = await createRun(workflowId, userId);
+    const run = await createRun(workflowId, userId, { triggerType: options?.triggerType });
     runId = run.id;
     ctx = { runId, workflowId, userId, variables: {}, nodeOutputs: {}, settings };
     await saveWorkflowSnapshot(
@@ -553,25 +560,30 @@ export async function processDueSteps(): Promise<number> {
 
 export async function processScheduledAutomations(): Promise<number> {
   const admin = createAdminClient();
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const { data: automations } = await admin
     .from('automations')
     .select('*')
     .eq('status', 'active')
-    .or(`next_run.is.null,next_run.lte.${now}`)
-    .limit(20);
+    .limit(50);
 
   if (!automations?.length) return 0;
 
+  let ran = 0;
   for (const auto of automations) {
-    await executeWorkflow(auto.workflow_id, auto.user_id);
-    const nextRun = new Date();
-    nextRun.setDate(nextRun.getDate() + 1);
-    nextRun.setHours(7, 0, 0, 0);
+    const schedule = String(auto.schedule || '0 7 * * *');
+    const nextRunAt = auto.next_run ? new Date(auto.next_run as string) : null;
+    const lastRunAt = auto.last_run ? new Date(auto.last_run as string) : null;
+    if (!isAutomationDue(schedule, nextRunAt, lastRunAt, now)) continue;
+
+    await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
+    const nextRun = computeNextCronRun(schedule, now);
     await admin.from('automations').update({
-      last_run: now,
+      last_run: nowIso,
       next_run: nextRun.toISOString(),
     }).eq('id', auto.id);
+    ran++;
   }
-  return automations.length;
+  return ran;
 }

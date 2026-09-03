@@ -8,6 +8,7 @@ import type {
 import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/auth';
 import { DEFAULT_JOB_SEARCH_WORKFLOW, buildSeedEdges } from '@/constants/workflow-seed';
+import { computeNextCronRun } from '@/utils/cron-schedule';
 import {
   CAREER_CORPUS,
   MASTER_RESUME_NAME,
@@ -575,17 +576,22 @@ export class WorkflowService {
     }));
     await this.saveGraph(wf.id, nodes, edges);
     await supabase.from('workflows').update({ schedule: DEFAULT_JOB_SEARCH_WORKFLOW.schedule, active: true }).eq('id', wf.id);
-    const { data: autoExists } = await supabase.from('automations').select('id').eq('workflow_id', wf.id).maybeSingle();
+    const { data: autoExists } = await supabase.from('automations').select('id, next_run').eq('workflow_id', wf.id).maybeSingle();
     if (!autoExists) {
+      const nextRun = computeNextCronRun(DEFAULT_JOB_SEARCH_WORKFLOW.schedule);
       await supabase.from('automations').insert({
         user_id: userId,
         name: 'Daily 7 AM Job Search',
         workflow_id: wf.id,
         status: 'active',
-        schedule: '0 7 * * *',
+        schedule: DEFAULT_JOB_SEARCH_WORKFLOW.schedule,
         trigger: 'schedule',
         retries: 2,
+        next_run: nextRun.toISOString(),
       });
+    } else if (!autoExists.next_run) {
+      const nextRun = computeNextCronRun(DEFAULT_JOB_SEARCH_WORKFLOW.schedule);
+      await supabase.from('automations').update({ next_run: nextRun.toISOString() }).eq('id', autoExists.id);
     }
     return (await this.get(wf.id))!;
   }
@@ -659,7 +665,7 @@ function mapRunRow(r: Record<string, unknown>): WorkflowRun {
     jobsSuccessful: Number(r.jobs_successful ?? 0) || undefined,
     jobsFailed: Number(r.jobs_failed ?? 0) || undefined,
     jobsSkipped: Number(r.jobs_skipped ?? 0) || undefined,
-    triggerType: r.trigger_type as string | undefined,
+    triggerType: (r.trigger_type as string | undefined) || 'manual',
     isLegacy: jobExecutions.length === 0,
     nodeResults: mergeNodeResults(
       ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
@@ -1181,9 +1187,7 @@ export class AutomationService {
   }
   async create(name: string, workflowId: string, schedule: string): Promise<Automation> {
     const userId = await requireUserId();
-    const nextRun = new Date();
-    nextRun.setDate(nextRun.getDate() + 1);
-    nextRun.setHours(7, 0, 0, 0);
+    const nextRun = computeNextCronRun(schedule);
     const { data, error } = await supabase.from('automations').insert({
       user_id: userId,
       name,

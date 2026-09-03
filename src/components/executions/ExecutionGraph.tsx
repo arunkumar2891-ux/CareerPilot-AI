@@ -111,7 +111,7 @@ export function ExecutionGraph({ graph, onSelectNode }: ExecutionGraphProps) {
     <div className="space-y-2">
       {graph.isLegacy && (
         <p className="text-xs text-muted-foreground">
-          Legacy run — limited structured data. Showing available node results.
+          Legacy run — node names from the current workflow definition and execution logs. Per-job branch detail may be unavailable.
         </p>
       )}
 

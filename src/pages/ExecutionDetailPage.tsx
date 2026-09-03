@@ -36,15 +36,38 @@ export function ExecutionDetailPage() {
     },
   });
 
+  const { data: workflow, isLoading: workflowLoading } = useQuery({
+    queryKey: ['workflow', run?.workflowId],
+    queryFn: () => services.workflow.get(run!.workflowId),
+    enabled: Boolean(run?.workflowId),
+  });
+
   const graph = useMemo(() => {
     if (!run) return null;
+    if (run.workflowId && workflowLoading) return null;
     return buildExecutionGraph({
       snapshot: run.workflowSnapshot,
+      workflowNodes: workflow?.nodes.map((n) => ({
+        id: n.id,
+        name: n.name,
+        type: n.type,
+        positionX: n.position.x,
+        positionY: n.position.y,
+        config: n.config,
+      })),
+      workflowEdges: workflow?.edges.map((e) => ({
+        id: e.id,
+        sourceId: e.source,
+        targetId: e.target,
+        label: e.label,
+      })),
       jobExecutions: run.jobExecutions,
       nodeExecutions: run.nodeExecutions,
+      logs: run.logs,
+      triggerType: run.triggerType,
       run,
     });
-  }, [run]);
+  }, [run, workflow, workflowLoading]);
 
   const isActive = run?.status === 'running' || run?.status === 'queued';
   const canRetry = run && !isActive && (run.jobsFailed ?? graph?.jobsFailed ?? 0) > 0;
@@ -179,14 +202,22 @@ export function ExecutionDetailPage() {
         </CardContent>
       </Card>
 
-      {graph && (
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Execution graph
-          </p>
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Execution graph
+        </p>
+        {workflowLoading ? (
+          <div className="flex items-center justify-center rounded-lg border border-border bg-card py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" />
+          </div>
+        ) : graph ? (
           <ExecutionGraph graph={graph} onSelectNode={setSelectedNode} />
-        </div>
-      )}
+        ) : (
+          <div className="rounded-lg border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+            Unable to load workflow graph for this execution.
+          </div>
+        )}
+      </div>
 
       <ExecutionNodeDetailSheet
         open={Boolean(selectedNode)}
