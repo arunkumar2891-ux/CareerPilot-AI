@@ -611,16 +611,21 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       }
       const resendKey = Deno.env.get('RESEND_API_KEY');
       if (resendKey && to && body) {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: Deno.env.get('RESEND_FROM_EMAIL') || 'CareerPilot <onboarding@resend.dev>',
-            to: [to],
-            subject,
-            html: body,
-          }),
-        });
+        const res = await fetchWithTimeout(
+          'https://api.resend.com/emails',
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: Deno.env.get('RESEND_FROM_EMAIL') || 'CareerPilot <onboarding@resend.dev>',
+              to: [to],
+              subject,
+              html: body,
+            }),
+          },
+          30000,
+          'Resend email',
+        );
         if (!res.ok) {
           const err = await res.json();
           throw new Error(err.message || 'Email send failed');

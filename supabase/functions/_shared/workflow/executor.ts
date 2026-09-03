@@ -7,7 +7,7 @@ import {
   executePerJobPipeline,
   isJobPipelineStart,
 } from './job-pipeline.ts';
-import { RunCancelledError, assertRunActive, isRunCancelled } from './run-lifecycle.ts';
+import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 
 export async function loadWorkflow(workflowId: string, userId: string) {
@@ -289,6 +289,7 @@ export async function executeWorkflow(
             return { runId, status: 'running' };
           }
 
+          delete ctx.variables.batchProgress;
           for (const chainNode of chain) visited.add(chainNode.id);
           const nextId = getNextNodeId(tail.id, edges);
           if (nextId) {
@@ -443,6 +444,7 @@ export async function executeWorkflow(
 
 export async function processDueSteps(): Promise<number> {
   const admin = createAdminClient();
+  await recoverStaleWorkflowState(admin);
   const now = new Date().toISOString();
   const { data: steps } = await admin
     .from('workflow_step_queue')
