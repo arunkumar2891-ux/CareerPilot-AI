@@ -22,9 +22,12 @@ export type WorkflowRunStatus =
   | 'running'
   | 'success'
   | 'failed'
+  | 'partially_failed'
   | 'cancelled'
   | 'paused'
-  | 'queued';
+  | 'queued'
+  | 'waiting'
+  | 'skipped';
 
 export type AgentRunStatus = 'idle' | 'running' | 'success' | 'failed';
 
@@ -195,6 +198,70 @@ export interface WorkflowRun {
   batchProgress?: { node: string; index: number; total: number };
   nodeResults: { nodeId: string; status: WorkflowRunStatus; duration: number; output?: string }[];
   logs: ExecutionLog[];
+  jobsTotal?: number;
+  jobsSuccessful?: number;
+  jobsFailed?: number;
+  jobsSkipped?: number;
+  triggerType?: string;
+  isLegacy?: boolean;
+}
+
+export interface WorkflowSnapshotNode {
+  id: string;
+  name: string;
+  type: string;
+  positionX: number;
+  positionY: number;
+  config: Record<string, unknown>;
+}
+
+export interface WorkflowSnapshot {
+  workflowId: string;
+  workflowName: string;
+  nodes: WorkflowSnapshotNode[];
+  edges: { id: string; sourceId: string; targetId: string; label?: string }[];
+  capturedAt: string;
+}
+
+export interface JobExecution {
+  id: string;
+  runId: string;
+  jobIndex: number;
+  label?: string;
+  status: WorkflowRunStatus | 'pending';
+  attempt: number;
+  failedNodeId?: string;
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  errorType?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+export interface NodeExecution {
+  id: string;
+  runId: string;
+  jobExecutionId?: string;
+  workflowNodeId: string;
+  nodeName: string;
+  nodeType: string;
+  jobIndex?: number;
+  attempt: number;
+  status: WorkflowRunStatus | 'pending';
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  errorType?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  outputSummary?: Record<string, unknown>;
+}
+
+export interface WorkflowRunDetail extends WorkflowRun {
+  workflowSnapshot?: WorkflowSnapshot;
+  jobExecutions: JobExecution[];
+  nodeExecutions: NodeExecution[];
 }
 
 export interface ExecutionLog {
@@ -203,6 +270,10 @@ export interface ExecutionLog {
   message: string;
   timestamp: string;
   nodeId?: string;
+  jobExecutionId?: string;
+  nodeExecutionId?: string;
+  jobIndex?: number;
+  attempt?: number;
 }
 
 export interface Agent {
