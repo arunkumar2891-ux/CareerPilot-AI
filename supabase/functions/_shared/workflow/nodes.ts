@@ -2,6 +2,7 @@ import type { NodeExecutor, NodeResult, RunContext, WorkflowNodeRow, WorkflowEdg
 import { getSecretOrIntegration, getIntegrationCredentials, refreshGoogleToken, getUserSettings } from '../credentials.ts';
 import { resolveTemplate } from './graph.ts';
 import { createAdminClient } from '../supabase-admin.ts';
+import { buildEmailSummaryBlock } from './execution-persistence.ts';
 import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
@@ -161,6 +162,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         return { output: { ...data, latex }, status: 'success' };
       }
       if (fn === 'email_summary') {
+        const summaryBlock = await buildEmailSummaryBlock(createAdminClient(), ctx.runId);
         const items = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
         const scraped = Number(ctx.variables.jobsScraped ?? 0);
         const parsed = Number(ctx.variables.jobsParsed ?? 0);
@@ -188,7 +190,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           return {
             output: {
               subject: `No New Jobs Found — ${today}`,
-              body: `<p>${detail}</p>`,
+              body: `${summaryBlock}<p>${detail}</p>`,
               to: email,
             },
             status: 'success',
@@ -203,7 +205,14 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         }
         body += `</table><p>Generated: ${new Date().toLocaleString()}</p></div>`;
         const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
-        return { output: { subject: `ATS Resumes Ready (${items.length}) — ${today}`, body, to: email }, status: 'success' };
+        return {
+          output: {
+            subject: `ATS Resumes Ready (${items.length}) — ${today}`,
+            body: `${summaryBlock}${body}`,
+            to: email,
+          },
+          status: 'success',
+        };
       }
       return { output: input, status: 'success' };
     },

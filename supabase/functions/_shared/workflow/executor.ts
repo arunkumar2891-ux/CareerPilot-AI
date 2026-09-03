@@ -4,9 +4,19 @@ import { getEntryNodes, getNextNodeId } from './graph.ts';
 import { getExecutor } from './nodes.ts';
 import {
   buildPerJobPipelineChain,
+  ensureJobExecutionsInitialized,
   executePerJobPipeline,
   isJobPipelineStart,
+  prepareRetryJobQueue,
 } from './job-pipeline.ts';
+import {
+  completeNodeExecution,
+  insertStructuredLog,
+  refreshRunJobCounters,
+  saveWorkflowSnapshot,
+  startNodeExecution,
+} from './execution-persistence.ts';
+import { deriveRunStatus } from './execution-status.ts';
 import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 
@@ -44,15 +54,24 @@ async function logStep(
   nodeId: string,
   level: string,
   message: string,
+  extra?: {
+    jobExecutionId?: string | null;
+    nodeExecutionId?: string | null;
+    jobIndex?: number | null;
+    attempt?: number | null;
+  },
 ) {
   const admin = createAdminClient();
-  await admin.from('workflow_logs').insert({
-    run_id: runId,
-    user_id: userId,
-    node_id: nodeId,
+  await insertStructuredLog(admin, {
+    runId,
+    userId,
+    nodeId,
     level,
     message,
-    timestamp: new Date().toISOString(),
+    jobExecutionId: extra?.jobExecutionId,
+    nodeExecutionId: extra?.nodeExecutionId,
+    jobIndex: extra?.jobIndex,
+    attempt: extra?.attempt,
   });
 }
 
@@ -198,7 +217,7 @@ export async function executeWorkflow(
   resumeNodeId?: string,
 ): Promise<{ runId: string; status: string }> {
   const admin = createAdminClient();
-  const { nodes, edges } = await loadWorkflow(workflowId, userId);
+  const { workflow, nodes, edges } = await loadWorkflow(workflowId, userId);
   const settings = await getUserSettings(userId);
 
   let runId = existingRunId;
@@ -223,6 +242,19 @@ export async function executeWorkflow(
     const run = await createRun(workflowId, userId);
     runId = run.id;
     ctx = { runId, workflowId, userId, variables: {}, nodeOutputs: {}, settings };
+    await saveWorkflowSnapshot(
+      admin,
+      runId,
+      workflowId,
+      String(workflow.name || 'Workflow'),
+      nodes,
+      edges,
+    );
+  }
+
+  if (ctx.variables.retryPendingJobs) {
+    await prepareRetryJobQueue(admin, runId, userId, ctx);
+    delete ctx.variables.retryPendingJobs;
   }
 
   const startNodes = resumeNodeId
@@ -247,6 +279,13 @@ export async function executeWorkflow(
 
     await logStep(runId, userId, node.id, 'info', `Executing node: ${node.name} (${node.type})`);
     const start = Date.now();
+    const commonNodeExecutionId = await startNodeExecution(admin, {
+      runId,
+      userId,
+      workflowNodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+    });
 
     try {
       const executor = getExecutor(node.type);
@@ -263,6 +302,7 @@ export async function executeWorkflow(
         const chain = buildPerJobPipelineChain(node.id, nodes, edges);
         const items = inputData.filter((item) => item != null);
         if (chain.length > 0 && items.length > 0) {
+          await ensureJobExecutionsInitialized(admin, runId, userId, ctx, items);
           const pipelineHelpers = {
             logStep,
             saveRunContext,
@@ -357,6 +397,10 @@ export async function executeWorkflow(
       const duration = Date.now() - start;
 
       if (result.status === 'waiting' && result.resumeAt) {
+        await completeNodeExecution(admin, commonNodeExecutionId, 'waiting', {
+          durationMs: duration,
+          output: result.output,
+        });
         await recordNodeRun(admin, runId, userId, node.id, 'running', duration, result.output);
         await touchRunDuration(admin, runId);
         await admin.from('workflow_step_queue').insert({
@@ -373,6 +417,10 @@ export async function executeWorkflow(
 
       if (result.status === 'failed') throw new Error(result.error || 'Node failed');
 
+      await completeNodeExecution(admin, commonNodeExecutionId, 'success', {
+        durationMs: duration,
+        output: result.output,
+      });
       await recordNodeRun(admin, runId, userId, node.id, 'success', duration, result.output);
       await touchRunDuration(admin, runId);
       await logStep(runId, userId, node.id, 'info', `Completed node: ${node.name} (${node.type}) in ${duration}ms`);
@@ -407,6 +455,10 @@ export async function executeWorkflow(
       }
       const message = err instanceof Error ? err.message : String(err);
       const duration = await runDurationMs(admin, runId);
+      await completeNodeExecution(admin, commonNodeExecutionId, 'failed', {
+        durationMs: duration,
+        errorMessage: message,
+      });
       await recordNodeRun(admin, runId, userId, node.id, 'failed', duration);
       await logStep(runId, userId, node.id, 'error', message);
       await admin.from('workflow_runs').update({
@@ -423,13 +475,34 @@ export async function executeWorkflow(
     return { runId, status: 'cancelled' };
   }
 
-  const started = await admin.from('workflow_runs').select('started_at').eq('id', runId).single();
+  const started = await admin.from('workflow_runs').select('started_at, jobs_total, jobs_successful, jobs_failed, jobs_skipped').eq('id', runId).single();
   const duration = started.data?.started_at
     ? Date.now() - new Date(started.data.started_at).getTime()
     : 0;
 
+  await refreshRunJobCounters(admin, runId);
+  const counters = {
+    total: Number(started.data?.jobs_total ?? 0),
+    successful: Number(started.data?.jobs_successful ?? 0),
+    failed: Number(started.data?.jobs_failed ?? 0),
+    skipped: Number(started.data?.jobs_skipped ?? 0),
+  };
+  const { data: refreshed } = await admin
+    .from('workflow_runs')
+    .select('jobs_total, jobs_successful, jobs_failed, jobs_skipped')
+    .eq('id', runId)
+    .single();
+  if (refreshed) {
+    counters.total = Number(refreshed.jobs_total ?? counters.total);
+    counters.successful = Number(refreshed.jobs_successful ?? counters.successful);
+    counters.failed = Number(refreshed.jobs_failed ?? counters.failed);
+    counters.skipped = Number(refreshed.jobs_skipped ?? counters.skipped);
+  }
+
+  const finalStatus = deriveRunStatus('success', counters, false);
+
   await admin.from('workflow_runs').update({
-    status: 'success',
+    status: finalStatus,
     finished_at: new Date().toISOString(),
     duration_ms: duration,
     current_node_id: null,
@@ -439,7 +512,7 @@ export async function executeWorkflow(
     last_run: new Date().toISOString(),
   }).eq('id', workflowId);
 
-  return { runId, status: 'success' };
+  return { runId, status: finalStatus };
 }
 
 export async function processDueSteps(): Promise<number> {
