@@ -33,7 +33,9 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
-.cursor/
+.cursor/*
+!.cursor/skills/
+!.cursor/skills/**
 
 # Sensitive performance-review / incident dumps (use src/content/career-corpus instead)
 src/resources/GPT/Daily_Status*
