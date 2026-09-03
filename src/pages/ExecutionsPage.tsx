@@ -152,14 +152,14 @@ export function ExecutionsPage() {
     if (!step) return `${run.nodeResults.length} nodes completed`;
     const elapsed = formatDurationMs(Date.now() - new Date(step.startedAt).getTime());
     const batch = run.batchProgress;
-    const detail = batch
+    const detail = batch && batch.node === step.name
       ? `Job ${batch.index}/${batch.total}`
       : step.detail;
     return `${step.name}${detail ? ` · ${detail}` : ''} · ${elapsed}`;
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Execution Center"
         description="Status updates every 5s while a run is active (not re-running the workflow)"
@@ -228,13 +228,13 @@ export function ExecutionsPage() {
         ) : allRuns.map((run, i) => (
           <motion.div key={run.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelectedId(run.id)}>
-              <CardContent className="flex items-center gap-4 py-3">
-                {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 text-success" />
-                  : run.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" />
-                  : run.status === 'cancelled' ? <StopCircle className="h-4 w-4 text-warning" />
-                  : isActiveRun(run.status) ? <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
-                <div className="flex-1 min-w-0">
+              <CardContent className="flex flex-wrap items-center gap-2 py-3 sm:gap-4">
+                {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                  : run.status === 'failed' ? <XCircle className="h-4 w-4 shrink-0 text-destructive" />
+                  : run.status === 'cancelled' ? <StopCircle className="h-4 w-4 shrink-0 text-warning" />
+                  : isActiveRun(run.status) ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                  : <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                <div className="min-w-0 flex-1 basis-[calc(100%-2rem)] sm:basis-auto">
                   <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {isActiveRun(run.status)
@@ -243,6 +243,7 @@ export function ExecutionsPage() {
                   </p>
                 </div>
                 <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{formatDurationMs(computeRunDurationMs(run))}</Badge>
+                <div className="ml-auto flex items-center gap-1 sm:gap-2">
                 {isActiveRun(run.status) && (
                   <Button
                     variant="outline"
@@ -273,7 +274,8 @@ export function ExecutionsPage() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </div>
               </CardContent>
             </Card>
           </motion.div>

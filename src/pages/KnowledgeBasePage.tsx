@@ -61,7 +61,7 @@ export function KnowledgeBasePage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Knowledge Base"
         description="Resume-safe career evidence used when tailoring resumes (metrics, architecture, achievements)"
@@ -77,19 +77,21 @@ export function KnowledgeBasePage() {
         <TabsContent value="search" className="space-y-4">
           <Card>
             <CardContent className="pt-6">
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input placeholder="Search metrics, SnapLogic, BigQuery, Gemini…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} className="pl-9" />
                 </div>
+                <div className="flex gap-3">
                 <Select value={collection} onValueChange={setCollection}>
-                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Collections</SelectItem>
                     {(collections || []).map((c) => <SelectItem key={c.collection} value={c.collection}>{c.collection}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button onClick={search} disabled={searching} className="gap-2"><Search className="h-4 w-4" /> {searching ? 'Searching...' : 'Search'}</Button>
+                <Button onClick={search} disabled={searching} className="flex-1 gap-2 sm:flex-none"><Search className="h-4 w-4" /> {searching ? 'Searching...' : 'Search'}</Button>
+                </div>
               </div>
             </CardContent>
           </Card>

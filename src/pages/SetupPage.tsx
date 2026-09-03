@@ -164,7 +164,7 @@ export function SetupPage() {
   const accountDone = ACCOUNT_STEPS.length;
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader title="Setup Guide" description="Step-by-step instructions for getting CareerPilot AI fully configured" />
 
       <Card className="border-primary/20 bg-primary/5">
