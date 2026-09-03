@@ -17,6 +17,7 @@ import {
   startNodeExecution,
 } from './execution-persistence.ts';
 import { deriveRunStatus } from './execution-status.ts';
+import { computeNextCronRun, isAutomationDue } from '../cron-schedule.ts';
 import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 
@@ -559,25 +560,29 @@ export async function processDueSteps(): Promise<number> {
 
 export async function processScheduledAutomations(): Promise<number> {
   const admin = createAdminClient();
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const { data: automations } = await admin
     .from('automations')
     .select('*')
     .eq('status', 'active')
-    .or(`next_run.is.null,next_run.lte.${now}`)
-    .limit(20);
+    .limit(50);
 
   if (!automations?.length) return 0;
 
+  let ran = 0;
   for (const auto of automations) {
+    const schedule = String(auto.schedule || '0 7 * * *');
+    const nextRunAt = auto.next_run ? new Date(auto.next_run as string) : null;
+    if (!isAutomationDue(schedule, nextRunAt, now)) continue;
+
     await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
-    const nextRun = new Date();
-    nextRun.setDate(nextRun.getDate() + 1);
-    nextRun.setHours(7, 0, 0, 0);
+    const nextRun = computeNextCronRun(schedule, now);
     await admin.from('automations').update({
-      last_run: now,
+      last_run: nowIso,
       next_run: nextRun.toISOString(),
     }).eq('id', auto.id);
+    ran++;
   }
-  return automations.length;
+  return ran;
 }
