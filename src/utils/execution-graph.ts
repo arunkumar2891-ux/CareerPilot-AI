@@ -164,16 +164,32 @@ function nodeStatusFromExecution(
   return exec?.status ?? fallback;
 }
 
+function isTriggerNode(node: Pick<WorkflowSnapshotNode, 'type'>): boolean {
+  return ['schedule', 'trigger', 'webhook'].includes(node.type);
+}
+
+export function resolveTriggerNodeDisplayName(
+  node: Pick<WorkflowSnapshotNode, 'type' | 'name'>,
+  triggerType?: string,
+): string {
+  if (!isTriggerNode(node)) return node.name;
+  if (triggerType === 'schedule') return node.name;
+  if (triggerType === 'manual') return 'Manual Trigger';
+  if (triggerType === 'retry') return 'Retry Failed Jobs';
+  return node.name;
+}
+
 function toGraphNode(
   template: WorkflowSnapshotNode,
   exec: NodeExecution | undefined,
   scope: { jobIndex?: number; attempt?: number; jobExecutionId?: string },
   result?: { status: WorkflowRunStatus; duration: number },
+  triggerType?: string,
 ): GraphNodeView {
   return {
     key: `${template.id}-${scope.jobIndex ?? 'common'}-${scope.attempt ?? 1}`,
     workflowNodeId: template.id,
-    name: template.name,
+    name: resolveTriggerNodeDisplayName(template, triggerType),
     type: template.type,
     status: nodeStatusFromExecution(exec, result?.status ?? 'pending'),
     jobIndex: scope.jobIndex,
@@ -196,6 +212,7 @@ export function buildExecutionGraph(input: {
   jobExecutions: JobExecution[];
   nodeExecutions: NodeExecution[];
   logs?: WorkflowRun['logs'];
+  triggerType?: string;
   run: Pick<WorkflowRun, 'nodeResults' | 'jobsTotal' | 'jobsSuccessful' | 'jobsFailed' | 'jobsSkipped'>;
 }): ExecutionGraphView {
   const latestJobs = latestJobAttempts(input.jobExecutions);
@@ -218,7 +235,7 @@ export function buildExecutionGraph(input: {
   }
 
   if (!snapshot?.nodes?.length) {
-    return buildLegacyGraph(input.run, latestJobs, input.nodeExecutions, nameLookup, {
+    return buildLegacyGraph(input.run, latestJobs, input.nodeExecutions, nameLookup, input.triggerType, {
       jobsTotal,
       jobsSuccessful,
       jobsFailed,
@@ -239,12 +256,12 @@ export function buildExecutionGraph(input: {
       const exec = input.nodeExecutions
         .filter((n) => n.workflowNodeId === node.id && !n.jobExecutionId)
         .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
-      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id)));
+      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id), input.triggerType));
     }
   } else {
     for (const node of nodes.filter((n) => !isAggregateNode(n))) {
       const exec = input.nodeExecutions.find((n) => n.workflowNodeId === node.id && !n.jobExecutionId);
-      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id)));
+      commonNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id), input.triggerType));
     }
   }
 
@@ -256,7 +273,7 @@ export function buildExecutionGraph(input: {
       const exec = input.nodeExecutions
         .filter((n) => n.workflowNodeId === node.id && !n.jobExecutionId)
         .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
-      fanInNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id)));
+      fanInNodes.push(toGraphNode(node, exec, {}, resultMap.get(node.id), input.triggerType));
     }
   }
 
@@ -271,7 +288,7 @@ export function buildExecutionGraph(input: {
         jobIndex: job.jobIndex,
         attempt: job.attempt,
         jobExecutionId: job.id,
-      }, resultMap.get(template.id));
+      }, resultMap.get(template.id), input.triggerType);
     });
     return {
       jobIndex: job.jobIndex,
@@ -300,6 +317,7 @@ function buildLegacyGraph(
   jobs: JobExecution[],
   nodeExecutions: NodeExecution[],
   nameLookup: Map<string, { name: string; type?: string; positionX?: number }>,
+  triggerType: string | undefined,
   counters: { jobsTotal: number; jobsSuccessful: number; jobsFailed: number; jobsSkipped: number },
 ): ExecutionGraphView {
   const commonNodes: GraphNodeView[] = [...run.nodeResults]
@@ -310,11 +328,12 @@ function buildLegacyGraph(
     })
     .map((nr) => {
       const meta = nameLookup.get(nr.nodeId);
+      const type = meta?.type || 'legacy';
       return {
         key: `legacy-${nr.nodeId}`,
         workflowNodeId: nr.nodeId,
-        name: meta?.name || nr.nodeId,
-        type: meta?.type || 'legacy',
+        name: resolveTriggerNodeDisplayName({ type, name: meta?.name || nr.nodeId }, triggerType),
+        type,
         status: nr.status,
         durationMs: nr.duration,
       };

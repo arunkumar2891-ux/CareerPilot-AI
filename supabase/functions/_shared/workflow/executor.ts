@@ -34,7 +34,11 @@ export async function loadWorkflow(workflowId: string, userId: string) {
   return { workflow, nodes, edges };
 }
 
-export async function createRun(workflowId: string, userId: string) {
+export async function createRun(
+  workflowId: string,
+  userId: string,
+  options?: { triggerType?: string; triggeredBy?: string },
+) {
   const admin = createAdminClient();
   const { data, error } = await admin.from('workflow_runs').insert({
     workflow_id: workflowId,
@@ -43,6 +47,7 @@ export async function createRun(workflowId: string, userId: string) {
     started_at: new Date().toISOString(),
     duration_ms: 0,
     context: {},
+    trigger_type: options?.triggerType ?? null,
   }).select().single();
   if (error) throw error;
   return data;
@@ -215,6 +220,7 @@ export async function executeWorkflow(
   userId: string,
   existingRunId?: string,
   resumeNodeId?: string,
+  options?: { triggerType?: string },
 ): Promise<{ runId: string; status: string }> {
   const admin = createAdminClient();
   const { workflow, nodes, edges } = await loadWorkflow(workflowId, userId);
@@ -239,7 +245,7 @@ export async function executeWorkflow(
       currentNodeId: resumeNodeId || run.current_node_id,
     };
   } else {
-    const run = await createRun(workflowId, userId);
+    const run = await createRun(workflowId, userId, { triggerType: options?.triggerType });
     runId = run.id;
     ctx = { runId, workflowId, userId, variables: {}, nodeOutputs: {}, settings };
     await saveWorkflowSnapshot(
@@ -564,7 +570,7 @@ export async function processScheduledAutomations(): Promise<number> {
   if (!automations?.length) return 0;
 
   for (const auto of automations) {
-    await executeWorkflow(auto.workflow_id, auto.user_id);
+    await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
     const nextRun = new Date();
     nextRun.setDate(nextRun.getDate() + 1);
     nextRun.setHours(7, 0, 0, 0);

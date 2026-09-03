@@ -63,6 +63,7 @@ export function ExecutionDetailPage() {
       jobExecutions: run.jobExecutions,
       nodeExecutions: run.nodeExecutions,
       logs: run.logs,
+      triggerType: run.triggerType,
       run,
     });
   }, [run, workflow]);

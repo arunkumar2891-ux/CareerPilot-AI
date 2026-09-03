@@ -27,8 +27,21 @@ Deno.test('retry attempt number increments without overwriting prior attempt', (
   if (attempts.length !== 2) throw new Error('prior attempt must remain in history');
 });
 
-Deno.test('run again uses new run id semantics', () => {
-  const originalRunId = '11111111-1111-1111-1111-111111111111';
-  const newRunId = crypto.randomUUID();
-  if (originalRunId === newRunId) throw new Error('run again must create a new run id');
+function resolveTriggerNodeDisplayName(
+  node: { type: string; name: string },
+  triggerType?: string,
+): string {
+  if (!['schedule', 'trigger', 'webhook'].includes(node.type)) return node.name;
+  if (triggerType === 'schedule') return node.name;
+  if (triggerType === 'manual') return 'Manual Trigger';
+  if (triggerType === 'retry') return 'Retry Failed Jobs';
+  return node.name;
+}
+
+Deno.test('trigger display name shows Manual Trigger for manual runs', () => {
+  const scheduleNode = { type: 'schedule', name: 'Daily 7 AM' };
+  const manual = resolveTriggerNodeDisplayName(scheduleNode, 'manual');
+  if (manual !== 'Manual Trigger') throw new Error(`expected Manual Trigger, got ${manual}`);
+  const scheduled = resolveTriggerNodeDisplayName(scheduleNode, 'schedule');
+  if (scheduled !== 'Daily 7 AM') throw new Error(`expected Daily 7 AM, got ${scheduled}`);
 });
