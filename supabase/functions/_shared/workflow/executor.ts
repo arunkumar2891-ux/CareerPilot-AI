@@ -574,7 +574,8 @@ export async function processScheduledAutomations(): Promise<number> {
   for (const auto of automations) {
     const schedule = String(auto.schedule || '0 7 * * *');
     const nextRunAt = auto.next_run ? new Date(auto.next_run as string) : null;
-    if (!isAutomationDue(schedule, nextRunAt, now)) continue;
+    const lastRunAt = auto.last_run ? new Date(auto.last_run as string) : null;
+    if (!isAutomationDue(schedule, nextRunAt, lastRunAt, now)) continue;
 
     await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
     const nextRun = computeNextCronRun(schedule, now);

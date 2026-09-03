@@ -48,9 +48,21 @@ export function isCronDueNow(cronExpr: string, now: Date = new Date()): boolean 
 export function isAutomationDue(
   schedule: string,
   nextRunAt: Date | null,
+  lastRunAt: Date | null = null,
   now: Date = new Date(),
 ): boolean {
-  if (nextRunAt && nextRunAt.getTime() > now.getTime()) return false;
-  if (!nextRunAt) return isCronDueNow(schedule, now);
-  return true;
+  if (isCronDueNow(schedule, now)) {
+    if (lastRunAt) {
+      const last = new Date(lastRunAt);
+      const sameMinute = last.getUTCFullYear() === now.getUTCFullYear()
+        && last.getUTCMonth() === now.getUTCMonth()
+        && last.getUTCDate() === now.getUTCDate()
+        && last.getUTCHours() === now.getUTCHours()
+        && last.getUTCMinutes() === now.getUTCMinutes();
+      if (sameMinute) return false;
+    }
+    return true;
+  }
+  if (nextRunAt && nextRunAt.getTime() <= now.getTime()) return true;
+  return false;
 }
