@@ -170,6 +170,130 @@ function isAggregateNode(node: WorkflowSnapshotNode): boolean {
   return node.type === 'function' && node.config.builtin === 'email_summary';
 }
 
+function findPipelineStartNode(nodes: WorkflowSnapshotNode[]): WorkflowSnapshotNode | undefined {
+  return nodes.find(isPipelineStart)
+    ?? nodes.find((n) => n.name === 'Store Job')
+    ?? nodes.find((n) => n.type === 'supabase');
+}
+
+function findAggregateNode(nodes: WorkflowSnapshotNode[]): WorkflowSnapshotNode | undefined {
+  return nodes.find(isAggregateNode)
+    ?? nodes.find((n) => n.name === 'Email Summary');
+}
+
+function isFanInMeta(meta: { name: string; type?: string }): boolean {
+  const name = meta.name.toLowerCase();
+  return name === 'email summary'
+    || name === 'send email'
+    || meta.type === 'email'
+    || (meta.type === 'function' && name.includes('email'));
+}
+
+function resolveNodeMeta(
+  nodeId: string,
+  nameLookup: Map<string, { name: string; type?: string; positionX?: number; positionY?: number }>,
+  logSequence: LogNodeRef[],
+  workflowNodes?: WorkflowNodeRef[],
+): { name: string; type?: string; positionX?: number; positionY?: number } {
+  const fromLookup = nameLookup.get(nodeId);
+  if (fromLookup?.name && fromLookup.name !== nodeId) {
+    const workflowNode = workflowNodes?.find((n) => n.id === nodeId || n.name === fromLookup.name);
+    if (workflowNode) {
+      return {
+        name: workflowNode.name,
+        type: workflowNode.type,
+        positionX: workflowNode.positionX,
+        positionY: workflowNode.positionY,
+      };
+    }
+    return fromLookup;
+  }
+
+  const logEntry = logSequence.find((entry) => entry.nodeId === nodeId);
+  if (logEntry) {
+    const workflowNode = workflowNodes?.find((n) => n.id === nodeId || n.name === logEntry.name);
+    return {
+      name: logEntry.name,
+      type: logEntry.type,
+      positionX: workflowNode?.positionX ?? fromLookup?.positionX,
+      positionY: workflowNode?.positionY ?? fromLookup?.positionY,
+    };
+  }
+
+  const workflowNode = workflowNodes?.find((n) => n.id === nodeId);
+  if (workflowNode) {
+    return {
+      name: workflowNode.name,
+      type: workflowNode.type,
+      positionX: workflowNode.positionX,
+      positionY: workflowNode.positionY,
+    };
+  }
+
+  return fromLookup ?? { name: nodeId, type: 'legacy' };
+}
+
+function compareGraphNodesByLayout(
+  a: { workflowNodeId: string; name?: string },
+  b: { workflowNodeId: string; name?: string },
+  nameLookup: Map<string, { name: string; type?: string; positionX?: number; positionY?: number }>,
+  logSequence: LogNodeRef[],
+  workflowNodes?: WorkflowNodeRef[],
+  logOrder?: Map<string, number>,
+): number {
+  const layoutFor = (node: { workflowNodeId: string; name?: string }) => {
+    const meta = resolveNodeMeta(node.workflowNodeId, nameLookup, logSequence, workflowNodes);
+    const workflowNode = workflowNodes?.find(
+      (candidate) => candidate.id === node.workflowNodeId || (node.name && candidate.name === node.name),
+    );
+    return {
+      positionX: workflowNode?.positionX ?? meta.positionX ?? logOrder?.get(node.workflowNodeId),
+      positionY: workflowNode?.positionY ?? meta.positionY ?? 0,
+    };
+  };
+  const layoutA = layoutFor(a);
+  const layoutB = layoutFor(b);
+  const posA = layoutA.positionX ?? Number.MAX_SAFE_INTEGER;
+  const posB = layoutB.positionX ?? Number.MAX_SAFE_INTEGER;
+  if (posA !== posB) return posA - posB;
+  return layoutA.positionY - layoutB.positionY;
+}
+
+function mapResultsToWorkflowIds(
+  nodeResults: WorkflowRun['nodeResults'],
+  workflowNodes: WorkflowSnapshotNode[],
+  nameLookup: Map<string, { name: string; type?: string; positionX?: number; positionY?: number }>,
+  logs?: WorkflowRun['logs'],
+): Map<string, { status: WorkflowRunStatus; duration: number }> {
+  const logSequence = extractLogNodeSequence(logs);
+  const resultByRunId = new Map(nodeResults.map((nr) => [nr.nodeId, nr]));
+  const resultMap = new Map<string, { status: WorkflowRunStatus; duration: number }>();
+  const usedRunIds = new Set<string>();
+
+  const runIdToName = (runId: string): string => {
+    return resolveNodeMeta(runId, nameLookup, logSequence).name;
+  };
+
+  for (const workflowNode of workflowNodes) {
+    const direct = resultByRunId.get(workflowNode.id);
+    if (direct) {
+      resultMap.set(workflowNode.id, direct);
+      usedRunIds.add(workflowNode.id);
+      continue;
+    }
+
+    const match = nodeResults.find(
+      (nr) => !usedRunIds.has(nr.nodeId) && runIdToName(nr.nodeId) === workflowNode.name,
+    );
+    if (match) {
+      resultMap.set(workflowNode.id, match);
+      usedRunIds.add(match.nodeId);
+    }
+  }
+
+  return resultMap;
+}
+
 function sortNodesByLayout(nodes: WorkflowSnapshotNode[]): WorkflowSnapshotNode[] {
   return [...nodes].sort((a, b) => {
     if (a.positionX !== b.positionX) return a.positionX - b.positionX;
@@ -206,9 +330,17 @@ function findEntryNode(
 function nodesBeforePipeline(
   nodes: WorkflowSnapshotNode[],
   pipelineStart: WorkflowSnapshotNode,
+  aggregate?: WorkflowSnapshotNode,
 ): WorkflowSnapshotNode[] {
+  const maxX = aggregate?.positionX ?? pipelineStart.positionX;
   return sortNodesByLayout(
-    nodes.filter((n) => n.id !== pipelineStart.id && !isAggregateNode(n) && n.positionX < pipelineStart.positionX),
+    nodes.filter((n) => {
+      if (n.id === pipelineStart.id) return false;
+      if (isAggregateNode(n) || isFanInMeta({ name: n.name, type: n.type })) return false;
+      if (n.positionX < pipelineStart.positionX) return true;
+      if (aggregate && n.positionX >= aggregate.positionX) return false;
+      return false;
+    }),
   );
 }
 
@@ -369,6 +501,7 @@ export function buildExecutionGraph(input: {
       nameLookup,
       triggerType,
       input.logs,
+      input.workflowNodes,
       {
         jobsTotal,
         jobsSuccessful,
@@ -378,15 +511,20 @@ export function buildExecutionGraph(input: {
     );
   }
 
-  const resultMap = new Map(input.run.nodeResults.map((n) => [n.nodeId, n]));
   const nodes = snapshot.nodes;
   const edges = snapshot.edges || [];
-  const pipelineStart = nodes.find(isPipelineStart);
-  const aggregate = nodes.find(isAggregateNode);
+  const resultMap = mapResultsToWorkflowIds(
+    input.run.nodeResults,
+    nodes,
+    nameLookup,
+    input.logs,
+  );
+  const pipelineStart = findPipelineStartNode(nodes);
+  const aggregate = findAggregateNode(nodes);
 
   const commonNodes: GraphNodeView[] = [];
   if (pipelineStart) {
-    const prefixNodes = nodesBeforePipeline(nodes, pipelineStart);
+    const prefixNodes = nodesBeforePipeline(nodes, pipelineStart, aggregate);
     for (const node of prefixNodes) {
       const exec = latestCommonExecution(input.nodeExecutions, node.id);
       commonNodes.push(
@@ -409,6 +547,16 @@ export function buildExecutionGraph(input: {
   if (aggregate) {
     const tail = buildChainFrom(aggregate.id, nodes, edges, false);
     for (const node of tail) {
+      const exec = latestCommonExecution(input.nodeExecutions, node.id);
+      fanInNodes.push(
+        toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
+      );
+    }
+  } else {
+    const fanInTemplates = sortNodesByLayout(
+      nodes.filter((n) => isFanInMeta({ name: n.name, type: n.type })),
+    );
+    for (const node of fanInTemplates) {
       const exec = latestCommonExecution(input.nodeExecutions, node.id);
       fanInNodes.push(
         toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
@@ -465,6 +613,7 @@ function buildLegacyGraph(
   nameLookup: Map<string, { name: string; type?: string; positionX?: number; positionY?: number }>,
   triggerType: string,
   logs: WorkflowRun['logs'] | undefined,
+  workflowNodes: WorkflowNodeRef[] | undefined,
   counters: { jobsTotal: number; jobsSuccessful: number; jobsFailed: number; jobsSkipped: number },
 ): ExecutionGraphView {
   const logSequence = extractLogNodeSequence(logs);
@@ -472,6 +621,12 @@ function buildLegacyGraph(
   logSequence.forEach((entry, index) => {
     if (entry.nodeId) logOrder.set(entry.nodeId, index);
   });
+
+  const jobNodeIds = new Set(
+    nodeExecutions
+      .filter((exec) => exec.jobExecutionId)
+      .map((exec) => exec.workflowNodeId),
+  );
 
   const resultById = new Map(run.nodeResults.map((nr) => [nr.nodeId, nr]));
   const orderedNodeIds = logSequence.length
@@ -483,35 +638,54 @@ function buildLegacyGraph(
     ]
     : [...run.nodeResults]
       .sort((a, b) => {
-        const posA = nameLookup.get(a.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
-        const posB = nameLookup.get(b.nodeId)?.positionX ?? Number.MAX_SAFE_INTEGER;
+        const posA = resolveNodeMeta(a.nodeId, nameLookup, logSequence, workflowNodes).positionX
+          ?? Number.MAX_SAFE_INTEGER;
+        const posB = resolveNodeMeta(b.nodeId, nameLookup, logSequence, workflowNodes).positionX
+          ?? Number.MAX_SAFE_INTEGER;
         if (posA !== posB) return posA - posB;
-        const yA = nameLookup.get(a.nodeId)?.positionY ?? 0;
-        const yB = nameLookup.get(b.nodeId)?.positionY ?? 0;
+        const yA = resolveNodeMeta(a.nodeId, nameLookup, logSequence, workflowNodes).positionY ?? 0;
+        const yB = resolveNodeMeta(b.nodeId, nameLookup, logSequence, workflowNodes).positionY ?? 0;
         return yA - yB;
       })
       .map((nr) => nr.nodeId);
 
-  const seen = new Set<string>();
-  const commonNodes: GraphNodeView[] = [];
-  for (const nodeId of orderedNodeIds) {
-    if (seen.has(nodeId)) continue;
-    seen.add(nodeId);
+  const toLegacyGraphNode = (nodeId: string): GraphNodeView => {
     const nr = resultById.get(nodeId);
-    const logEntry = logSequence.find((entry) => entry.nodeId === nodeId);
-    const meta = nameLookup.get(nodeId);
-    const type = meta?.type || logEntry?.type || 'legacy';
-    const name = meta?.name || logEntry?.name || nodeId;
-    commonNodes.push({
+    const meta = resolveNodeMeta(nodeId, nameLookup, logSequence, workflowNodes);
+    const type = meta.type || 'legacy';
+    return {
       key: `legacy-${nodeId}`,
       workflowNodeId: nodeId,
-      name: resolveTriggerNodeDisplayName({ type, name }, triggerType),
+      name: resolveTriggerNodeDisplayName({ type, name: meta.name }, triggerType),
       type,
       status: nr?.status
         ?? (run.status === 'running' && run.currentNodeId === nodeId ? 'running' : 'pending'),
       durationMs: nr?.duration,
-    });
+    };
+  };
+
+  const seen = new Set<string>();
+  const commonNodes: GraphNodeView[] = [];
+  const fanInNodes: GraphNodeView[] = [];
+
+  for (const nodeId of orderedNodeIds) {
+    if (seen.has(nodeId) || jobNodeIds.has(nodeId)) continue;
+    seen.add(nodeId);
+    const meta = resolveNodeMeta(nodeId, nameLookup, logSequence, workflowNodes);
+    const graphNode = toLegacyGraphNode(nodeId);
+    if (isFanInMeta(meta)) {
+      fanInNodes.push(graphNode);
+    } else {
+      commonNodes.push(graphNode);
+    }
   }
+
+  const sortByLayout = (a: GraphNodeView, b: GraphNodeView) => (
+    compareGraphNodesByLayout(a, b, nameLookup, logSequence, workflowNodes, logOrder)
+  );
+
+  commonNodes.sort(sortByLayout);
+  fanInNodes.sort(sortByLayout);
 
   const jobBranches: JobBranchView[] = jobs.map((job) => ({
     jobIndex: job.jobIndex,
@@ -524,8 +698,8 @@ function buildLegacyGraph(
       .map((exec) => ({
         key: `${exec.workflowNodeId}-${job.jobIndex}-${exec.attempt}`,
         workflowNodeId: exec.workflowNodeId,
-        name: exec.nodeName || nameLookup.get(exec.workflowNodeId)?.name || exec.workflowNodeId,
-        type: exec.nodeType || nameLookup.get(exec.workflowNodeId)?.type || 'legacy',
+        name: exec.nodeName || resolveNodeMeta(exec.workflowNodeId, nameLookup, logSequence, workflowNodes).name,
+        type: exec.nodeType || resolveNodeMeta(exec.workflowNodeId, nameLookup, logSequence, workflowNodes).type || 'legacy',
         status: exec.status,
         jobIndex: job.jobIndex,
         attempt: exec.attempt,
@@ -537,13 +711,21 @@ function buildLegacyGraph(
         errorMessage: exec.errorMessage,
         startedAt: exec.startedAt,
         completedAt: exec.completedAt,
-      })),
+      }))
+      .sort((a, b) => compareGraphNodesByLayout(
+        { workflowNodeId: a.workflowNodeId, name: a.name },
+        { workflowNodeId: b.workflowNodeId, name: b.name },
+        nameLookup,
+        logSequence,
+        workflowNodes,
+        logOrder,
+      )),
   }));
 
   return {
     commonNodes,
     jobBranches,
-    fanInNodes: [],
+    fanInNodes,
     isLegacy: true,
     ...counters,
   };
