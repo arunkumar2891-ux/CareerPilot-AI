@@ -189,22 +189,27 @@ export function ExecutionsPage() {
         ) : allRuns.map((run, i) => (
           <motion.div key={run.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => navigate(`/executions/${run.id}`)}>
-              <CardContent className="flex flex-wrap items-center gap-2 py-3 sm:gap-4">
-                {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-                  : run.status === 'failed' ? <XCircle className="h-4 w-4 shrink-0 text-destructive" />
-                  : run.status === 'cancelled' ? <StopCircle className="h-4 w-4 shrink-0 text-warning" />
-                  : isActiveRun(run.status) ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-                  : <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                <div className="min-w-0 flex-1 basis-[calc(100%-2rem)] sm:basis-auto">
-                  <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {isActiveRun(run.status)
-                      ? describeRunProgress(run)
-                      : `${timeAgo(run.startedAt)} · ${run.nodeResults.length} nodes`}
+              <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+                <div className="flex min-w-0 items-start gap-3 sm:flex-1 sm:items-center">
+                {run.status === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success sm:mt-0" />
+                  : run.status === 'failed' ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive sm:mt-0" />
+                  : run.status === 'cancelled' ? <StopCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning sm:mt-0" />
+                  : isActiveRun(run.status) ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary sm:mt-0" />
+                  : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground sm:mt-0" />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
+                    <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                      {describeTriggerType(run.triggerType)}
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground break-words sm:truncate">
+                    {describeRunSummary(run)}
                   </p>
                 </div>
+                </div>
+                <div className="flex items-center justify-end gap-1 pl-7 sm:ml-auto sm:gap-2 sm:pl-0">
                 <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{formatDurationMs(computeRunDurationMs(run))}</Badge>
-                <div className="ml-auto flex items-center gap-1 sm:gap-2">
                 {isActiveRun(run.status) && (
                   <Button
                     variant="outline"
