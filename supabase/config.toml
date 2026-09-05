@@ -430,3 +430,6 @@ verify_jwt = false
 
 [functions.google-access-token]
 verify_jwt = true
+
+[functions.workflow-retry-failed]
+verify_jwt = true

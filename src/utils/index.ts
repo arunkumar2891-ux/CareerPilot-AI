@@ -20,6 +20,34 @@ export function formatDateTime(iso: string): string {
   }
 }
 
+/** Execution list timestamp, e.g. 04/09/2026, 18:07:22 */
+export function formatExecutionStart(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+    const time = d.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    return `${date}, ${time}`;
+  } catch {
+    return iso;
+  }
+}
+
+export function describeTriggerType(triggerType?: string): string {
+  if (triggerType === 'schedule') return 'Scheduled';
+  if (triggerType === 'retry') return 'Retry';
+  if (triggerType === 'manual') return 'Manual';
+  return 'Manual';
+}
+
 export function computeRunDurationMs(run: {
   startedAt: string;
   duration: number;

@@ -2,11 +2,13 @@ import type {
   Job, Resume, CoverLetter, Application, Workflow, Agent,
   Document, Notification, Integration, Prompt, Automation,
   ChatConversation, DashboardMetrics, AnalyticsPoint, UserProfile,
-  JobSearchConfig, ChatMessage, AgentRun,
+  JobSearchConfig, ChatMessage, AgentRun, WorkflowRunDetail,
+  JobExecution, NodeExecution, WorkflowSnapshot, WorkflowRun,
 } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/auth';
 import { DEFAULT_JOB_SEARCH_WORKFLOW, buildSeedEdges } from '@/constants/workflow-seed';
+import { computeNextCronRun } from '@/utils/cron-schedule';
 import {
   CAREER_CORPUS,
   MASTER_RESUME_NAME,
@@ -553,6 +555,7 @@ export class WorkflowService {
     const { data: existing } = await supabase.from('workflows').select('id').eq('user_id', userId).eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name).maybeSingle();
     if (existing) {
       await this.repairDefaultPipelineGraph(existing.id);
+      await this.repairDefaultAutomation(existing.id, userId);
       const wf = await this.get(existing.id);
       if (wf) return wf;
     }
@@ -574,19 +577,64 @@ export class WorkflowService {
     }));
     await this.saveGraph(wf.id, nodes, edges);
     await supabase.from('workflows').update({ schedule: DEFAULT_JOB_SEARCH_WORKFLOW.schedule, active: true }).eq('id', wf.id);
-    const { data: autoExists } = await supabase.from('automations').select('id').eq('workflow_id', wf.id).maybeSingle();
+    const { data: autoExists } = await supabase.from('automations').select('id, next_run').eq('workflow_id', wf.id).maybeSingle();
     if (!autoExists) {
+      const nextRun = computeNextCronRun(DEFAULT_JOB_SEARCH_WORKFLOW.schedule);
       await supabase.from('automations').insert({
         user_id: userId,
         name: 'Daily 7 AM Job Search',
         workflow_id: wf.id,
         status: 'active',
-        schedule: '0 7 * * *',
+        schedule: DEFAULT_JOB_SEARCH_WORKFLOW.schedule,
         trigger: 'schedule',
         retries: 2,
+        next_run: nextRun.toISOString(),
       });
+    } else {
+      await this.repairDefaultAutomation(wf.id, userId);
     }
     return (await this.get(wf.id))!;
+  }
+  /** Keep the built-in daily automation schedulable (next_run set, active). */
+  private async repairDefaultAutomation(workflowId: string, userId: string): Promise<void> {
+    const schedule = DEFAULT_JOB_SEARCH_WORKFLOW.schedule;
+    const { data: auto } = await supabase
+      .from('automations')
+      .select('id, status, next_run, schedule')
+      .eq('workflow_id', workflowId)
+      .maybeSingle();
+
+    if (!auto) {
+      const nextRun = computeNextCronRun(schedule);
+      await supabase.from('automations').insert({
+        user_id: userId,
+        name: 'Daily 7 AM Job Search',
+        workflow_id: workflowId,
+        status: 'active',
+        schedule,
+        trigger: 'schedule',
+        retries: 2,
+        next_run: nextRun.toISOString(),
+      });
+      return;
+    }
+
+    if (auto.status !== 'active') return;
+
+    const patch: Record<string, string> = {};
+    if (!auto.next_run) {
+      patch.next_run = computeNextCronRun(auto.schedule || schedule).toISOString();
+    } else {
+      const nextRunAt = new Date(auto.next_run);
+      const maxFuture = computeNextCronRun(auto.schedule || schedule);
+      maxFuture.setUTCDate(maxFuture.getUTCDate() + 2);
+      if (nextRunAt.getTime() > maxFuture.getTime()) {
+        patch.next_run = computeNextCronRun(auto.schedule || schedule).toISOString();
+      }
+    }
+    if (Object.keys(patch).length) {
+      await supabase.from('automations').update(patch).eq('id', auto.id);
+    }
   }
   /** Ensure jobs are stored in Supabase before ATS tailoring (fixes legacy graph order). */
   private async repairDefaultPipelineGraph(workflowId: string): Promise<void> {
@@ -624,10 +672,10 @@ export class WorkflowService {
 }
 
 function mergeNodeResults(
-  nodes: Workflow['runs'][number]['nodeResults'],
-): Workflow['runs'][number]['nodeResults'] {
+  nodes: WorkflowRun['nodeResults'],
+): WorkflowRun['nodeResults'] {
   const rank: Record<string, number> = { success: 4, failed: 3, cancelled: 3, running: 2, queued: 1, idle: 0, paused: 0 };
-  const byNode = new Map<string, Workflow['runs'][number]['nodeResults'][number]>();
+  const byNode = new Map<string, WorkflowRun['nodeResults'][number]>();
   for (const n of nodes) {
     const existing = byNode.get(n.nodeId);
     const nRank = rank[n.status] ?? 0;
@@ -639,48 +687,128 @@ function mergeNodeResults(
   return Array.from(byNode.values());
 }
 
+function mapRunRow(r: Record<string, unknown>): WorkflowRun {
+  const stored = (r.context as Record<string, unknown>) || {};
+  const variables = (stored.variables as Record<string, unknown>) || {};
+  const batchProgress = variables.batchProgress as { node: string; index: number; total: number } | undefined;
+  const jobExecutions = (r.workflow_job_executions as Record<string, unknown>[]) || [];
+  return {
+    id: String(r.id),
+    workflowId: String(r.workflow_id),
+    status: (r.status as WorkflowRun['status']) ?? 'success',
+    startedAt: (r.started_at as string) ?? '',
+    finishedAt: r.finished_at as string | undefined,
+    duration: Number(r.duration_ms ?? 0),
+    currentNodeId: r.current_node_id ? String(r.current_node_id) : undefined,
+    errorMessage: r.error_message ? String(r.error_message) : undefined,
+    batchProgress: batchProgress?.node ? batchProgress : undefined,
+    jobsTotal: Number(r.jobs_total ?? 0) || undefined,
+    jobsSuccessful: Number(r.jobs_successful ?? 0) || undefined,
+    jobsFailed: Number(r.jobs_failed ?? 0) || undefined,
+    jobsSkipped: Number(r.jobs_skipped ?? 0) || undefined,
+    triggerType: r.trigger_type as string | undefined,
+    isLegacy: jobExecutions.length === 0,
+    nodeResults: mergeNodeResults(
+      ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
+        nodeId: String(n.node_id ?? ''),
+        status: (n.status as WorkflowRun['nodeResults'][number]['status']) ?? 'success',
+        duration: Number(n.duration_ms ?? 0),
+        output: n.output as string | undefined,
+      })),
+    ),
+    logs: ((r.workflow_logs as Record<string, unknown>[]) ?? [])
+      .map((l) => ({
+        id: String(l.id),
+        level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',
+        message: String(l.message ?? ''),
+        timestamp: (l.timestamp as string) ?? '',
+        nodeId: l.node_id as string | undefined,
+        jobExecutionId: l.job_execution_id as string | undefined,
+        nodeExecutionId: l.node_execution_id as string | undefined,
+        jobIndex: l.job_index as number | undefined,
+        attempt: l.attempt as number | undefined,
+      }))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
+    workflowName: (r.workflow as Record<string, unknown>)?.name as string | undefined
+      ?? (r.workflow_snapshot as WorkflowSnapshot | null)?.workflowName,
+  };
+}
+
+function mapJobExecution(row: Record<string, unknown>): JobExecution {
+  return {
+    id: String(row.id),
+    runId: String(row.run_id),
+    jobIndex: Number(row.job_index),
+    label: row.label as string | undefined,
+    status: (row.status as JobExecution['status']) ?? 'pending',
+    attempt: Number(row.attempt ?? 1),
+    failedNodeId: row.failed_node_id as string | undefined,
+    startedAt: row.started_at as string | undefined,
+    completedAt: row.completed_at as string | undefined,
+    durationMs: row.duration_ms as number | undefined,
+    errorType: row.error_type as string | undefined,
+    errorCode: row.error_code as string | undefined,
+    errorMessage: row.error_message as string | undefined,
+  };
+}
+
+function mapNodeExecution(row: Record<string, unknown>): NodeExecution {
+  return {
+    id: String(row.id),
+    runId: String(row.run_id),
+    jobExecutionId: row.job_execution_id as string | undefined,
+    workflowNodeId: String(row.workflow_node_id),
+    nodeName: String(row.node_name ?? ''),
+    nodeType: String(row.node_type ?? ''),
+    jobIndex: row.job_index as number | undefined,
+    attempt: Number(row.attempt ?? 1),
+    status: (row.status as NodeExecution['status']) ?? 'pending',
+    startedAt: row.started_at as string | undefined,
+    completedAt: row.completed_at as string | undefined,
+    durationMs: row.duration_ms as number | undefined,
+    errorType: row.error_type as string | undefined,
+    errorCode: row.error_code as string | undefined,
+    errorMessage: row.error_message as string | undefined,
+    outputSummary: row.output_summary as Record<string, unknown> | undefined,
+  };
+}
+
 export class ExecutionService {
   async listRuns(): Promise<Workflow['runs']> {
     const { data, error } = await supabase
       .from('workflow_runs')
-      .select('*, workflow:workflows(name), workflow_run_nodes(*), workflow_logs(*)')
+      .select('*, workflow:workflows(name), workflow_run_nodes(*), workflow_logs(*), workflow_job_executions(id)')
       .order('created_at', { ascending: false })
       .limit(20);
     if (error) throw error;
-    return (data || []).map((r) => {
-      const stored = (r.context as Record<string, unknown>) || {};
-      const variables = (stored.variables as Record<string, unknown>) || {};
-      const batchProgress = variables.batchProgress as { node: string; index: number; total: number } | undefined;
-      return {
-      id: String(r.id),
-      workflowId: String(r.workflow_id),
-      status: (r.status as Workflow['runs'][number]['status']) ?? 'success',
-      startedAt: (r.started_at as string) ?? '',
-      finishedAt: r.finished_at as string | undefined,
-      duration: Number(r.duration_ms ?? 0),
-      currentNodeId: r.current_node_id ? String(r.current_node_id) : undefined,
-      errorMessage: r.error_message ? String(r.error_message) : undefined,
-      batchProgress: batchProgress?.node ? batchProgress : undefined,
-      nodeResults: mergeNodeResults(
-        ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
-          nodeId: String(n.node_id ?? ''),
-          status: (n.status as Workflow['runs'][number]['nodeResults'][number]['status']) ?? 'success',
-          duration: Number(n.duration_ms ?? 0),
-          output: n.output as string | undefined,
-        })),
-      ),
-      logs: ((r.workflow_logs as Record<string, unknown>[]) ?? [])
-        .map((l) => ({
-          id: String(l.id),
-          level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',
-          message: String(l.message ?? ''),
-          timestamp: (l.timestamp as string) ?? '',
-          nodeId: l.node_id as string | undefined,
-        }))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
-      workflowName: (r.workflow as Record<string, unknown>)?.name as string | undefined,
+    return (data || []).map(mapRunRow) as unknown as Workflow['runs'];
+  }
+
+  async getRunDetail(runId: string): Promise<WorkflowRunDetail | null> {
+    const { data, error } = await supabase
+      .from('workflow_runs')
+      .select('*, workflow:workflows(name), workflow_run_nodes(*), workflow_logs(*), workflow_job_executions(*), workflow_node_executions(*)')
+      .eq('id', runId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    const base = mapRunRow(data);
+    return {
+      ...base,
+      workflowSnapshot: data.workflow_snapshot as WorkflowSnapshot | undefined,
+      jobExecutions: ((data.workflow_job_executions as Record<string, unknown>[]) || []).map(mapJobExecution),
+      nodeExecutions: ((data.workflow_node_executions as Record<string, unknown>[]) || []).map(mapNodeExecution),
     };
-    }) as unknown as Workflow['runs'];
+  }
+
+  async retryFailedJobs(runId: string): Promise<{ runId: string; retriedJobs: number }> {
+    const { data, error } = await supabase.functions.invoke('workflow-retry-failed', { body: { runId } });
+    if (error) throw error;
+    if (data?.error) throw new Error(String(data.error));
+    return {
+      runId: String(data?.runId ?? runId),
+      retriedJobs: Number(data?.retriedJobs ?? 0),
+    };
   }
   async runWorkflow(id: string): Promise<Workflow['runs'][number]> {
     const { data, error } = await supabase.functions.invoke('workflow-run', { body: { workflowId: id } });
@@ -1100,9 +1228,7 @@ export class AutomationService {
   }
   async create(name: string, workflowId: string, schedule: string): Promise<Automation> {
     const userId = await requireUserId();
-    const nextRun = new Date();
-    nextRun.setDate(nextRun.getDate() + 1);
-    nextRun.setHours(7, 0, 0, 0);
+    const nextRun = computeNextCronRun(schedule);
     const { data, error } = await supabase.from('automations').insert({
       user_id: userId,
       name,

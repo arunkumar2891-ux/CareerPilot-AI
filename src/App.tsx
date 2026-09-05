@@ -15,6 +15,7 @@ import { CoverLettersPage } from '@/pages/CoverLettersPage';
 import { CopilotPage } from '@/pages/CopilotPage';
 import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
 import { ExecutionsPage } from '@/pages/ExecutionsPage';
+import { ExecutionDetailPage } from '@/pages/ExecutionDetailPage';
 import { AnalyticsPage } from '@/pages/AnalyticsPage';
 import { IntegrationsPage } from '@/pages/IntegrationsPage';
 import { SetupPage } from '@/pages/SetupPage';
@@ -99,6 +100,7 @@ function App() {
               <Route path="/copilot" element={<CopilotPage />} />
               <Route path="/knowledge" element={<KnowledgeBasePage />} />
               <Route path="/executions" element={<ExecutionsPage />} />
+              <Route path="/executions/:runId" element={<ExecutionDetailPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/setup" element={<SetupPage />} />
