@@ -41,8 +41,8 @@ const CORE: CoreIntegration[] = [
   {
     name: 'Google Drive',
     category: 'Storage',
-    description: 'Upload tailored PDFs to your Drive. Not used for resume tailoring.',
-    note: 'Connect with OAuth. Skip this if you only need in-app resumes and storage.',
+    description: 'Copy tailored PDFs to your Drive from Resume Studio. Job search saves resumes in-app by default.',
+    note: 'Connect with OAuth, set a Drive folder in Settings → Job Search, then use Copy to Google Drive on the Resumes page.',
     icon: Cloud,
     optional: true,
   },

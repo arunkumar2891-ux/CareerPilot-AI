@@ -74,6 +74,11 @@ export interface Resume {
   content: string;
   atsScore: number;
   versions: ResumeVersion[];
+  jobId?: string;
+  driveFileId?: string;
+  driveSyncedAt?: string;
+  storagePath?: string;
+  pdfUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

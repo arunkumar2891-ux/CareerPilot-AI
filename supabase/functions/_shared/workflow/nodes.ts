@@ -1,5 +1,5 @@
 import type { NodeExecutor, NodeResult, RunContext, WorkflowNodeRow, WorkflowEdgeRow } from './types.ts';
-import { getSecretOrIntegration, getIntegrationCredentials, refreshGoogleToken, getUserSettings } from '../credentials.ts';
+import { getSecretOrIntegration, getIntegrationCredentials, getUserSettings } from '../credentials.ts';
 import { resolveTemplate } from './graph.ts';
 import { createAdminClient } from '../supabase-admin.ts';
 import { buildEmailSummaryBlock } from './execution-persistence.ts';
@@ -9,8 +9,11 @@ import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 import { buildLatexFromAtsText } from '../resume-latex.ts';
+import { compileLatexToPdf } from '../resume-pdf.ts';
+import { upsertTailoredResume, linkResumePdf } from '../resume-store.ts';
+import { uploadOrUpdateDrivePdf, resolveResumePdfFileName } from '../resume-drive.ts';
 import { fetchWithTimeout } from '../fetch-timeout.ts';
-import { buildResumePdfFileName, parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
+import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -372,8 +375,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   gdrive: {
     async execute(ctx, node, input) {
       const action = node.config.action as string || 'download';
-      const accessToken = await refreshGoogleToken(ctx.userId);
       if (action === 'upload') {
+        const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
+        if (jobSearch.autoUploadDrive !== true) {
+          return { output: { ...(input as Record<string, unknown>), skipped: true, reason: 'drive_manual_only' }, status: 'success' };
+        }
+
         const data = input as Record<string, unknown>;
         const rawPdf = data.pdfBytes;
         const pdfBytes = rawPdf instanceof Uint8Array
@@ -382,79 +389,48 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             ? new Uint8Array(rawPdf as number[])
             : null;
         if (!pdfBytes?.length) {
-          throw new Error('Drive upload skipped: PDF bytes are missing. The PDF step may have failed.');
+          return { output: { ...data, skipped: true, reason: 'missing_pdf_bytes' }, status: 'success' };
         }
-        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
+
         const folderRaw = resolveTemplate(String(node.config.folderId || ''), ctx)
           || String(jobSearch.driveFolderId || '');
         const folderId = parseGoogleDriveFolderId(folderRaw);
         if (!folderId) {
-          throw new Error(
-            'Google Drive folder is not set. Paste a folder link in Settings → Job Search, save, then retry.',
-          );
+          return { output: { ...data, skipped: true, reason: 'no_drive_folder' }, status: 'success' };
         }
-        const contact = (ctx.settings.contact as Record<string, string> | undefined) || {};
-        const admin = createAdminClient();
-        const { data: profile } = await admin
-          .from('profiles')
-          .select('full_name')
-          .eq('user_id', ctx.userId)
-          .maybeSingle();
-        const personName = String(profile?.full_name || contact.fullName || '').trim() || 'Resume';
+
         const company = String(data.company || data.companyName || 'Company').trim();
         const role = String(data.title || data.role || data.docTitle || 'Role').trim();
-        const fileName = buildResumePdfFileName({ company, personName, role });
-        const metadata: Record<string, unknown> = {
-          name: fileName,
-          mimeType: 'application/pdf',
-          parents: [folderId],
-        };
-        const boundary = 'careerpilot_boundary';
-        const body = `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`;
-        const enc = new TextEncoder();
-        const part1 = enc.encode(body);
-        const part2 = enc.encode(`\r\n--${boundary}--`);
-        const full = new Uint8Array(part1.length + pdfBytes.length + part2.length);
-        full.set(part1);
-        full.set(pdfBytes, part1.length);
-        full.set(part2, part1.length + pdfBytes.length);
-        const uploadUrl = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true';
-        const res = await fetchWithTimeout(
-          uploadUrl,
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
-            body: full,
-          },
-          45000,
-          'Google Drive upload',
-        );
-        const file = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const detail = file.error?.message || 'Drive upload failed';
-          throw new Error(
-            `${detail}. Reconnect Google in Integrations if this folder is not accessible, then retry.`,
-          );
+        const fileName = await resolveResumePdfFileName(ctx.userId, { company, role });
+        const admin = createAdminClient();
+        const resumeId = String(data.resumeId || '');
+        let existingFileId: string | null = null;
+        if (resumeId) {
+          const { data: resumeRow } = await admin
+            .from('resumes')
+            .select('drive_file_id')
+            .eq('id', resumeId)
+            .maybeSingle();
+          existingFileId = (resumeRow?.drive_file_id as string | null) || null;
         }
-        try {
-          await fetchWithTimeout(
-            `https://www.googleapis.com/drive/v3/files/${file.id}/permissions?supportsAllDrives=true`,
-            {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ role: 'reader', type: 'anyone' }),
-            },
-            10000,
-            'Google Drive permissions',
-          );
-        } catch {
-          // Link-sharing is optional; a hang here previously blocked the whole job slice.
+
+        const drive = await uploadOrUpdateDrivePdf(ctx.userId, {
+          pdfBytes,
+          fileName,
+          folderId,
+          existingFileId,
+        });
+        if (resumeId) {
+          await admin.from('resumes').update({
+            drive_file_id: drive.fileId,
+            drive_synced_at: new Date().toISOString(),
+          }).eq('id', resumeId);
         }
-        const pdfLink = `https://drive.google.com/file/d/${file.id}/view`;
+
         const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
-        processed.push({ ...data, pdfLink, pdf_url: pdfLink, driveFolderId: folderId });
+        processed.push({ ...data, pdfLink: drive.pdfLink, pdf_url: drive.pdfLink, driveFolderId: folderId });
         ctx.variables.processedJobs = processed;
-        return { output: { ...data, id: file.id, pdfLink }, status: 'success' };
+        return { output: { ...data, id: drive.fileId, pdfLink: drive.pdfLink }, status: 'success' };
       }
       return { output: input, status: 'success' };
     },
@@ -484,6 +460,22 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       ctx.variables.lastAgentOutput = output;
       ctx.variables.playbook = corpus.playbookTitle;
       ctx.variables.masterResumeSource = corpus.masterResumeSource;
+
+      const tailoredContent = String(output || '').trim();
+      if (tailoredContent.length > 0) {
+        const admin = createAdminClient();
+        const company = String(job.company || job.companyName || 'Company');
+        const role = String(job.title || job.role || 'Role');
+        const jobId = String(job.jobId || job.id || ctx.variables.lastJobId || '');
+        const resumeId = await upsertTailoredResume(admin, ctx.userId, {
+          jobId: jobId || undefined,
+          company,
+          role,
+          content: tailoredContent,
+        });
+        return { output: { ...job, output: tailoredContent, resumeId, jobId: jobId || job.jobId }, status: 'success' };
+      }
+
       return { output: { ...job, output }, status: 'success' };
     },
   },
@@ -540,22 +532,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(_ctx, node, input) {
       const data = input as Record<string, unknown>;
       const latex = String(data.latex || '');
-      const compilerUrl = Deno.env.get('LATEX_COMPILER_URL') || 'https://latex.ytotech.com/builds/sync';
-      const res = await fetchWithTimeout(
-        compilerUrl,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ compiler: 'lualatex', resources: [{ main: true, content: latex }] }),
-        },
-        60000,
-        'LaTeX compile',
-      );
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(`LaTeX compile failed: ${err.slice(0, 200)}`);
-      }
-      const pdfBytes = new Uint8Array(await res.arrayBuffer());
+      const pdfBytes = await compileLatexToPdf(latex);
       return { output: { ...data, pdfBytes, docTitle: data.title || data.role }, status: 'success' };
     },
   },
@@ -565,10 +542,14 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const pdfBytes = data.pdfBytes as Uint8Array;
       if (!pdfBytes) return { output: data, status: 'success' };
       const admin = createAdminClient();
-      const path = `${ctx.userId}/${data.jobId || Date.now()}.pdf`;
+      const resumeId = String(data.resumeId || '');
+      const path = resumeId
+        ? `${ctx.userId}/resumes/${resumeId}.pdf`
+        : `${ctx.userId}/${data.jobId || Date.now()}.pdf`;
       const { error } = await admin.storage.from('resumes').upload(path, pdfBytes, { contentType: 'application/pdf', upsert: true });
       if (error) throw error;
-      const { data: urlData } = admin.storage.from('resumes').getPublicUrl(path);
+      const { data: signed } = await admin.storage.from('resumes').createSignedUrl(path, 60 * 60 * 24 * 7);
+      const pdfUrl = signed?.signedUrl || '';
       await admin.from('documents').insert({
         user_id: ctx.userId,
         name: String(data.docTitle || 'resume') + '.pdf',
@@ -578,10 +559,27 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         tags: ['generated'],
         storage_path: path,
       });
-      if (data.jobId) {
-        await admin.from('jobs').update({ pdf_url: urlData.publicUrl, resume_status: 'ready' }).eq('id', data.jobId);
+      if (resumeId) {
+        await linkResumePdf(admin, resumeId, { storagePath: path, pdfUrl });
       }
-      return { output: { ...data, pdf_url: urlData.publicUrl, storage_path: path }, status: 'success' };
+      if (data.jobId) {
+        await admin.from('jobs').update({ pdf_url: pdfUrl, resume_status: 'ready' }).eq('id', data.jobId);
+      }
+
+      const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
+      processed.push({
+        ...data,
+        company: data.company || data.companyName,
+        roleName: data.title || data.role,
+        title: data.title || data.role,
+        jobLink: data.jobLink || data.url,
+        pdfLink: pdfUrl,
+        pdf_url: pdfUrl,
+        resumeId,
+      });
+      ctx.variables.processedJobs = processed;
+
+      return { output: { ...data, pdf_url: pdfUrl, storage_path: path }, status: 'success' };
     },
   },
   email: {

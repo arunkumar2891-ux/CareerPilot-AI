@@ -53,6 +53,11 @@ function mapResume(row: Record<string, unknown>): Resume {
     type: (row.type as Resume['type']) ?? 'general',
     content: String(row.content ?? ''),
     atsScore: Number(row.ats_score ?? 0),
+    jobId: row.job_id as string | undefined,
+    driveFileId: row.drive_file_id as string | undefined,
+    driveSyncedAt: row.drive_synced_at as string | undefined,
+    storagePath: row.storage_path as string | undefined,
+    pdfUrl: row.pdf_url as string | undefined,
     versions: (row.resume_versions as Record<string, unknown>[])?.map((v) => ({
       id: String(v.id),
       resumeId: String(v.resume_id ?? row.id),
@@ -355,6 +360,15 @@ export class ResumeService {
     const { error } = await supabase.from('resumes').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
   }
+  async updateScore(id: string, score: number, content?: string): Promise<void> {
+    const patch: Record<string, unknown> = {
+      ats_score: score,
+      updated_at: new Date().toISOString(),
+    };
+    if (content !== undefined) patch.content = content;
+    const { error } = await supabase.from('resumes').update(patch).eq('id', id);
+    if (error) throw error;
+  }
   async generateTailored(jobId: string, resumeId?: string, _style?: 'technical' | 'executive' | 'general'): Promise<Resume> {
     const userId = await requireUserId();
     const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
@@ -375,13 +389,26 @@ export class ResumeService {
     if (!content) throw new Error('Resume tailoring returned empty output');
 
     const tailoredName = `Tailored: ${job.company} ${job.role}`.slice(0, 120);
-    const { data: existing } = await supabase.from('resumes').select('id').eq('user_id', userId).eq('name', tailoredName).maybeSingle();
+    const { data: byJob } = await supabase.from('resumes').select('id').eq('user_id', userId).eq('job_id', jobId).maybeSingle();
+    const { data: existing } = byJob?.id
+      ? { data: byJob }
+      : await supabase.from('resumes').select('id').eq('user_id', userId).eq('name', tailoredName).maybeSingle();
     let tailoredId = existing?.id as string | undefined;
     if (tailoredId) {
-      await this.update(tailoredId, content);
+      const { error: updateError } = await supabase.from('resumes').update({
+        content,
+        job_id: jobId,
+        updated_at: new Date().toISOString(),
+      }).eq('id', tailoredId);
+      if (updateError) throw updateError;
     } else {
-      const created = await this.create(tailoredName, 'technical', content);
-      tailoredId = created.id;
+      const { data: created, error: createError } = await supabase
+        .from('resumes')
+        .insert({ user_id: userId, name: tailoredName, type: 'technical', content, ats_score: 0, job_id: jobId })
+        .select('*, resume_versions(*)')
+        .single();
+      if (createError) throw createError;
+      tailoredId = created.id as string;
     }
     const latest = await this.get(tailoredId);
     await supabase.from('resume_versions').insert({
@@ -407,6 +434,55 @@ export class ResumeService {
         `Versions: ${a.versions.length} vs ${b.versions.length}`,
       ],
     };
+  }
+  async syncToDrive(id: string, content?: string): Promise<{ driveFileId: string; pdfLink: string }> {
+    const { data, error } = await supabase.functions.invoke('resume-actions', {
+      body: { mode: 'sync_drive', resumeId: id, content },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(String(data.error));
+    return {
+      driveFileId: String(data?.driveFileId || data?.results?.[0]?.driveFileId || ''),
+      pdfLink: String(data?.pdfLink || data?.results?.[0]?.pdfLink || ''),
+    };
+  }
+  async syncManyToDrive(ids: string[]): Promise<{
+    results: Array<{ resumeId: string; driveFileId: string; pdfLink: string }>;
+    errors?: Array<{ resumeId: string; error: string }>;
+  }> {
+    const { data, error } = await supabase.functions.invoke('resume-actions', {
+      body: { mode: 'sync_drive', resumeIds: ids },
+    });
+    if (error) throw error;
+    if (data?.error && !data?.results?.length) throw new Error(String(data.error));
+    return {
+      results: (data?.results as Array<{ resumeId: string; driveFileId: string; pdfLink: string }>) || [],
+      errors: data?.errors as Array<{ resumeId: string; error: string }> | undefined,
+    };
+  }
+  async downloadPdf(id: string, content?: string): Promise<void> {
+    const resume = await this.get(id);
+    if (!resume) throw new Error('Resume not found');
+
+    const { data, error } = await supabase.functions.invoke('resume-actions', {
+      body: { mode: 'generate_pdf', resumeId: id, content },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(String(data.error));
+
+    const url = String(data?.url || '');
+    if (!url) throw new Error('PDF generation failed');
+
+    const safeName = resume.name.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'resume';
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to download PDF');
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = `${safeName}.pdf`;
+    link.click();
+    URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -1155,12 +1231,16 @@ export class EmailService {
 }
 
 export class PDFService {
-  async generate(content: string, title: string): Promise<{ url: string }> {
-    const { data, error } = await supabase.functions.invoke('workflow-run', {
-      body: { mode: 'pdf', content, title },
-    });
-    if (error) throw error;
-    return { url: data?.url || '' };
+  async generate(content: string, title: string, resumeId?: string): Promise<{ url: string }> {
+    if (resumeId) {
+      const { data, error } = await supabase.functions.invoke('resume-actions', {
+        body: { mode: 'generate_pdf', resumeId, content },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(String(data.error));
+      return { url: String(data?.url || '') };
+    }
+    throw new Error('resumeId is required for PDF generation');
   }
 }
 

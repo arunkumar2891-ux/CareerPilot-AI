@@ -11,7 +11,7 @@ export interface SeedNode {
 /** Built-in job search pipeline — auto-provisioned for every user on login via BootstrapService */
 export const DEFAULT_JOB_SEARCH_WORKFLOW = {
   name: 'Daily Job Search Pipeline',
-  description: 'Apify LinkedIn scrape → Gemini ATS optimize → LaTeX PDF → email summary',
+  description: 'Apify LinkedIn scrape → Gemini ATS optimize → LaTeX PDF → Resume Studio (Drive sync is manual)',
   schedule: '0 7 * * *',
   nodes: [
     { type: 'schedule', name: 'Daily 7 AM', x: 0, y: 200, config: { cron: '0 7 * * *' } },
@@ -29,9 +29,8 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
     { type: 'function', name: 'Build LaTeX', x: 2200, y: 200, config: { builtin: 'build_latex' } },
     { type: 'pdf', name: 'Compile PDF', x: 2400, y: 200, config: {} },
     { type: 'storage', name: 'Upload to Storage', x: 2600, y: 200, config: {} },
-    { type: 'gdrive', name: 'Upload to Drive', x: 2800, y: 200, config: { action: 'upload', folderId: '{{settings.jobSearch.driveFolderId}}' } },
-    { type: 'function', name: 'Email Summary', x: 3000, y: 200, config: { builtin: 'email_summary' } },
-    { type: 'email', name: 'Send Email', x: 3200, y: 200, config: {} },
+    { type: 'function', name: 'Email Summary', x: 2800, y: 200, config: { builtin: 'email_summary' } },
+    { type: 'email', name: 'Send Email', x: 3000, y: 200, config: {} },
   ] as SeedNode[],
 };
 
@@ -55,6 +54,5 @@ export function buildSeedEdges(_nodeIds: string[]): { source: number; target: nu
     { source: 13, target: 14 },
     { source: 14, target: 15 },
     { source: 15, target: 16 },
-    { source: 16, target: 17 },
   ];
 }

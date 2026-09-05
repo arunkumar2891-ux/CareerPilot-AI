@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Plus, FileText, Upload, Download, GitCompare, Eye, Star,
-  TrendingUp, Clock, Sparkles, FileCheck, FileX,
+  TrendingUp, Clock, Sparkles, FileCheck, FileX, Cloud, CloudUpload,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 import { services } from '@/services';
 import { formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -33,6 +34,40 @@ export function ResumesPage() {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<Resume['type']>('general');
   const [newContent, setNewContent] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSyncing, setBulkSyncing] = useState(false);
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkSyncToDrive = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkSyncing(true);
+    try {
+      const { results, errors } = await services.resume.syncManyToDrive(ids);
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
+      if (results.length > 0) {
+        toast.success(`Copied ${results.length} resume${results.length === 1 ? '' : 's'} to Google Drive`);
+      }
+      if (errors?.length) {
+        toast.error(`${errors.length} resume${errors.length === 1 ? '' : 's'} failed to sync`, {
+          description: errors[0]?.error,
+        });
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Google Drive sync failed');
+    } finally {
+      setBulkSyncing(false);
+    }
+  };
 
   const create = async () => {
     await services.resume.create(newName, newType, newContent || `# ${newName}\n\nNew resume content...`);
@@ -94,19 +129,52 @@ export function ResumesPage() {
         </TabsList>
 
         <TabsContent value="resumes" className="space-y-4">
+          {selectedIds.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 p-3">
+              <span className="text-sm text-muted-foreground">{selectedIds.size} selected</span>
+              <Button
+                size="sm"
+                className="gap-2"
+                disabled={bulkSyncing}
+                onClick={bulkSyncToDrive}
+              >
+                <CloudUpload className="h-4 w-4" />
+                {bulkSyncing ? 'Copying…' : 'Copy to Google Drive'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
+            </div>
+          )}
           {(!resumes || resumes.length === 0) ? (
             <Card><CardContent><EmptyState icon={FileX} title="Seeding your corpus" description="Master ATS and the 2-page template are created automatically on login. Refresh in a moment, or create a custom resume." action={<Button onClick={() => setShowCreate(true)} className="gap-2"><Plus className="h-4 w-4" /> New Resume</Button>} /></CardContent></Card>
           ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {resumes.map((r, i) => (
               <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(r)}>
+                <Card
+                  className={`cursor-pointer transition-colors hover:bg-accent/30 ${selectedIds.has(r.id) ? 'ring-2 ring-primary' : ''}`}
+                  onClick={() => setSelected(r)}
+                >
                   <CardContent className="pt-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                        <FileText className="h-5 w-5 text-primary" />
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={selectedIds.has(r.id)}
+                          onCheckedChange={() => toggleSelected(r.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={`Select ${r.name}`}
+                        />
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                          <FileText className="h-5 w-5 text-primary" />
+                        </div>
                       </div>
-                      <Badge variant="secondary" className="capitalize">{r.type}</Badge>
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge variant="secondary" className="capitalize">{r.type}</Badge>
+                        {r.driveFileId && (
+                          <Badge variant="outline" className="gap-1 text-xs">
+                            <Cloud className="h-3 w-3" /> On Drive
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <p className="mt-3 font-semibold">{r.name}</p>
                     <p className="text-xs text-muted-foreground">Updated {timeAgo(r.updatedAt)}</p>
@@ -189,15 +257,40 @@ export function ResumesPage() {
         </TabsContent>
       </Tabs>
 
-      <ResumeEditor resume={selected} onClose={() => setSelected(null)} />
+      <ResumeEditor
+        resume={selected}
+        onClose={() => setSelected(null)}
+        onResumeUpdated={() => qc.invalidateQueries({ queryKey: ['resumes'] })}
+      />
     </div>
   );
 }
 
-function ResumeEditor({ resume, onClose }: { resume: Resume | null; onClose: () => void }) {
+function ResumeEditor({
+  resume,
+  onClose,
+  onResumeUpdated,
+}: {
+  resume: Resume | null;
+  onClose: () => void;
+  onResumeUpdated: () => void;
+}) {
   const qc = useQueryClient();
   const [content, setContent] = useState('');
+  const [atsScore, setAtsScore] = useState(0);
+  const [driveFileId, setDriveFileId] = useState<string | undefined>();
+  const [scoring, setScoring] = useState(false);
+  const [syncingDrive, setSyncingDrive] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [activeTab, setActiveTab] = useState('edit');
+
+  useEffect(() => {
+    if (!resume) return;
+    setContent('');
+    setAtsScore(resume.atsScore);
+    setDriveFileId(resume.driveFileId);
+    setActiveTab('edit');
+  }, [resume?.id, resume?.atsScore, resume?.driveFileId]);
 
   if (!resume) return null;
   const displayContent = content || resume.content;
@@ -210,10 +303,67 @@ function ResumeEditor({ resume, onClose }: { resume: Resume | null; onClose: () 
   };
 
   const scoreATS = async () => {
-    toast.success('Scoring resume...');
-    const { score, feedback } = await services.ats.score(displayContent);
-    toast.success(`ATS Score: ${score}/100`);
-    console.log(feedback);
+    setScoring(true);
+    try {
+      const { score, feedback } = await services.ats.score(displayContent);
+      await services.resume.updateScore(resume.id, score, displayContent);
+      setAtsScore(score);
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
+      toast.success(`ATS Score: ${score}/100`);
+      if (feedback?.length) {
+        toast.message('ATS feedback', { description: feedback.slice(0, 2).join(' · ') });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'ATS scoring failed');
+    } finally {
+      setScoring(false);
+    }
+  };
+
+  const exportResume = () => {
+    const safeName = resume.name.replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'resume';
+    const blob = new Blob([displayContent], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${safeName}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Resume exported');
+  };
+
+  const downloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      if (content && content !== resume.content) {
+        await services.resume.update(resume.id, displayContent);
+      }
+      await services.resume.downloadPdf(resume.id, displayContent);
+      toast.success('PDF downloaded');
+      onResumeUpdated();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'PDF download failed');
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const copyToDrive = async () => {
+    setSyncingDrive(true);
+    try {
+      if (content && content !== resume.content) {
+        await services.resume.update(resume.id, displayContent);
+      }
+      const result = await services.resume.syncToDrive(resume.id, displayContent);
+      setDriveFileId(result.driveFileId);
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
+      onResumeUpdated();
+      toast.success(driveFileId ? 'Resume updated on Google Drive' : 'Resume copied to Google Drive');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Google Drive sync failed');
+    } finally {
+      setSyncingDrive(false);
+    }
   };
 
   return (
@@ -223,7 +373,12 @@ function ResumeEditor({ resume, onClose }: { resume: Resume | null; onClose: () 
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
             {resume.name}
-            <Badge variant="secondary" className="ml-2">ATS {resume.atsScore}</Badge>
+            <Badge variant="secondary" className="ml-2">ATS {atsScore}</Badge>
+            {driveFileId && (
+              <Badge variant="outline" className="ml-1 gap-1">
+                <Cloud className="h-3 w-3" /> Drive
+              </Badge>
+            )}
           </DialogTitle>
         </DialogHeader>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -249,17 +404,32 @@ function ResumeEditor({ resume, onClose }: { resume: Resume | null; onClose: () 
             <div className="flex h-[55vh] items-center justify-center rounded-lg border border-dashed border-border bg-muted/30">
               <div className="text-center">
                 <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="mt-2 text-sm text-muted-foreground">PDF preview</p>
-                <Button variant="outline" size="sm" className="mt-3 gap-2"><Download className="h-3.5 w-3.5" /> Download PDF</Button>
+                <p className="mt-2 text-sm text-muted-foreground">Generate and download a PDF from your resume content</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 gap-2"
+                  disabled={downloadingPdf}
+                  onClick={downloadPdf}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {downloadingPdf ? 'Generating…' : 'Download PDF'}
+                </Button>
               </div>
             </div>
           </TabsContent>
         </Tabs>
         <div className="flex items-center gap-2 border-t border-border pt-4">
           <Button onClick={save} className="gap-2"><FileCheck className="h-4 w-4" /> Save</Button>
-          <Button variant="outline" onClick={scoreATS} className="gap-2"><Sparkles className="h-4 w-4" /> Score ATS</Button>
+          <Button variant="outline" onClick={scoreATS} disabled={scoring} className="gap-2">
+            <Sparkles className="h-4 w-4" /> {scoring ? 'Scoring…' : 'Score ATS'}
+          </Button>
+          <Button variant="outline" onClick={copyToDrive} disabled={syncingDrive} className="gap-2">
+            <CloudUpload className="h-4 w-4" />
+            {syncingDrive ? 'Syncing…' : driveFileId ? 'Sync to Drive' : 'Copy to Google Drive'}
+          </Button>
           <Button variant="outline" className="gap-2"><TrendingUp className="h-4 w-4" /> Generate Tailored</Button>
-          <Button variant="ghost" className="ml-auto gap-2"><Download className="h-4 w-4" /> Export</Button>
+          <Button variant="ghost" onClick={exportResume} className="ml-auto gap-2"><Download className="h-4 w-4" /> Export</Button>
         </div>
       </DialogContent>
     </Dialog>
