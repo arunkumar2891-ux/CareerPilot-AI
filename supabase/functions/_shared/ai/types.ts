@@ -31,8 +31,14 @@ export class ProviderError extends Error {
   }
 }
 
+export interface GenerateResult {
+  text: string;
+  tokensInput: number;
+  tokensOutput: number;
+}
+
 export interface ProviderAdapter {
   name: AiProviderName;
   isConfigured(): boolean;
-  generate(req: GenerateRequest): Promise<string>;
+  generate(req: GenerateRequest): Promise<GenerateResult>;
 }

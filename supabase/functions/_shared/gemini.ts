@@ -24,24 +24,25 @@ export function geminiGenerateContentUrl(): string {
 export async function callGeminiGenerateContent(
   systemPrompt: string,
   userPrompt: string,
-  options?: { timeoutMs?: number; maxAttempts?: number; operation?: AiOperation },
+  options?: { timeoutMs?: number; maxAttempts?: number; operation?: AiOperation; userId?: string },
 ): Promise<string> {
   return await generateText({
     systemPrompt,
     userPrompt,
     operation: options?.operation ?? 'chat',
     timeoutMs: options?.timeoutMs ?? getAiTimeoutMs(),
-  });
+  }, { userId: options?.userId });
 }
 
 export async function callGeminiAtsGenerateContent(
   systemPrompt: string,
   userPrompt: string,
+  userId?: string,
 ): Promise<string> {
   return await generateText({
     systemPrompt,
     userPrompt,
     operation: 'resume_tailoring',
     timeoutMs: getGeminiAtsTimeoutMs(),
-  });
+  }, { userId });
 }

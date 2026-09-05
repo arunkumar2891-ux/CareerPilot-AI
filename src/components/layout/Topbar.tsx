@@ -8,8 +8,13 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
   DropdownMenuLabel, DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { timeAgo } from '@/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { timeAgo, formatNumber } from '@/utils';
 
 export function Topbar() {
   const { theme, toggleTheme, setCommandOpen, setMobileNavOpen } = useUIStore();
@@ -92,12 +97,24 @@ export function Topbar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="hidden items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 sm:flex md:px-3 md:py-1.5">
-          <Badge variant="secondary" className="bg-primary/10 text-primary">
-            {user?.aiCreditsUsed} / {user?.aiCreditsTotal}
-          </Badge>
-          <span className="hidden text-xs text-muted-foreground md:inline">credits</span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="hidden items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 sm:flex md:px-3 md:py-1.5"
+            >
+              <Badge variant="secondary" className="bg-primary/10 text-primary">
+                {formatNumber(user?.aiTokensUsed ?? 0)}
+              </Badge>
+              <span className="hidden text-xs text-muted-foreground md:inline">tokens</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs text-xs">
+            Tokens used this month across resume tailoring, ATS scoring, and Copilot.
+            No usage cap — see Dashboard for Gemini vs Groq breakdown.
+          </TooltipContent>
+        </Tooltip>
 
         <Button
           variant="ghost"

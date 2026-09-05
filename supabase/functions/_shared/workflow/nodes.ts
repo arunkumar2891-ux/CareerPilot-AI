@@ -28,9 +28,14 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-async function callGemini(systemPrompt: string, userPrompt: string, forAts = false): Promise<string> {
-  if (forAts) return await callGeminiAtsGenerateContent(systemPrompt, userPrompt);
-  return await callGeminiGenerateContent(systemPrompt, userPrompt);
+async function callGemini(
+  ctx: RunContext,
+  systemPrompt: string,
+  userPrompt: string,
+  forAts = false,
+): Promise<string> {
+  if (forAts) return await callGeminiAtsGenerateContent(systemPrompt, userPrompt, ctx.userId);
+  return await callGeminiGenerateContent(systemPrompt, userPrompt, { userId: ctx.userId });
 }
 
 export const nodeExecutors: Record<string, NodeExecutor> = {
@@ -456,7 +461,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         contactBlock: corpus.contactBlock,
         googleHeader: String(ctx.variables.googleHeader || ''),
       });
-      const output = await callGemini(systemPrompt, userPrompt, true);
+      const output = await callGemini(ctx, systemPrompt, userPrompt, true);
       ctx.variables.lastAgentOutput = output;
       ctx.variables.playbook = corpus.playbookTitle;
       ctx.variables.masterResumeSource = corpus.masterResumeSource;
@@ -711,7 +716,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(ctx, node, input) {
       const template = String(node.config.content || '');
       const prompt = resolveTemplate(template, ctx);
-      const output = await callGemini('You are a helpful assistant.', prompt + '\n\nContext: ' + JSON.stringify(input).slice(0, 4000));
+      const output = await callGemini(ctx, 'You are a helpful assistant.', prompt + '\n\nContext: ' + JSON.stringify(input).slice(0, 4000));
       return { output: { result: output }, status: 'success' };
     },
   },
@@ -721,6 +726,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const company = String(job.company ?? job.companyName ?? 'Company');
       const title = String(job.title ?? job.role ?? 'Role');
       const output = await callGemini(
+        ctx,
         'Write a professional cover letter.',
         `Write a cover letter for ${title} at ${company}. Job description: ${job.jobDescription ?? job.description ?? ''}`,
       );

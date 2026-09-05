@@ -17,7 +17,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { services } from '@/services';
-import { timeAgo, computeRunDurationMs, formatDurationMs } from '@/utils';
+import { timeAgo, computeRunDurationMs, formatDurationMs, formatNumber } from '@/utils';
+import { PROVIDER_LABELS } from '@/constants/ai-usage';
 import { useNavigate } from 'react-router-dom';
 import { useNotificationStore } from '@/store';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -25,6 +26,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 export function DashboardPage() {
   const navigate = useNavigate();
   const { data: metrics } = useQuery({ queryKey: ['metrics'], queryFn: () => services.analytics.metrics() });
+  const { data: aiUsage } = useQuery({ queryKey: ['aiUsage'], queryFn: () => services.analytics.aiUsage() });
   const { data: timeseries } = useQuery({ queryKey: ['timeseries'], queryFn: () => services.analytics.timeseries() });
   const { data: runs } = useQuery({ queryKey: ['runs'], queryFn: () => services.execution.listRuns() });
   const notifications = useNotificationStore((s) => s.notifications);
@@ -49,8 +51,77 @@ export function DashboardPage() {
         <MetricCard label="Applications Ready" value={metrics?.applicationsReady ?? 0} icon={<FileCheck className="h-5 w-5" />} trend={5} delay={0.1} accent="bg-warning/40" />
         <MetricCard label="Applications Submitted" value={metrics?.applicationsSubmitted ?? 0} icon={<Send className="h-5 w-5" />} trend={15} delay={0.15} accent="bg-chart-4/40" />
         <MetricCard label="Resume Versions" value={metrics?.resumeVersions ?? 0} icon={<FileText className="h-5 w-5" />} trend={-3} delay={0.2} accent="bg-chart-5/40" />
-        <MetricCard label="AI Credits Used" value={metrics?.aiCreditsUsed ?? 0} icon={<Sparkles className="h-5 w-5" />} trend={22} delay={0.25} accent="bg-primary/40" />
+        <MetricCard
+          label="AI Tokens (month)"
+          value={formatNumber(metrics?.aiTokensUsed ?? 0)}
+          icon={<Sparkles className="h-5 w-5" />}
+          delay={0.25}
+          accent="bg-primary/40"
+        />
       </div>
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">AI Usage — {aiUsage?.monthLabel ?? 'This month'}</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Token usage across resume tailoring, ATS scoring, and Copilot — no in-app limit.
+            </p>
+          </div>
+          <Badge variant="secondary" className="shrink-0">
+            {formatNumber(aiUsage?.totalTokens ?? 0)} total tokens
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            {(aiUsage?.providers ?? []).map((provider) => {
+              const pct = Math.min(100, (provider.tokens / Math.max(1, provider.freeTierLimit)) * 100);
+              return (
+                <div key={provider.provider} className="rounded-lg border border-border p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-medium">{PROVIDER_LABELS[provider.provider]}</p>
+                    <Badge variant="outline" className="text-[10px]">{provider.requests} requests</Badge>
+                  </div>
+                  <p className="text-2xl font-semibold">{formatNumber(provider.tokens)}</p>
+                  <p className="text-xs text-muted-foreground">tokens this month</p>
+                  <div className="mt-3">
+                    <div className="mb-1 flex justify-between text-[10px] text-muted-foreground">
+                      <span>vs free-tier reference (~{formatNumber(provider.freeTierLimit)}/mo)</span>
+                      <span>{formatNumber(provider.remaining)} left</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-chart-2"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {(aiUsage?.recent?.length ?? 0) > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Recent AI calls</p>
+              <div className="space-y-2">
+                {aiUsage!.recent.map((event, i) => (
+                  <div key={`${event.createdAt}-${i}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-[10px] capitalize">{event.provider}</Badge>
+                      <span className="text-muted-foreground">{event.operation.replace(/_/g, ' ')}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-muted-foreground">
+                      <span>{formatNumber(event.tokens)} tokens</span>
+                      <span>{timeAgo(event.createdAt)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

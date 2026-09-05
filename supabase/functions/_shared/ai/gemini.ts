@@ -1,6 +1,7 @@
 import { classifyProviderFailure } from './errors.ts';
 import { getGeminiApiKey, getGeminiModel } from './config.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
+import { usageFromGeminiResponse } from './usage.ts';
 
 export const geminiAdapter: ProviderAdapter = {
   name: 'gemini',
@@ -44,8 +45,9 @@ export const geminiAdapter: ProviderAdapter = {
         const detail = json.error?.message || `Gemini HTTP ${res.status}`;
         throw classifyProviderFailure('gemini', new Error(detail), res.status);
       }
-      const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      return String(text);
+      const text = String(json.candidates?.[0]?.content?.parts?.[0]?.text ?? '');
+      const usage = usageFromGeminiResponse(json, req.systemPrompt, req.userPrompt, text);
+      return { text, tokensInput: usage.tokensInput, tokensOutput: usage.tokensOutput };
     } catch (err) {
       if (err instanceof ProviderError) throw err;
       if (err instanceof Error && err.name === 'AbortError') {

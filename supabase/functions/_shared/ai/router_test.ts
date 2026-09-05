@@ -24,7 +24,7 @@ function mockAdapter(
   name: 'gemini' | 'groq',
   impl: {
     configured?: boolean;
-    generate?: (req: GenerateRequest) => Promise<string>;
+    generate?: (req: GenerateRequest) => Promise<{ text: string; tokensInput: number; tokensOutput: number }>;
   },
 ): ProviderAdapter & { calls: number } {
   const adapter = {
@@ -36,7 +36,7 @@ function mockAdapter(
     async generate(req: GenerateRequest) {
       adapter.calls += 1;
       if (impl.generate) return impl.generate(req);
-      return VALID_ATS;
+      return { text: VALID_ATS, tokensInput: 100, tokensOutput: 200 };
     },
   };
   return adapter;
@@ -150,7 +150,7 @@ Deno.test('Groq malformed ATS fails without returning corrupt text', async () =>
     },
   });
   const groq = mockAdapter('groq', {
-    generate: async () => 'not a resume',
+    generate: async () => ({ text: 'not a resume', tokensInput: 1, tokensOutput: 1 }),
   });
   let message = '';
   try {

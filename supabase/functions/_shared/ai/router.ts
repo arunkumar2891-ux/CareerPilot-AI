@@ -4,6 +4,7 @@ import { geminiAdapter } from './gemini.ts';
 import { groqAdapter } from './groq.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
 import { validateResumeOutput } from './validate-resume.ts';
+import { recordAiUsage } from './usage.ts';
 
 const defaultAdapters: Record<string, ProviderAdapter> = {
   gemini: geminiAdapter,
@@ -16,6 +17,7 @@ export type GenerateDeps = {
   fallback?: string;
   timeoutMs?: number;
   maxAttempts?: number;
+  userId?: string;
   log?: (message: string) => void;
 };
 
@@ -42,14 +44,21 @@ async function callAdapter(
   req: GenerateRequest,
   role: 'primary' | 'fallback',
   log: (message: string) => void,
+  userId?: string,
 ): Promise<string> {
   const started = Date.now();
   const prefix = role === 'fallback' ? '[AI] fallback ' : '[AI] ';
   log(`${prefix}provider=${adapter.name} operation=${req.operation} started`);
   try {
-    const raw = await adapter.generate(req);
-    const text = applyResumeValidation(adapter.name, raw, req.operation);
-    log(`[AI] provider=${adapter.name} operation=${req.operation} success duration_ms=${Date.now() - started}`);
+    const result = await adapter.generate(req);
+    const text = applyResumeValidation(adapter.name, result.text, req.operation);
+    await recordAiUsage(userId, {
+      provider: adapter.name,
+      operation: req.operation,
+      tokensInput: result.tokensInput,
+      tokensOutput: result.tokensOutput,
+    });
+    log(`[AI] provider=${adapter.name} operation=${req.operation} success duration_ms=${Date.now() - started} tokens=${result.tokensInput + result.tokensOutput}`);
     return text;
   } catch (err) {
     const kind = err instanceof ProviderError ? err.kind : 'unknown';
@@ -70,12 +79,13 @@ async function tryProvider(
   role: 'primary' | 'fallback',
   maxAttempts: number,
   log: (message: string) => void,
+  userId?: string,
 ): Promise<string> {
   let lastErr: unknown;
   const attempts = Math.max(1, maxAttempts);
   for (let i = 1; i <= attempts; i++) {
     try {
-      return await callAdapter(adapter, req, role, log);
+      return await callAdapter(adapter, req, role, log, userId);
     } catch (err) {
       lastErr = err;
       const retryable = err instanceof ProviderError && err.retryable;
@@ -109,7 +119,7 @@ export async function generateWithProviders(
 
   if (primary?.isConfigured()) {
     try {
-      return await tryProvider(primary, request, 'primary', maxAttempts, log);
+      return await tryProvider(primary, request, 'primary', maxAttempts, log, deps.userId);
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${primary.name}: ${message}`);
@@ -130,7 +140,7 @@ export async function generateWithProviders(
 
   if (fallback?.isConfigured()) {
     try {
-      return await tryProvider(fallback, { ...request, timeoutMs: getAiTimeoutMs() }, 'fallback', 1, log);
+      return await tryProvider(fallback, { ...request, timeoutMs: getAiTimeoutMs() }, 'fallback', 1, log, deps.userId);
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${fallback.name}: ${message}`);
@@ -147,8 +157,9 @@ export async function generateWithProviders(
 
 export async function generateText(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
+  deps: GenerateDeps = {},
 ): Promise<string> {
-  return generateWithProviders(req);
+  return generateWithProviders(req, deps);
 }
 
 export function providerNames(): { primary: string; fallback: string } {

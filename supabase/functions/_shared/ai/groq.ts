@@ -2,6 +2,7 @@ import { classifyProviderFailure } from './errors.ts';
 import { getGroqApiKey, getGroqModel } from './config.ts';
 import { fitGroqPrompt, isGroqRequestTooLarge } from './groq-limits.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
+import { usageFromGroqResponse } from './usage.ts';
 
 export const groqAdapter: ProviderAdapter = {
   name: 'groq',
@@ -59,7 +60,8 @@ export const groqAdapter: ProviderAdapter = {
         if (!text) {
           throw classifyProviderFailure('groq', new Error('Groq returned an empty completion'));
         }
-        return text;
+        const usage = usageFromGroqResponse(json, fitted.systemPrompt, fitted.userPrompt, text);
+        return { text, tokensInput: usage.tokensInput, tokensOutput: usage.tokensOutput };
       } catch (err) {
         if (err instanceof ProviderError) throw err;
         if (err instanceof Error && err.name === 'AbortError') {

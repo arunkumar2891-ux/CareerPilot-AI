@@ -430,8 +430,7 @@ export interface UserProfile {
   title: string;
   avatarUrl?: string;
   plan: 'free' | 'pro' | 'enterprise';
-  aiCreditsUsed: number;
-  aiCreditsTotal: number;
+  aiTokensUsed: number;
 }
 
 export interface DashboardMetrics {
@@ -440,9 +439,24 @@ export interface DashboardMetrics {
   applicationsReady: number;
   applicationsSubmitted: number;
   resumeVersions: number;
-  aiCreditsUsed: number;
+  aiTokensUsed: number;
   successRate: number;
   avgAtsScore: number;
+}
+
+export interface AiProviderUsage {
+  provider: 'gemini' | 'groq';
+  tokens: number;
+  requests: number;
+  freeTierLimit: number;
+  remaining: number;
+}
+
+export interface AiUsageSummary {
+  monthLabel: string;
+  totalTokens: number;
+  providers: AiProviderUsage[];
+  recent: { operation: string; provider: string; tokens: number; createdAt: string }[];
 }
 
 export interface AnalyticsPoint {

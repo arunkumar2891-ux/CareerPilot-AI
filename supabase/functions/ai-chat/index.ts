@@ -4,9 +4,13 @@ import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../_shared/gemini.ts';
 import { sanitizeAiErrorMessage } from '../_shared/ai/errors.ts';
 
-async function callGemini(messages: { role: string; content: string }[], systemPrompt?: string): Promise<string> {
+async function callGemini(
+  userId: string,
+  messages: { role: string; content: string }[],
+  systemPrompt?: string,
+): Promise<string> {
   const userText = messages.map((m) => `${m.role}: ${m.content}`).join('\n\n');
-  return await callGeminiGenerateContent(systemPrompt || 'You are a helpful assistant.', userText);
+  return await callGeminiGenerateContent(systemPrompt || 'You are a helpful assistant.', userText, { userId });
 }
 
 Deno.serve(async (req) => {
@@ -27,7 +31,7 @@ Deno.serve(async (req) => {
       const result = await callGeminiGenerateContent(
         'Return valid JSON only.',
         `Score this resume 0-100 for ATS compatibility. Return JSON: {"score": number, "feedback": string[]}\n\n${content}`,
-        { operation: 'ats_score' },
+        { operation: 'ats_score', userId: user.id },
       );
       try {
         const parsed = JSON.parse(result.replace(/```json\n?|\n?```/g, ''));
@@ -71,7 +75,7 @@ Deno.serve(async (req) => {
         evidence: corpus.evidence,
         contactBlock: corpus.contactBlock,
       });
-      const reply = await callGeminiAtsGenerateContent(ATS_SYSTEM_PROMPT, userPrompt);
+      const reply = await callGeminiAtsGenerateContent(ATS_SYSTEM_PROMPT, userPrompt, user.id);
       return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });
     }
 
@@ -81,7 +85,7 @@ Deno.serve(async (req) => {
       if (agent) prompt = agent.prompt;
     }
 
-    const reply = await callGemini(messages || [{ role: 'user', content: content || '' }], prompt);
+    const reply = await callGemini(user.id, messages || [{ role: 'user', content: content || '' }], prompt);
     return jsonResponse({ reply, tokens: reply.length / 4 });
   } catch (err) {
     const message = sanitizeAiErrorMessage(err instanceof Error ? err.message : String(err));

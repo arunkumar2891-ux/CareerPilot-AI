@@ -1,7 +1,7 @@
 import type {
   Job, Resume, CoverLetter, Application, Workflow, Agent,
   Document, Notification, Integration, Prompt, Automation,
-  ChatConversation, DashboardMetrics, AnalyticsPoint, UserProfile,
+  ChatConversation, DashboardMetrics, AnalyticsPoint, UserProfile, AiUsageSummary,
   JobSearchConfig, ChatMessage, AgentRun, WorkflowRunDetail,
   JobExecution, NodeExecution, WorkflowSnapshot, WorkflowRun,
 } from '@/types';
@@ -18,6 +18,7 @@ import {
 } from '@/content/career-corpus';
 import { buildFocusedMasterResume, resumeBankName } from '@/content/career-corpus/resume-bank';
 import { isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import { PROVIDER_FREE_TIER_MONTHLY_TOKENS } from '@/constants/ai-usage';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
 /* ── helpers ── */
@@ -30,6 +31,21 @@ function throwResumeActionError(data: ResumeActionResponse | null, fallback = 'R
     throw new Error('Google Drive connection expired. Go to Integrations → reconnect Google Drive, then try again.');
   }
   throw new Error(String(data.error || fallback));
+}
+
+async function refreshHeaderCredits(): Promise<void> {
+  try {
+    const { useAuthStore } = await import('@/store');
+    await useAuthStore.getState().refresh();
+  } catch {
+    /* store may be unavailable during bootstrap */
+  }
+}
+
+async function invokeAiChat(body: Record<string, unknown>) {
+  const result = await supabase.functions.invoke('ai-chat', { body });
+  if (!result.error) void refreshHeaderCredits();
+  return result;
 }
 
 const JOB_STATUSES: Job['status'][] = [
@@ -301,8 +317,7 @@ function mapProfile(row: Record<string, unknown>): UserProfile {
     title: String(row.title ?? ''),
     avatarUrl: row.avatar_url as string | undefined,
     plan: (row.plan as UserProfile['plan']) ?? 'free',
-    aiCreditsUsed: Number(row.ai_credits_used ?? 0),
-    aiCreditsTotal: Number(row.ai_credits_total ?? 0),
+    aiTokensUsed: Number(row.ai_credits_used ?? 0),
   };
 }
 
@@ -419,15 +434,13 @@ export class ResumeService {
     const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
     if (!job) throw new Error('Job not found');
 
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: {
-        mode: 'resume',
-        jobId,
-        resumeId,
-        jobDescription: job.description,
-        jobTitle: job.role,
-        company: job.company,
-      },
+    const { data, error } = await invokeAiChat({
+      mode: 'resume',
+      jobId,
+      resumeId,
+      jobDescription: job.description,
+      jobTitle: job.role,
+      company: job.company,
     });
     if (error) throw error;
     const content = String(data?.reply || '');
@@ -550,9 +563,7 @@ export class ResumeService {
 
 export class ATSService {
   async score(content: string): Promise<{ score: number; feedback: string[] }> {
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: { mode: 'ats_score', content },
-    });
+    const { data, error } = await invokeAiChat({ mode: 'ats_score', content });
     if (error) throw error;
     return data as { score: number; feedback: string[] };
   }
@@ -573,11 +584,9 @@ export class CoverLetterService {
   async generate(jobId: string): Promise<CoverLetter> {
     const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
     if (!job) throw new Error('Job not found');
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: {
-        content: `Write a cover letter for ${job.role} at ${job.company}. Job description: ${job.description}`,
-        systemPrompt: 'Write a professional cover letter.',
-      },
+    const { data, error } = await invokeAiChat({
+      content: `Write a cover letter for ${job.role} at ${job.company}. Job description: ${job.description}`,
+      systemPrompt: 'Write a professional cover letter.',
     });
     if (error) throw error;
     return this.create(`Cover Letter - ${job.company}`, job.company, job.role, data?.reply || '');
@@ -1051,9 +1060,7 @@ export class AgentService {
     if (error) throw error;
   }
   async run(id: string, input: string): Promise<AgentRun> {
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: { agentId: id, content: input },
-    });
+    const { data, error } = await invokeAiChat({ agentId: id, content: input });
     if (error) throw error;
     const userId = await requireUserId();
     const startedAt = new Date().toISOString();
@@ -1104,7 +1111,7 @@ export class DocumentService {
 
 export class EmbeddingService {
   async embed(_text: string): Promise<number[]> {
-    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { mode: 'embed' } });
+    const { data, error } = await invokeAiChat({ mode: 'embed' });
     if (error) throw error;
     return (data?.embedding as number[]) || [];
   }
@@ -1169,7 +1176,7 @@ export class PromptService {
   async test(content: string, variables: Record<string, string>): Promise<string> {
     let prompt = content;
     for (const [k, v] of Object.entries(variables)) prompt = prompt.replaceAll(`{{${k}}}`, v);
-    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { content: prompt } });
+    const { data, error } = await invokeAiChat({ content: prompt });
     if (error) throw error;
     return data?.reply || '';
   }
@@ -1229,11 +1236,66 @@ export class IntegrationService {
 }
 
 export class AnalyticsService {
+  private monthStartIso(): string {
+    const start = new Date();
+    start.setUTCDate(1);
+    start.setUTCHours(0, 0, 0, 0);
+    return start.toISOString();
+  }
+
+  async aiUsage(): Promise<AiUsageSummary> {
+    const userId = await requireUserId();
+    const monthStart = this.monthStartIso();
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('ai_credits_used')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    const { data: events, error } = await supabase
+      .from('ai_usage_events')
+      .select('provider, operation, tokens_total, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', monthStart)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const providers: AiUsageSummary['providers'] = (['gemini', 'groq'] as const).map((provider) => {
+      const rows = (events || []).filter((row) => row.provider === provider);
+      const tokens = rows.reduce((sum, row) => sum + Number(row.tokens_total ?? 0), 0);
+      const freeTierLimit = PROVIDER_FREE_TIER_MONTHLY_TOKENS[provider];
+      return {
+        provider,
+        tokens,
+        requests: rows.length,
+        freeTierLimit,
+        remaining: Math.max(0, freeTierLimit - tokens),
+      };
+    });
+
+    const totalTokens = (events || []).reduce((sum, row) => sum + Number(row.tokens_total ?? 0), 0)
+      || Number(profile?.ai_credits_used ?? 0);
+
+    return {
+      monthLabel: new Date().toLocaleString(undefined, { month: 'long', year: 'numeric' }),
+      totalTokens,
+      providers,
+      recent: (events || []).slice(0, 8).map((row) => ({
+        operation: String(row.operation ?? 'chat'),
+        provider: String(row.provider ?? 'gemini'),
+        tokens: Number(row.tokens_total ?? 0),
+        createdAt: String(row.created_at ?? ''),
+      })),
+    };
+  }
+
   async metrics(): Promise<DashboardMetrics> {
-    const [jobsRes, appsRes, resumesRes] = await Promise.all([
-      supabase.from('jobs').select('*'),
+    const userId = await requireUserId();
+    const [jobsRes, appsRes, resumesRes, aiUsage] = await Promise.all([
+      supabase.from('jobs').select('*').eq('user_id', userId),
       supabase.from('applications').select('*'),
       supabase.from('resume_versions').select('*'),
+      this.aiUsage(),
     ]);
     const jobs = jobsRes.data || [];
     const apps = appsRes.data || [];
@@ -1248,7 +1310,7 @@ export class AnalyticsService {
       applicationsReady: jobs.filter((j) => j.resume_status === 'ready').length,
       applicationsSubmitted: submitted.length,
       resumeVersions: resumeVersions.length,
-      aiCreditsUsed: 0,
+      aiTokensUsed: aiUsage.totalTokens,
       successRate: submitted.length > 0 ? Math.round((offers.length / submitted.length) * 100) : 0,
       avgAtsScore: 0,
     };
@@ -1275,7 +1337,7 @@ export class AnalyticsService {
       jobsApplied: m.applicationsSubmitted,
       interviewRate: 0,
       offerRate: m.successRate,
-      aiUsage: m.aiCreditsUsed,
+      aiUsage: m.aiTokensUsed,
       tokenUsage: 0,
       cost: 0,
     };
@@ -1284,9 +1346,7 @@ export class AnalyticsService {
 
 export class EmailService {
   async send(to: string, subject: string, body: string): Promise<{ success: boolean }> {
-    const { error } = await supabase.functions.invoke('ai-chat', {
-      body: { mode: 'email', to, subject, content: body },
-    });
+    const { error } = await invokeAiChat({ mode: 'email', to, subject, content: body });
     if (error) throw error;
     return { success: true };
   }
@@ -1327,8 +1387,8 @@ export interface AIProvider {
 class EdgeAIProvider implements AIProvider {
   constructor(public name: string) {}
   async chat(messages: ChatMessage[]): Promise<string> {
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: { messages: messages.map((m) => ({ role: m.role, content: m.content })) },
+    const { data, error } = await invokeAiChat({
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
     });
     if (error) throw error;
     return data?.reply || '';
@@ -1339,7 +1399,7 @@ class EdgeAIProvider implements AIProvider {
     return reply;
   }
   async embed(text: string): Promise<number[]> {
-    const { data, error } = await supabase.functions.invoke('ai-chat', { body: { mode: 'embed', content: text } });
+    const { data, error } = await invokeAiChat({ mode: 'embed', content: text });
     if (error) throw error;
     return (data?.embedding as number[]) || [];
   }
@@ -1426,8 +1486,8 @@ export class ChatService {
     const userId = await requireUserId();
     await supabase.from('chat_messages').insert({ user_id: userId, conversation_id: conversationId, role: 'user', content });
     const { data: history } = await supabase.from('chat_messages').select('role, content').eq('conversation_id', conversationId).order('created_at');
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: { messages: (history || []).map((m) => ({ role: m.role, content: m.content })) },
+    const { data, error } = await invokeAiChat({
+      messages: (history || []).map((m) => ({ role: m.role, content: m.content })),
     });
     if (error) throw error;
     const reply = data?.reply || '';
@@ -1530,7 +1590,6 @@ export class UserService {
         title: '',
         plan: 'free',
         ai_credits_used: 0,
-        ai_credits_total: 1000,
       }).select().single();
       if (insertError) throw insertError;
       return mapProfile({ ...newProfile, email: user.email });
@@ -1545,8 +1604,7 @@ export class UserService {
     if (patch.title !== undefined) update.title = patch.title;
     if (patch.avatarUrl !== undefined) update.avatar_url = patch.avatarUrl;
     if (patch.plan !== undefined) update.plan = patch.plan;
-    if (patch.aiCreditsUsed !== undefined) update.ai_credits_used = patch.aiCreditsUsed;
-    if (patch.aiCreditsTotal !== undefined) update.ai_credits_total = patch.aiCreditsTotal;
+    if (patch.aiTokensUsed !== undefined) update.ai_credits_used = patch.aiTokensUsed;
     const { data, error } = await supabase.from('profiles').update(update).eq('user_id', user.id).select().single();
     if (error) throw error;
     return mapProfile({ ...data, email: user.email });
@@ -1590,9 +1648,7 @@ export class BootstrapService {
     const resumeFileId = String(jobSearch?.resumeFileId ?? '').trim();
     if (resumeFileId) {
       try {
-        await supabase.functions.invoke('ai-chat', {
-          body: { mode: 'sync_google_doc_chunks', fileId: resumeFileId },
-        });
+        await invokeAiChat({ mode: 'sync_google_doc_chunks', fileId: resumeFileId });
       } catch {
         // Google may not be connected yet — user can sync from Knowledge Base later
       }
