@@ -555,6 +555,7 @@ export class WorkflowService {
     const { data: existing } = await supabase.from('workflows').select('id').eq('user_id', userId).eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name).maybeSingle();
     if (existing) {
       await this.repairDefaultPipelineGraph(existing.id);
+      await this.repairDefaultAutomation(existing.id, userId);
       const wf = await this.get(existing.id);
       if (wf) return wf;
     }
@@ -589,11 +590,51 @@ export class WorkflowService {
         retries: 2,
         next_run: nextRun.toISOString(),
       });
-    } else if (!autoExists.next_run) {
-      const nextRun = computeNextCronRun(DEFAULT_JOB_SEARCH_WORKFLOW.schedule);
-      await supabase.from('automations').update({ next_run: nextRun.toISOString() }).eq('id', autoExists.id);
+    } else {
+      await this.repairDefaultAutomation(wf.id, userId);
     }
     return (await this.get(wf.id))!;
+  }
+  /** Keep the built-in daily automation schedulable (next_run set, active). */
+  private async repairDefaultAutomation(workflowId: string, userId: string): Promise<void> {
+    const schedule = DEFAULT_JOB_SEARCH_WORKFLOW.schedule;
+    const { data: auto } = await supabase
+      .from('automations')
+      .select('id, status, next_run, schedule')
+      .eq('workflow_id', workflowId)
+      .maybeSingle();
+
+    if (!auto) {
+      const nextRun = computeNextCronRun(schedule);
+      await supabase.from('automations').insert({
+        user_id: userId,
+        name: 'Daily 7 AM Job Search',
+        workflow_id: workflowId,
+        status: 'active',
+        schedule,
+        trigger: 'schedule',
+        retries: 2,
+        next_run: nextRun.toISOString(),
+      });
+      return;
+    }
+
+    if (auto.status !== 'active') return;
+
+    const patch: Record<string, string> = {};
+    if (!auto.next_run) {
+      patch.next_run = computeNextCronRun(auto.schedule || schedule).toISOString();
+    } else {
+      const nextRunAt = new Date(auto.next_run);
+      const maxFuture = computeNextCronRun(auto.schedule || schedule);
+      maxFuture.setUTCDate(maxFuture.getUTCDate() + 2);
+      if (nextRunAt.getTime() > maxFuture.getTime()) {
+        patch.next_run = computeNextCronRun(auto.schedule || schedule).toISOString();
+      }
+    }
+    if (Object.keys(patch).length) {
+      await supabase.from('automations').update(patch).eq('id', auto.id);
+    }
   }
   /** Ensure jobs are stored in Supabase before ATS tailoring (fixes legacy graph order). */
   private async repairDefaultPipelineGraph(workflowId: string): Promise<void> {
@@ -665,7 +706,7 @@ function mapRunRow(r: Record<string, unknown>): WorkflowRun {
     jobsSuccessful: Number(r.jobs_successful ?? 0) || undefined,
     jobsFailed: Number(r.jobs_failed ?? 0) || undefined,
     jobsSkipped: Number(r.jobs_skipped ?? 0) || undefined,
-    triggerType: (r.trigger_type as string | undefined) || 'manual',
+    triggerType: r.trigger_type as string | undefined,
     isLegacy: jobExecutions.length === 0,
     nodeResults: mergeNodeResults(
       ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({

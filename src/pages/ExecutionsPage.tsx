@@ -15,7 +15,7 @@ import {
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { services } from '@/services';
-import { computeRunDurationMs, formatDurationMs, timeAgo } from '@/utils';
+import { computeRunDurationMs, formatDurationMs, formatExecutionStart, timeAgo, describeTriggerType } from '@/utils';
 import { getActiveExecutionStep } from '@/utils/execution';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
@@ -106,7 +106,7 @@ export function ExecutionsPage() {
 
   const describeRunSummary = (run: WorkflowRun) => {
     if (isActiveRun(run.status)) return describeRunProgress(run);
-    const parts = [timeAgo(run.startedAt)];
+    const parts = [formatExecutionStart(run.startedAt), timeAgo(run.startedAt)];
     if (run.jobsTotal && run.jobsTotal > 0) {
       parts.push(`${run.jobsTotal} jobs`);
       if (run.jobsFailed) parts.push(`${run.jobsFailed} failed`);
@@ -198,7 +198,12 @@ export function ExecutionsPage() {
                   : isActiveRun(run.status) ? <Loader2 className="h-4 w-4 animate-spin text-primary motion-reduce:animate-none" />
                   : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
+                    <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                      {describeTriggerType(run.triggerType)}
+                    </Badge>
+                  </div>
                   <p className="truncate text-xs text-muted-foreground">{describeRunSummary(run)}</p>
                 </div>
                 <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" />{formatDurationMs(computeRunDurationMs(run))}</Badge>
