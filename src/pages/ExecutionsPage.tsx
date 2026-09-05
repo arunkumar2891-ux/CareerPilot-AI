@@ -188,7 +188,7 @@ export function ExecutionsPage() {
           <Card><CardContent><EmptyState icon={Inbox} title="No executions yet" description="Workflow runs will appear here once you execute them." /></CardContent></Card>
         ) : allRuns.map((run, i) => (
           <motion.div key={run.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
-            <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelectedId(run.id)}>
+            <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => navigate(`/executions/${run.id}`)}>
               <CardContent className="flex flex-wrap items-center gap-2 py-3 sm:gap-4">
                 {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
                   : run.status === 'failed' ? <XCircle className="h-4 w-4 shrink-0 text-destructive" />
