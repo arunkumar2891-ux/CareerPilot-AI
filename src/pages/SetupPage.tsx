@@ -24,7 +24,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
     details: [
       'Go to /auth and sign up with email/password, Google, or a magic link.',
       'Wait until the dashboard loads. In the background we create: Daily Job Search Pipeline and Daily 7 AM automation.',
-      'Empty "Master ATS (bullet bank)" and "2-page template" placeholders are created in Resume Studio — you populate them by syncing your Google Doc.',
+      'Empty "Master ATS (bullet bank)" and "2-page template" placeholders are created on the Corpus page — you populate them by syncing your Google Doc.',
     ],
     action: { label: 'Go to Dashboard', path: '/' },
   },
@@ -35,7 +35,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
     details: [
       'Settings → Profile → Full Name and Title (e.g. Integration Architect).',
       'On the same page fill Phone, Location, LinkedIn URL, GitHub URL, and PANW start date.',
-      'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Resume Studio — Master ATS should show real phone/LinkedIn/GitHub, not [Phone Number].',
+      'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Corpus — Master ATS should show real phone/LinkedIn/GitHub, not [Phone Number].',
       'Skip any field you do not want on the resume; blank fields stay as placeholders.',
     ],
     action: { label: 'Open Profile & Contact', path: '/settings' },
@@ -47,7 +47,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
     details: [
       'Open Knowledge Base → Google Doc Sync tab. Paste your Google Doc ID and click Sync Now.',
       'After sync completes, switch to the Search tab — search "66%" or any metric to confirm evidence chunks loaded.',
-      'Open Resume Studio → Master ATS (bullet bank) should now show your full resume content.',
+      'Open Corpus → Master ATS (bullet bank) should now show your full resume content.',
       'The ATS optimizer picks 4–6 bullets per project from your synced bullet bank when tailoring.',
     ],
     action: { label: 'Open Knowledge Base', path: '/knowledge' },
@@ -95,7 +95,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
     time: '5–15 min',
     description: 'Prove bullet selection on a real JD first; then turn on discovery.',
     details: [
-      'Fast path (no scrape): if a job is already on the Jobs board, open it → Generate tailored resume. A new resume named "Tailored: Company Role" appears in Resume Studio.',
+      'Fast path (no scrape): if a job is already on the Jobs board, open it → Generate tailored resume. A new resume named "Tailored: Company Role" appears on Resumes.',
       'Full path: Jobs → Run Search. Execution History shows Apify scrape → ATS optimizer → PDF. First scrape can take several minutes.',
       'Sanity-check the tailored text: lead project should match the JD type (e.g. FW-Flex for Integration Architect, Portal for FDE). Numbers like 66% / 278 to 94 must still appear — never invented.',
       'If tailoring fails with "Career corpus not seeded", refresh the app once while signed in, then retry.',

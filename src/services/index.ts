@@ -17,9 +17,20 @@ import {
   replaceEducationPlaceholders,
 } from '@/content/career-corpus';
 import { buildFocusedMasterResume, resumeBankName } from '@/content/career-corpus/resume-bank';
+import { isCorpusResume, isJobResume } from '@/utils/resume-classification';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
 /* ── helpers ── */
+
+type ResumeActionResponse = { error?: string; code?: string };
+
+function throwResumeActionError(data: ResumeActionResponse | null, fallback = 'Request failed'): void {
+  if (!data?.error) return;
+  if (data.code === 'google_auth_expired') {
+    throw new Error('Google Drive connection expired. Go to Integrations → reconnect Google Drive, then try again.');
+  }
+  throw new Error(String(data.error || fallback));
+}
 
 const JOB_STATUSES: Job['status'][] = [
   'discovered', 'queued', 'resume_ready', 'applied', 'interview', 'offer', 'rejected', 'withdrawn',
@@ -58,7 +69,7 @@ function mapJob(row: Record<string, unknown>): Job {
 }
 
 function mapResume(row: Record<string, unknown>): Resume {
-  return {
+  const resume: Resume = {
     id: String(row.id),
     name: String(row.name ?? ''),
     type: (row.type as Resume['type']) ?? 'general',
@@ -81,6 +92,8 @@ function mapResume(row: Record<string, unknown>): Resume {
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
+  resume.isCorpus = row.is_corpus === true || isCorpusResume(resume);
+  return resume;
 }
 
 function mapCoverLetter(row: Record<string, unknown>): CoverLetter {
@@ -368,10 +381,14 @@ export class JobSearchService {
 }
 
 export class ResumeService {
-  async list(): Promise<Resume[]> {
+  async list(options?: { kind?: 'job' | 'corpus' | 'all' }): Promise<Resume[]> {
+    const kind = options?.kind ?? 'all';
     const { data, error } = await supabase.from('resumes').select('*, resume_versions(*)').order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map(mapResume);
+    let rows = (data || []).map(mapResume);
+    if (kind === 'job') rows = rows.filter(isJobResume);
+    if (kind === 'corpus') rows = rows.filter(isCorpusResume);
+    return rows;
   }
   async get(id: string): Promise<Resume | undefined> {
     const { data, error } = await supabase.from('resumes').select('*, resume_versions(*)').eq('id', id).maybeSingle();
@@ -467,8 +484,8 @@ export class ResumeService {
     const { data, error } = await supabase.functions.invoke('resume-actions', {
       body: { mode: 'sync_drive', resumeId: id, content },
     });
+    throwResumeActionError(data as ResumeActionResponse | null);
     if (error) throw error;
-    if (data?.error) throw new Error(String(data.error));
     return {
       driveFileId: String(data?.driveFileId || data?.results?.[0]?.driveFileId || ''),
       pdfLink: String(data?.pdfLink || data?.results?.[0]?.pdfLink || ''),
@@ -481,6 +498,7 @@ export class ResumeService {
     const { data, error } = await supabase.functions.invoke('resume-actions', {
       body: { mode: 'sync_drive', resumeIds: ids },
     });
+    throwResumeActionError(data as ResumeActionResponse | null, 'Drive sync failed');
     if (error) throw error;
     if (data?.error && !data?.results?.length) throw new Error(String(data.error));
     return {
@@ -495,8 +513,8 @@ export class ResumeService {
     const { data, error } = await supabase.functions.invoke('resume-actions', {
       body: { mode: 'generate_pdf', resumeId: id, content },
     });
+    throwResumeActionError(data as ResumeActionResponse | null, 'PDF generation failed');
     if (error) throw error;
-    if (data?.error) throw new Error(String(data.error));
 
     const url = String(data?.url || '');
     if (!url) throw new Error('PDF generation failed');
@@ -519,12 +537,13 @@ export class ResumeService {
     driveOnlyFiles: string[];
     jobsWithoutResume: number;
     resumesWithoutJob: number;
+    driveError?: string;
   }> {
     const { data, error } = await supabase.functions.invoke('resume-actions', {
       body: { mode: 'repair_sync' },
     });
+    throwResumeActionError(data as ResumeActionResponse | null, 'Sync repair failed');
     if (error) throw error;
-    if (data?.error) throw new Error(String(data.error));
     return data;
   }
 }
@@ -1600,6 +1619,7 @@ export class BootstrapService {
           type,
           content: overlayed,
           ats_score: 0,
+          is_corpus: true,
         });
       } else {
         const current = String(existing.content || '');
@@ -1641,6 +1661,7 @@ export class BootstrapService {
           type: 'technical',
           content: overlayed,
           ats_score: 0,
+          is_corpus: true,
         });
       } else if (masterWasPlaceholder) {
         await supabase

@@ -10,6 +10,7 @@ import {
   Settings,
   LayoutDashboard,
   ListChecks,
+  BookMarked,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -25,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, group: 'Overview' },
   { label: 'Job Discovery', path: '/jobs', icon: Briefcase, group: 'Overview' },
   { label: 'Applications', path: '/applications', icon: FileText, group: 'Overview' },
+  { label: 'Corpus', path: '/corpus', icon: BookMarked, group: 'Studio' },
   { label: 'Resumes', path: '/resumes', icon: FileText, group: 'Studio' },
   { label: 'Cover Letters', path: '/cover-letters', icon: Mail, group: 'Studio' },
   { label: 'AI Copilot', path: '/copilot', icon: Sparkles, group: 'Studio' },

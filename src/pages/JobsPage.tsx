@@ -102,9 +102,9 @@ export function JobsPage() {
     setRepairing(true);
     try {
       const result = await services.resume.repairSync();
-      await qc.invalidateQueries({ queryKey: ['jobs', 'resumes'] });
+      await qc.invalidateQueries({ queryKey: ['jobs', 'resumes', 'integrations'] });
       toast.success('Sync repair complete', {
-        description: `Linked ${result.resumesLinkedToJobs + result.jobsLinkedToResumes} resume-job pairs, matched ${result.driveFilesMatched} Drive files. ${result.jobsWithoutResume} jobs still need resumes.`,
+        description: `Linked ${result.resumesLinkedToJobs + result.jobsLinkedToResumes} resume-job pairs, matched ${result.driveFilesMatched} Drive files. ${result.jobsWithoutResume} jobs still need resumes.${result.driveError ? ` Drive: ${result.driveError}` : ''}`,
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Sync repair failed');
@@ -422,7 +422,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
   const generateResume = async () => {
     toast.success('Generating tailored resume from Master ATS corpus...');
     await services.resume.generateTailored(job.id);
-    toast.success('Resume generated — check Resume Studio');
+    toast.success('Resume generated — check Resumes');
     await qc.invalidateQueries({ queryKey: ['resumes'] });
     onClose();
   };

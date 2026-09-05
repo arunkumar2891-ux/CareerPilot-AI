@@ -10,6 +10,7 @@ import { AuthPage } from '@/pages/AuthPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { JobsPage } from '@/pages/JobsPage';
 import { ApplicationsPage } from '@/pages/ApplicationsPage';
+import { CorpusPage } from '@/pages/CorpusPage';
 import { ResumesPage } from '@/pages/ResumesPage';
 import { CoverLettersPage } from '@/pages/CoverLettersPage';
 import { CopilotPage } from '@/pages/CopilotPage';
@@ -95,6 +96,7 @@ function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/jobs" element={<JobsPage />} />
               <Route path="/applications" element={<ApplicationsPage />} />
+              <Route path="/corpus" element={<CorpusPage />} />
               <Route path="/resumes" element={<ResumesPage />} />
               <Route path="/cover-letters" element={<CoverLettersPage />} />
               <Route path="/copilot" element={<CopilotPage />} />

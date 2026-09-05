@@ -82,6 +82,7 @@ export interface Resume {
   driveSyncedAt?: string;
   storagePath?: string;
   pdfUrl?: string;
+  isCorpus?: boolean;
   createdAt: string;
   updatedAt: string;
 }

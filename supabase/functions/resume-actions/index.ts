@@ -3,6 +3,13 @@ import { compileResumeContentToPdf } from '../_shared/resume-pdf.ts';
 import { linkResumePdf, markResumeDriveSync } from '../_shared/resume-store.ts';
 import { resolveDriveFolderId, resolveResumePdfFileName, uploadOrUpdateDrivePdf } from '../_shared/resume-drive.ts';
 import { repairResumeSync } from '../_shared/resume-repair.ts';
+import { GoogleAuthError } from '../_shared/credentials.ts';
+
+function actionErrorResponse(err: unknown, status = 500) {
+  const message = err instanceof Error ? err.message : String(err);
+  const code = err instanceof GoogleAuthError ? err.code : undefined;
+  return jsonResponse({ error: message, code }, status);
+}
 
 type ResumeRow = {
   id: string;
@@ -208,7 +215,12 @@ Deno.serve(async (req) => {
       }
 
       if (results.length === 0) {
-        return jsonResponse({ error: errors[0]?.error || 'Drive sync failed' }, 500);
+        const first = errors[0];
+        const authExpired = first?.error && /expired|revoked|reconnect Google/i.test(first.error);
+        return jsonResponse(
+          { error: first?.error || 'Drive sync failed', code: authExpired ? 'google_auth_expired' : undefined },
+          500,
+        );
       }
 
       return jsonResponse({
@@ -232,7 +244,16 @@ Deno.serve(async (req) => {
 
     return jsonResponse({ error: 'Unknown mode' }, 400);
   } catch (err) {
+    if (err instanceof GoogleAuthError) {
+      return actionErrorResponse(err);
+    }
     const message = err instanceof Error ? err.message : String(err);
+    if (/expired|revoked|invalid_grant/i.test(message)) {
+      return jsonResponse({
+        error: 'Google Drive connection expired or was revoked. Open Integrations, reconnect Google Drive, then retry.',
+        code: 'google_auth_expired',
+      }, 500);
+    }
     return jsonResponse({ error: message }, 500);
   }
 });

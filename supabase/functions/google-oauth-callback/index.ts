@@ -37,16 +37,30 @@ Deno.serve(async (req) => {
     if (!tokenRes.ok) throw new Error(tokens.error_description || 'Token exchange failed');
 
     const admin = createAdminClient();
-    const { data: existing } = await admin.from('integrations').select('id').eq('user_id', userId).eq('name', 'Google Drive').maybeSingle();
+    const { data: existing } = await admin
+      .from('integrations')
+      .select('id, credentials')
+      .eq('user_id', userId)
+      .eq('name', 'Google Drive')
+      .maybeSingle();
 
+    const previous = (existing?.credentials as Record<string, string> | undefined) ?? {};
     const creds = {
-      refresh_token: tokens.refresh_token,
+      refresh_token: tokens.refresh_token || previous.refresh_token,
       access_token: tokens.access_token,
       expiry: Date.now() + tokens.expires_in * 1000,
     };
 
+    if (!creds.refresh_token) {
+      throw new Error('Google did not return a refresh token. Remove CareerPilot access at myaccount.google.com/permissions and reconnect.');
+    }
+
     if (existing) {
-      await admin.from('integrations').update({ credentials: creds, status: 'connected', last_sync: new Date().toISOString() }).eq('id', existing.id);
+      await admin.from('integrations').update({
+        credentials: creds,
+        status: 'connected',
+        last_sync: new Date().toISOString(),
+      }).eq('id', existing.id);
     } else {
       await admin.from('integrations').insert({
         user_id: userId,

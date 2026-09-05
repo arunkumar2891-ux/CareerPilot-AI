@@ -1,6 +1,35 @@
 import { createAdminClient } from './supabase-admin.ts';
 import { fetchWithTimeout } from './fetch-timeout.ts';
 
+export class GoogleAuthError extends Error {
+  readonly code = 'google_auth_expired';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'GoogleAuthError';
+  }
+}
+
+export function isGoogleAuthErrorMessage(message: string): boolean {
+  return /expired|revoked|invalid_grant|not connected/i.test(message);
+}
+
+async function markGoogleIntegrationExpired(
+  userId: string,
+  creds: Record<string, string>,
+): Promise<void> {
+  const admin = createAdminClient();
+  await admin.from('integrations').update({
+    status: 'error',
+    credentials: {
+      ...creds,
+      access_token: '',
+      refresh_token: '',
+    },
+    last_sync: new Date().toISOString(),
+  }).eq('user_id', userId).eq('name', 'Google Drive');
+}
+
 export async function getIntegrationCredentials(
   userId: string,
   name: string,
@@ -54,7 +83,16 @@ export async function refreshGoogleToken(userId: string): Promise<string> {
     'Google token refresh',
   );
   const json = await res.json();
-  if (!res.ok) throw new Error(json.error_description || 'Google token refresh failed');
+  if (!res.ok) {
+    const description = String(json.error_description || json.error || 'Google token refresh failed');
+    if (json.error === 'invalid_grant' || isGoogleAuthErrorMessage(description)) {
+      await markGoogleIntegrationExpired(userId, creds);
+      throw new GoogleAuthError(
+        'Google Drive connection expired or was revoked. Open Integrations, reconnect Google Drive, then retry.',
+      );
+    }
+    throw new Error(description);
+  }
 
   const admin = createAdminClient();
   await admin.from('integrations').update({

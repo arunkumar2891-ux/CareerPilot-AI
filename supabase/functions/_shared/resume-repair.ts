@@ -11,6 +11,7 @@ export interface RepairSyncResult {
   driveOnlyFiles: string[];
   jobsWithoutResume: number;
   resumesWithoutJob: number;
+  driveError?: string;
 }
 
 async function countResumesForJob(admin: AdminClient, jobId: string): Promise<number> {
@@ -154,10 +155,15 @@ export async function repairResumeSync(
 
   let driveFilesMatched = 0;
   let driveOnlyFiles: string[] = [];
+  let driveError: string | undefined;
   if (folderId) {
-    const driveResult = await reconcileDriveFiles(admin, userId, folderId);
-    driveFilesMatched = driveResult.driveFilesMatched;
-    driveOnlyFiles = driveResult.driveOnlyFiles;
+    try {
+      const driveResult = await reconcileDriveFiles(admin, userId, folderId);
+      driveFilesMatched = driveResult.driveFilesMatched;
+      driveOnlyFiles = driveResult.driveOnlyFiles;
+    } catch (err) {
+      driveError = err instanceof Error ? err.message : String(err);
+    }
   }
 
   const { data: allJobs } = await admin.from('jobs').select('id').eq('user_id', userId);
@@ -183,5 +189,6 @@ export async function repairResumeSync(
     driveOnlyFiles,
     jobsWithoutResume,
     resumesWithoutJob: resumesWithoutJob ?? 0,
+    driveError,
   };
 }
