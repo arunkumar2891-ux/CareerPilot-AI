@@ -572,18 +572,28 @@ export async function processScheduledAutomations(): Promise<number> {
 
   let ran = 0;
   for (const auto of automations) {
-    const schedule = String(auto.schedule || '0 7 * * *');
-    const nextRunAt = auto.next_run ? new Date(auto.next_run as string) : null;
-    const lastRunAt = auto.last_run ? new Date(auto.last_run as string) : null;
-    if (!isAutomationDue(schedule, nextRunAt, lastRunAt, now)) continue;
+    try {
+      const schedule = String(auto.schedule || '0 7 * * *');
+      let nextRunAt = auto.next_run ? new Date(auto.next_run as string) : null;
+      const lastRunAt = auto.last_run ? new Date(auto.last_run as string) : null;
 
-    await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
-    const nextRun = computeNextCronRun(schedule, now);
-    await admin.from('automations').update({
-      last_run: nowIso,
-      next_run: nextRun.toISOString(),
-    }).eq('id', auto.id);
-    ran++;
+      if (!nextRunAt) {
+        nextRunAt = computeNextCronRun(schedule, now);
+        await admin.from('automations').update({ next_run: nextRunAt.toISOString() }).eq('id', auto.id);
+      }
+
+      if (!isAutomationDue(schedule, nextRunAt, lastRunAt, now)) continue;
+
+      await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
+      const nextRun = computeNextCronRun(schedule, now);
+      await admin.from('automations').update({
+        last_run: nowIso,
+        next_run: nextRun.toISOString(),
+      }).eq('id', auto.id);
+      ran++;
+    } catch (err) {
+      console.error(`Scheduled automation ${auto.id} failed:`, err);
+    }
   }
   return ran;
 }
