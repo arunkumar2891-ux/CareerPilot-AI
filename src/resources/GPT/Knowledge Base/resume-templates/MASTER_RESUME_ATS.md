@@ -474,11 +474,8 @@ Professional Development:
 EDUCATION
 ================================================================================
 
-[Degree Name] - [Major/Specialization]
-[University Name]
-[Graduation Year] | [Location]
-
-[Add any additional degrees or relevant coursework]
+B.Tech in Information Technology
+SASTRA University | Thanjavur
 
 ================================================================================
 KEY PROJECTS & METRICS SUMMARY

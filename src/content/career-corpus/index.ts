@@ -8,6 +8,24 @@ import evidenceChunks from './evidence-chunks.json';
 export const MASTER_RESUME_NAME = 'Master ATS (bullet bank)';
 export const TWO_PAGE_RESUME_NAME = '2-page template';
 
+/** Canonical education block used in all resume templates and generations. */
+export const DEFAULT_EDUCATION = `B.Tech in Information Technology
+SASTRA University | Thanjavur`;
+
+/** Replace placeholder or known-wrong education text in seeded resume content. */
+export function replaceEducationPlaceholders(text: string): string {
+  let out = text;
+  out = out.replace(
+    /\[Degree Name\][^\n]*\n\[University Name\][^\n]*(?:\n\[Graduation Year\][^\n]*)?/g,
+    DEFAULT_EDUCATION,
+  );
+  out = out.replace(
+    /Bachelor of Engineering in Computer Science\s*\n\s*Anna University[^\n]*/gi,
+    DEFAULT_EDUCATION,
+  );
+  return out;
+}
+
 export interface RolePlaybook {
   id: string;
   title: string;
@@ -84,5 +102,5 @@ export function applyContactOverlay(
       contact.title,
     );
   }
-  return out;
+  return replaceEducationPlaceholders(out);
 }

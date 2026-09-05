@@ -17,6 +17,7 @@ VOICE (must read as human):
 
 CONTENT RULES:
 - SELECT bullets that already exist. Do not invent companies, titles, tools, or metrics.
+- EDUCATION must be copied exactly from the MASTER BULLET BANK. Never invent degrees, schools, or locations.
 - Every number must appear in the master bank or EVIDENCE CHUNKS.
 - Lead with projects that match the job. Keep 4-6 bullets per project. Drop the rest.
 - Reorder SKILLS so relevant technologies appear first. No stuffing.
@@ -114,6 +115,22 @@ export function formatContact(contact: Record<string, string | undefined>): stri
   ].filter(Boolean).join('\n');
 }
 
+export const DEFAULT_EDUCATION = `B.Tech in Information Technology
+SASTRA University | Thanjavur`;
+
+export function replaceEducationPlaceholders(text: string): string {
+  let out = text;
+  out = out.replace(
+    /\[Degree Name\][^\n]*\n\[University Name\][^\n]*(?:\n\[Graduation Year\][^\n]*)?/g,
+    DEFAULT_EDUCATION,
+  );
+  out = out.replace(
+    /Bachelor of Engineering in Computer Science\s*\n\s*Anna University[^\n]*/gi,
+    DEFAULT_EDUCATION,
+  );
+  return out;
+}
+
 export function applyContactOverlay(
   text: string,
   contact: Record<string, string | undefined>,
@@ -143,7 +160,7 @@ export function applyContactOverlay(
     out = out.replace(new RegExp(`^${label}:.*$`, 'm'), `${label}: ${value}`);
   }
   if (contact.fullName) out = out.replace(/^ARUN KUMAR/m, contact.fullName.toUpperCase());
-  return out;
+  return replaceEducationPlaceholders(out);
 }
 
 export function selectEvidence(

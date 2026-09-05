@@ -98,8 +98,8 @@ EARLIER EXPERIENCE
 EDUCATION
 ================================================================================
 
-[Degree Name] - [Major/Specialization]
-[University Name] | [Graduation Year]
+B.Tech in Information Technology
+SASTRA University | Thanjavur
 
 ================================================================================
 CERTIFICATIONS

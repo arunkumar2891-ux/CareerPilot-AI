@@ -14,6 +14,7 @@ import {
   MASTER_RESUME_NAME,
   TWO_PAGE_RESUME_NAME,
   applyContactOverlay,
+  replaceEducationPlaceholders,
 } from '@/content/career-corpus';
 import { buildFocusedMasterResume, resumeBankName } from '@/content/career-corpus/resume-bank';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
@@ -1472,11 +1473,24 @@ export class BootstrapService {
           content: overlayed,
           ats_score: 0,
         });
-      } else if (String(existing.content || '').includes(BootstrapService.CORPUS_PLACEHOLDER)) {
-        await supabase
-          .from('resumes')
-          .update({ content: overlayed, updated_at: new Date().toISOString() })
-          .eq('id', existing.id);
+      } else {
+        const current = String(existing.content || '');
+        const needsPlaceholderSeed = current.includes(BootstrapService.CORPUS_PLACEHOLDER);
+        const needsEducationFix = /\[Degree Name\]|Anna University|Bachelor of Engineering in Computer Science/i.test(current);
+        if (needsPlaceholderSeed) {
+          await supabase
+            .from('resumes')
+            .update({ content: overlayed, updated_at: new Date().toISOString() })
+            .eq('id', existing.id);
+        } else if (needsEducationFix) {
+          const next = replaceEducationPlaceholders(applyContactOverlay(current, overlay));
+          if (next !== current) {
+            await supabase
+              .from('resumes')
+              .update({ content: next, updated_at: new Date().toISOString() })
+              .eq('id', existing.id);
+          }
+        }
       }
     };
 
