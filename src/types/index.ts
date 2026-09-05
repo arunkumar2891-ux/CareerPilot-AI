@@ -64,6 +64,9 @@ export interface Job {
   applicationStatus: ApplicationStatus;
   status: JobStatus;
   url?: string;
+  resumeId?: string;
+  driveFileId?: string;
+  pdfUrl?: string;
   createdAt: string;
 }
 

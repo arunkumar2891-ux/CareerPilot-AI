@@ -21,7 +21,15 @@ import type { WorkflowEdge, WorkflowNode } from '@/types';
 
 /* ── helpers ── */
 
+const JOB_STATUSES: Job['status'][] = [
+  'discovered', 'queued', 'resume_ready', 'applied', 'interview', 'offer', 'rejected', 'withdrawn',
+];
+
 function mapJob(row: Record<string, unknown>): Job {
+  const rawStatus = String(row.status ?? 'discovered');
+  const status = JOB_STATUSES.includes(rawStatus as Job['status'])
+    ? (rawStatus as Job['status'])
+    : 'discovered';
   return {
     id: String(row.id),
     company: String(row.company ?? ''),
@@ -40,8 +48,11 @@ function mapJob(row: Record<string, unknown>): Job {
     duplicate: Boolean(row.duplicate),
     resumeStatus: (row.resume_status as Job['resumeStatus']) ?? 'none',
     applicationStatus: (row.application_status as Job['applicationStatus']) ?? 'draft',
-    status: (row.status as Job['status']) ?? 'discovered',
+    status,
     url: row.url as string | undefined,
+    resumeId: row._resume_id as string | undefined,
+    driveFileId: row._drive_file_id as string | undefined,
+    pdfUrl: (row._pdf_url as string | undefined) || (row.pdf_url as string | undefined),
     createdAt: row.created_at as string,
   };
 }
@@ -287,13 +298,30 @@ function mapProfile(row: Record<string, unknown>): UserProfile {
 export class JobSearchService {
   async list(_config?: Partial<JobSearchConfig>): Promise<Job[]> {
     const userId = await requireUserId();
-    const { data, error } = await supabase
-      .from('jobs')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    const [{ data: jobRows, error }, { data: resumeRows, error: resumeError }] = await Promise.all([
+      supabase.from('jobs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      supabase
+        .from('resumes')
+        .select('id, job_id, drive_file_id, pdf_url, storage_path')
+        .eq('user_id', userId)
+        .not('job_id', 'is', null),
+    ]);
     if (error) throw error;
-    return (data || []).map(mapJob);
+    if (resumeError) throw resumeError;
+
+    const resumeByJob = new Map(
+      (resumeRows || []).map((row) => [String(row.job_id), row]),
+    );
+
+    return (jobRows || []).map((row) => {
+      const linked = resumeByJob.get(String(row.id));
+      return mapJob({
+        ...row,
+        _resume_id: linked?.id,
+        _drive_file_id: linked?.drive_file_id,
+        _pdf_url: linked?.pdf_url || row.pdf_url,
+      });
+    });
   }
   async search(config: Partial<JobSearchConfig>): Promise<Job[]> {
     let q = supabase.from('jobs').select('*');
@@ -483,6 +511,21 @@ export class ResumeService {
     link.download = `${safeName}.pdf`;
     link.click();
     URL.revokeObjectURL(objectUrl);
+  }
+  async repairSync(): Promise<{
+    resumesLinkedToJobs: number;
+    jobsLinkedToResumes: number;
+    driveFilesMatched: number;
+    driveOnlyFiles: string[];
+    jobsWithoutResume: number;
+    resumesWithoutJob: number;
+  }> {
+    const { data, error } = await supabase.functions.invoke('resume-actions', {
+      body: { mode: 'repair_sync' },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(String(data.error));
+    return data;
   }
 }
 
@@ -1502,6 +1545,11 @@ export class BootstrapService {
 
     await this.workflow.ensureDefaultPipeline();
     await this.seedCareerCorpus(user.id);
+    try {
+      await supabase.functions.invoke('resume-actions', { body: { mode: 'repair_sync' } });
+    } catch {
+      // Repair is best-effort on login; user can run manually from Job Discovery.
+    }
 
     const settings = await this.settings.get();
     const jobSearch = settings.jobSearch as Record<string, string> | undefined;

@@ -515,14 +515,18 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           hybrid: workplace.hybrid,
           experience: String(job.seniorityLevel || ''),
           duplicate: false,
-          resume_status: 'ready',
+          resume_status: 'generating',
           application_status: 'draft',
-          status: 'resume_ready',
+          status: 'queued',
           url: normalizeLinkedInJobUrl(String(job.jobLink || job.url || job.link || '')),
         };
         const { data, error } = await admin.from('jobs').insert(row).select().single();
         if (error) throw error;
         ctx.variables.lastJobId = data.id;
+        const resumeId = String(job.resumeId || '');
+        if (resumeId) {
+          await admin.from('resumes').update({ job_id: data.id }).eq('id', resumeId).is('job_id', null);
+        }
         return { output: { ...job, jobId: data.id }, status: 'success' };
       }
       return { output: input, status: 'success' };
@@ -563,7 +567,11 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         await linkResumePdf(admin, resumeId, { storagePath: path, pdfUrl });
       }
       if (data.jobId) {
-        await admin.from('jobs').update({ pdf_url: pdfUrl, resume_status: 'ready' }).eq('id', data.jobId);
+        await admin.from('jobs').update({
+          pdf_url: pdfUrl,
+          resume_status: 'ready',
+          status: 'resume_ready',
+        }).eq('id', data.jobId);
       }
 
       const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];

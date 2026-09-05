@@ -144,3 +144,58 @@ export async function resolveResumePdfFileName(
   const role = String(input.role || input.resumeName || 'Role').trim();
   return buildResumePdfFileName({ company, personName, role });
 }
+
+export interface DriveListedFile {
+  id: string;
+  name: string;
+  modifiedTime: string;
+}
+
+/** Company_Person_Role_ddmmyyyy.pdf → Company_Person_Role (ignore date suffix) */
+export function driveFileBaseKey(fileName: string): string {
+  return String(fileName || '')
+    .replace(/\.pdf$/i, '')
+    .replace(/_\d{8}$/, '');
+}
+
+export async function listDrivePdfs(userId: string, folderId: string): Promise<DriveListedFile[]> {
+  const accessToken = await refreshGoogleToken(userId);
+  const parsedFolderId = parseGoogleDriveFolderId(folderId);
+  if (!parsedFolderId) return [];
+
+  const files: DriveListedFile[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      q: `'${parsedFolderId}' in parents and mimeType='application/pdf' and trashed=false`,
+      fields: 'nextPageToken,files(id,name,modifiedTime)',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+      pageSize: '100',
+    });
+    if (pageToken) params.set('pageToken', pageToken);
+
+    const res = await fetchWithTimeout(
+      `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      20000,
+      'Google Drive list',
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.error?.message || 'Failed to list Google Drive files');
+    }
+
+    for (const file of json.files || []) {
+      files.push({
+        id: String(file.id),
+        name: String(file.name),
+        modifiedTime: String(file.modifiedTime || ''),
+      });
+    }
+    pageToken = json.nextPageToken as string | undefined;
+  } while (pageToken);
+
+  return files;
+}

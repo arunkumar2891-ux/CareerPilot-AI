@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Briefcase, MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
-  Table as TableIcon, Zap, RefreshCw, ExternalLink, Copy, FileText, SearchX, Trash2,
+  Table as TableIcon, Zap, RefreshCw, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -33,6 +33,7 @@ export function JobsPage() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [filters, setFilters] = useState({
     keywords: '',
     location: '',
@@ -89,7 +90,28 @@ export function JobsPage() {
     { key: 'applied', label: 'Applied', status: 'applied' },
     { key: 'interview', label: 'Interview', status: 'interview' },
     { key: 'offer', label: 'Offer', status: 'offer' },
+    { key: 'rejected', label: 'Rejected', status: 'rejected' },
+    { key: 'withdrawn', label: 'Withdrawn', status: 'withdrawn' },
   ] as const;
+  const knownStatuses = new Set(columns.map((col) => col.status));
+  const kanbanJobs = filtered.filter((job) => knownStatuses.has(job.status));
+  const unfiledJobs = filtered.filter((job) => !knownStatuses.has(job.status));
+  const kanbanVisibleCount = kanbanJobs.length + unfiledJobs.length;
+
+  const repairSync = async () => {
+    setRepairing(true);
+    try {
+      const result = await services.resume.repairSync();
+      await qc.invalidateQueries({ queryKey: ['jobs', 'resumes'] });
+      toast.success('Sync repair complete', {
+        description: `Linked ${result.resumesLinkedToJobs + result.jobsLinkedToResumes} resume-job pairs, matched ${result.driveFilesMatched} Drive files. ${result.jobsWithoutResume} jobs still need resumes.`,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Sync repair failed');
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
@@ -98,6 +120,10 @@ export function JobsPage() {
         description="Autonomous job search across multiple boards"
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" onClick={repairSync} disabled={repairing} className="gap-2">
+              <Link2 className="h-4 w-4" />
+              {repairing ? 'Repairing…' : 'Repair Sync'}
+            </Button>
             <Button variant="outline" onClick={() => setShowClearConfirm(true)} className="gap-2" disabled={!jobs?.length}>
               <Trash2 className="h-4 w-4" /> Clear All Jobs
             </Button>
@@ -137,8 +163,28 @@ export function JobsPage() {
       {!isLoading && jobs && jobs.length > 0 && (
         <p className="text-sm text-muted-foreground">
           Showing {filtered.length} of {jobs.length} jobs
+          {view === 'kanban' && kanbanVisibleCount < filtered.length && (
+            <span> · {filtered.length - kanbanVisibleCount} hidden from kanban</span>
+          )}
           {filtered.length < jobs.length && (
-            <Button variant="link" className="h-auto p-0 pl-1 text-sm" onClick={() => setFilters({ ...filters, remote: false, hybrid: false })}>
+            <Button
+              variant="link"
+              className="h-auto p-0 pl-1 text-sm"
+              onClick={() => {
+                setSearch('');
+                setFilters({
+                  keywords: '',
+                  location: '',
+                  remote: false,
+                  hybrid: false,
+                  experience: '',
+                  salaryMin: '',
+                  companies: '',
+                  jobBoards: [],
+                  maxJobs: '30',
+                });
+              }}
+            >
               Clear filters
             </Button>
           )}
@@ -245,6 +291,21 @@ export function JobsPage() {
                 </div>
               );
             })}
+            {unfiledJobs.length > 0 && (
+              <div className="w-72 shrink-0">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium">Other</span>
+                  <Badge variant="secondary">{unfiledJobs.length}</Badge>
+                </div>
+                <ScrollArea className="h-[calc(100vh-340px)]">
+                  <div className="space-y-2 pr-2">
+                    {unfiledJobs.map((job) => (
+                      <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />
+                    ))}
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
           </div>
         )
       ) : (
@@ -264,6 +325,7 @@ export function JobsPage() {
                   <TableHead>Location</TableHead>
                   <TableHead>Source</TableHead>
                   <TableHead>Posted</TableHead>
+                  <TableHead>Resume</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -282,6 +344,16 @@ export function JobsPage() {
                     <TableCell className="text-xs">{job.location}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{job.source}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{timeAgo(job.postingDate)}</TableCell>
+                    <TableCell>
+                      {job.resumeId ? (
+                        <Badge variant="outline" className="gap-1 text-[10px]">
+                          <FileText className="h-3 w-3" />
+                          {job.driveFileId ? 'Drive' : 'In app'}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell><StatusBadge status={job.status} /></TableCell>
                     <TableCell><ExternalLink className="h-3.5 w-3.5 text-muted-foreground" /></TableCell>
                   </TableRow>
@@ -324,6 +396,21 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
         <span>{job.salaryMin ? formatCurrency(job.salaryMin) : ''}</span>
       </div>
       {job.duplicate && <Badge variant="destructive" className="mt-2 text-[10px]"><Copy className="mr-1 h-2.5 w-2.5" />Duplicate</Badge>}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {job.resumeId && (
+          <Badge variant="outline" className="text-[10px] gap-1">
+            <FileText className="h-2.5 w-2.5" /> Resume
+          </Badge>
+        )}
+        {job.driveFileId && (
+          <Badge variant="outline" className="text-[10px] gap-1">
+            <Cloud className="h-2.5 w-2.5" /> Drive
+          </Badge>
+        )}
+        {!job.resumeId && job.resumeStatus === 'ready' && (
+          <Badge variant="secondary" className="text-[10px]">Resume missing</Badge>
+        )}
+      </div>
     </motion.div>
   );
 }
@@ -363,6 +450,9 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               {job.salaryMin && <Badge variant="secondary" className="gap-1"><DollarSign className="h-3 w-3" />{formatCurrency(job.salaryMin)} - {formatCurrency(job.salaryMax || 0)}</Badge>}
               <Badge variant="secondary">{job.source}</Badge>
               {job.duplicate && <Badge variant="destructive">Duplicate</Badge>}
+              {job.resumeId && <Badge variant="outline" className="gap-1"><FileText className="h-3 w-3" /> Resume linked</Badge>}
+              {job.driveFileId && <Badge variant="outline" className="gap-1"><Cloud className="h-3 w-3" /> On Drive</Badge>}
+              {!job.resumeId && job.resumeStatus === 'ready' && <Badge variant="secondary">Resume not linked</Badge>}
             </div>
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Skills</p>

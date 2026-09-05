@@ -2,6 +2,7 @@ import { createUserClient, createAdminClient, jsonResponse, corsHeaders } from '
 import { compileResumeContentToPdf } from '../_shared/resume-pdf.ts';
 import { linkResumePdf, markResumeDriveSync } from '../_shared/resume-store.ts';
 import { resolveDriveFolderId, resolveResumePdfFileName, uploadOrUpdateDrivePdf } from '../_shared/resume-drive.ts';
+import { repairResumeSync } from '../_shared/resume-repair.ts';
 
 type ResumeRow = {
   id: string;
@@ -216,6 +217,17 @@ Deno.serve(async (req) => {
         driveFileId: results[0]?.driveFileId,
         pdfLink: results[0]?.pdfLink,
       });
+    }
+
+    if (mode === 'repair_sync') {
+      let folderId: string | undefined;
+      try {
+        folderId = await resolveDriveFolderId(user.id);
+      } catch {
+        folderId = undefined;
+      }
+      const result = await repairResumeSync(admin, user.id, folderId);
+      return jsonResponse(result);
     }
 
     return jsonResponse({ error: 'Unknown mode' }, 400);
