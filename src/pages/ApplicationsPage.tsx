@@ -45,7 +45,7 @@ export function ApplicationsPage() {
   const statusCounts = APPLICATION_STATUSES.map((s) => ({ status: s, count: (apps || []).filter((a) => a.status === s).length }));
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Applications"
         description="Track every application from submission to offer"

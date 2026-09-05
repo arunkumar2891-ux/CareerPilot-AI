@@ -6,10 +6,12 @@ import { services } from '@/services';
 interface UIState {
   theme: 'light' | 'dark';
   sidebarCollapsed: boolean;
+  mobileNavOpen: boolean;
   commandOpen: boolean;
   notificationsOpen: boolean;
   toggleTheme: () => void;
   toggleSidebar: () => void;
+  setMobileNavOpen: (open: boolean) => void;
   setCommandOpen: (open: boolean) => void;
   setNotificationsOpen: (open: boolean) => void;
 }
@@ -17,6 +19,7 @@ interface UIState {
 export const useUIStore = create<UIState>((set, get) => ({
   theme: (localStorage.getItem('cp-theme') as 'light' | 'dark') || 'dark',
   sidebarCollapsed: false,
+  mobileNavOpen: false,
   commandOpen: false,
   notificationsOpen: false,
   toggleTheme: () => {
@@ -26,6 +29,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     set({ theme: next });
   },
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  setMobileNavOpen: (mobileNavOpen) => set({ mobileNavOpen }),
   setCommandOpen: (commandOpen) => set({ commandOpen }),
   setNotificationsOpen: (notificationsOpen) => set({ notificationsOpen }),
 }));

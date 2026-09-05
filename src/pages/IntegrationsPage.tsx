@@ -131,7 +131,7 @@ export function IntegrationsPage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Integrations"
         description="Only two connections exist: Apify for job scrape, Google Drive for optional PDF upload. Gemini and email use Edge Function secrets, not this page."

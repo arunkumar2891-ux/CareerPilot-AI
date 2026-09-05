@@ -1,5 +1,4 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Rocket, ChevronLeft, Settings, LogOut } from 'lucide-react';
 import { NAV_ITEMS } from '@/constants';
 import { useUIStore, useAuthStore } from '@/store';
@@ -15,15 +14,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
-export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebar } = useUIStore();
+interface SidebarNavProps {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}
+
+export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
   const user = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
   const location = useLocation();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    onNavigate?.();
     await signOut();
     navigate('/auth');
   };
@@ -31,17 +36,12 @@ export function Sidebar() {
   const groups = Array.from(new Set(NAV_ITEMS.map((i) => i.group)));
 
   return (
-    <aside
-      className={cn(
-        'relative z-20 flex flex-col border-r border-border bg-card/50 backdrop-blur-xl transition-all duration-300',
-        sidebarCollapsed ? 'w-[68px]' : 'w-[248px]'
-      )}
-    >
+    <>
       <div className="flex h-16 items-center gap-3 border-b border-border px-4">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-chart-4 shadow-lg shadow-primary/20">
           <Rocket className="h-5 w-5 text-primary-foreground" />
         </div>
-        {!sidebarCollapsed && (
+        {!collapsed && (
           <div className="overflow-hidden">
             <p className="text-sm font-semibold leading-tight">CareerPilot</p>
             <p className="text-xs text-muted-foreground">AI Job Search</p>
@@ -52,7 +52,7 @@ export function Sidebar() {
       <nav className="flex-1 space-y-6 overflow-y-auto scrollbar-thin px-3 py-4">
         {groups.map((group) => (
           <div key={group}>
-            {!sidebarCollapsed && (
+            {!collapsed && (
               <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 {group}
               </p>
@@ -65,22 +65,16 @@ export function Sidebar() {
                   <NavLink
                     key={item.path}
                     to={item.path}
+                    onClick={onNavigate}
                     className={cn(
-                      'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                      'relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                       active
-                        ? 'text-primary'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                     )}
                   >
-                    {active && (
-                      <motion.div
-                        layoutId="sidebar-active"
-                        className="absolute inset-0 rounded-lg bg-primary/10"
-                        transition={{ type: 'spring', stiffness: 350, damping: 30 }}
-                      />
-                    )}
                     <Icon className="relative h-4 w-4 shrink-0" />
-                    {!sidebarCollapsed && (
+                    {!collapsed && (
                       <span className="relative flex flex-1 items-center justify-between gap-2">
                         <span>{item.label}</span>
                         {item.badge && (
@@ -103,7 +97,7 @@ export function Sidebar() {
               type="button"
               className={cn(
                 'flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent/50',
-                sidebarCollapsed && 'justify-center',
+                collapsed && 'justify-center',
               )}
             >
               <Avatar className="h-8 w-8">
@@ -111,7 +105,7 @@ export function Sidebar() {
                   {user?.fullName?.split(' ').map((n) => n[0]).join('') || 'AM'}
                 </AvatarFallback>
               </Avatar>
-              {!sidebarCollapsed && (
+              {!collapsed && (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium">{user?.fullName}</p>
                   <p className="truncate text-[10px] text-muted-foreground capitalize">{user?.plan} plan</p>
@@ -119,13 +113,13 @@ export function Sidebar() {
               )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align={sidebarCollapsed ? 'center' : 'start'} className="w-56">
+          <DropdownMenuContent side="top" align={collapsed ? 'center' : 'start'} className="w-56">
             <DropdownMenuLabel className="font-normal">
               <p className="text-sm font-medium">{user?.fullName}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => navigate('/settings')}>
+            <DropdownMenuItem onClick={() => { onNavigate?.(); navigate('/settings'); }}>
               <Settings className="mr-2 h-4 w-4" />
               Settings
             </DropdownMenuItem>
@@ -136,15 +130,43 @@ export function Sidebar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+    </>
+  );
+}
 
+export function Sidebar() {
+  const { sidebarCollapsed, toggleSidebar } = useUIStore();
+
+  return (
+    <aside
+      className={cn(
+        'relative z-20 hidden h-full flex-col border-r border-border bg-card transition-all duration-300 lg:flex',
+        'lg:bg-card/80 lg:backdrop-blur-xl',
+        sidebarCollapsed ? 'w-[68px]' : 'w-[248px]',
+      )}
+    >
+      <SidebarNav collapsed={sidebarCollapsed} />
       <Button
         variant="ghost"
         size="icon"
         onClick={toggleSidebar}
-        className="absolute -right-4 top-20 z-30 h-8 w-8 rounded-full border border-border bg-background shadow-md"
+        className="absolute -right-4 top-20 z-30 hidden h-8 w-8 rounded-full border border-border bg-background shadow-md lg:flex"
       >
         <ChevronLeft className={cn('h-4 w-4 transition-transform', sidebarCollapsed && 'rotate-180')} />
       </Button>
     </aside>
+  );
+}
+
+export function MobileNav() {
+  const { mobileNavOpen, setMobileNavOpen } = useUIStore();
+
+  return (
+    <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+      <SheetContent side="left" className="flex w-[min(100vw-3rem,280px)] flex-col p-0">
+        <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+        <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
+      </SheetContent>
+    </Sheet>
   );
 }

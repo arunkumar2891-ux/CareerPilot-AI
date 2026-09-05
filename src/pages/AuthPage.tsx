@@ -39,8 +39,8 @@ export function AuthPage() {
       <div className="absolute -left-40 top-1/4 h-96 w-96 rounded-full bg-primary/20 blur-3xl" />
       <div className="absolute -right-40 bottom-1/4 h-96 w-96 rounded-full bg-chart-4/20 blur-3xl" />
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative z-10 w-full max-w-md">
-        <div className="glass-card p-8">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative z-10 w-full max-w-md px-4">
+        <div className="glass-card p-6 sm:p-8">
           <div className="mb-8 flex flex-col items-center text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-chart-4 shadow-xl shadow-primary/30">
               <Rocket className="h-7 w-7 text-primary-foreground" />

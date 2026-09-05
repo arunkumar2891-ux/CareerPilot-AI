@@ -32,7 +32,7 @@ export function DashboardPage() {
   const recentRuns = (runs || []).slice(0, 6);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Dashboard"
         description="Your autonomous job search command center"
