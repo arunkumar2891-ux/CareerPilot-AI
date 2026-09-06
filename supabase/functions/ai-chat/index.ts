@@ -66,8 +66,9 @@ Deno.serve(async (req) => {
       const { syncCareerPilotProjectToGoogleDoc } = await import('../_shared/google-doc-careerpilot-sync.ts');
       const { getUserSettings } = await import('../_shared/credentials.ts');
 
-      const fileId = String(body.fileId || '').trim()
-        || String((await getUserSettings(user.id)).jobSearch as Record<string, unknown> | undefined)?.resumeFileId || '').trim();
+      const settings = await getUserSettings(user.id);
+      const jobSearch = settings.jobSearch as Record<string, unknown> | undefined;
+      const fileId = String(body.fileId || '').trim() || String(jobSearch?.resumeFileId || '').trim();
       if (!fileId) return jsonResponse({ error: 'fileId or Settings → Google Doc ID is required' }, 400);
 
       const admin = createAdminClient();

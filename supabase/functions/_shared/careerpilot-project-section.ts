@@ -2,7 +2,7 @@ import {
   formatCareerPilotMetricLines,
   type CareerPilotLiveMetrics,
 } from './careerpilot-metrics.ts';
-import { CAREERPILOT_PROJECT_SECTION_TEMPLATE } from './careerpilot-section.generated.ts';
+import { CAREERPILOT_PROJECT_SECTION_TEMPLATE } from './career-corpus/careerpilot-section.generated.ts';
 
 export const CAREERPILOT_PROJECT_MARKER = '--- Project: CareerPilot AI';
 
