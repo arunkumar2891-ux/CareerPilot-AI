@@ -48,7 +48,7 @@ Forward Deployment Engineering:
 - Stakeholder Engagement: Requirements gathering, iterative feedback, user adoption
 
 AI/ML & Generative AI:
-- Large Language Models (LLM): Google Gemini 2.5 Flash, Gemini 2.5 Pro
+- Large Language Models (LLM): Google Gemini 3.6 Flash, Gemini 2.5 Flash, Gemini 2.5 Pro
 - Retrieval-Augmented Generation (RAG): Corpus Design, Retrieval Optimization
 - Prompt Engineering: Few-Shot Learning, Chain-of-Thought, Context Optimization
 - AI Agent Development: Multi-Turn Conversations, Error Analysis, Performance Analysis
@@ -284,26 +284,33 @@ Technical Highlights:
   - Zero backend video processing costs — all computation in user's browser
 
 --- Project: CareerPilot AI — Autonomous Job Search Platform (Personal - GenAI-Native) ---
-Role: Solo GenAI Developer & Architect | Full AI Platform from Concept to Production
-Technologies: React 18, TypeScript, Vite 5, React Router 7, Tailwind CSS 3, shadcn/ui (Radix), Zustand, TanStack Query, Recharts, Framer Motion, Supabase (PostgreSQL + Auth + Storage + Edge Functions/Deno + RLS + pg_cron + pg_net), Google Gemini 1.5 Flash, Apify (LinkedIn scraper), Google Drive OAuth2, Resend (email), LaTeX→PDF (ytotech), Render.com
+Role: GenAI Developer & Forward Deployment Engineer | Concept → Production (Render.com + Supabase)
+Timeline: Aug 2026 – Present
+URL: https://careerpilot-ai-6i93.onrender.com
+Technologies: React 18, TypeScript, Vite 5, React Router 7, Tailwind CSS 3, shadcn/ui (Radix), Zustand, TanStack Query, Recharts, Framer Motion, Supabase (PostgreSQL + Auth + Storage + Edge Functions/Deno + RLS + pg_cron + pg_net), Google Gemini 3.6 Flash, Groq (fallback), Apify (LinkedIn scraper), Google Drive OAuth2, Resend (email), LaTeX→PDF (ytotech), Render.com
 
-- Designed and built autonomous AI-powered job search platform — a complete command center for end-to-end job hunting with job discovery, AI resume tailoring, cover letter generation, workflow automation, and conversational AI copilot
-- Implemented RAG-like career corpus system: Master ATS bullet bank + 2-page template + 6 role playbooks (Integration Architect, GenAI Developer, FDE, Cloud Architect, AI/ML Engineer, Engineering Manager) + 14 evidence chunks with tag-based relevance scoring and automatic playbook selection via JD keyword matching
-- Built resumable graph-based workflow engine with 25+ node types (Triggers, AI, Integrations, Logic, Data), topological sort execution, step queue for long-running operations, and pg_cron scheduler (every minute) for resuming paused steps
-- Implemented fully automated 18-node daily pipeline: Schedule (7 AM cron) → Google Doc header → LinkedIn URL → Apify scrape → Poll/wait → Parse jobs → Limit → Dedup filter → Gemini ATS optimization → Store → Build LaTeX → Compile PDF → Upload Storage → Google Drive → Build email → Send via Resend
-- Designed multi-provider AI architecture supporting Gemini, OpenAI, Claude, Azure, Ollama, and Bedrock — all routed through a single Edge Function with mode-based dispatch (resume, ats_score, embed, chat)
-- Built LaTeX → PDF compilation pipeline using `moderncv` package for professional resume output, with Google Drive upload (OAuth2 + token refresh + public sharing) and email delivery via Resend
-- Implemented visual Workflow Studio with drag-and-connect node builder, live execution monitoring, version history, and one-click automation scheduling
-- Designed Bootstrap-on-Login pattern: auto-provisions default workflow, automation, career corpus (master resume, template, evidence chunks), and settings on first user login
+Live metrics (synced from production — auto-updated):
+- [CareerPilot] Jobs discovered: 0
+- [CareerPilot] Job-tailored resumes: 0
+- [CareerPilot] Pipeline runs completed: 0
+- [CareerPilot] AI tokens used (month): 0
+- [CareerPilot] Last synced: (pending first pipeline run)
+
+- Identified fragmented job-search workflow while actively hunting for roles → built and dogfood an autonomous command center unifying discovery, AI tailoring, application tracking, and Copilot chat
+- Designed and built autonomous AI-powered job search platform — LinkedIn job discovery (Apify), Gemini ATS resume tailoring, cover letter generation, visual workflow engine, application kanban, and conversational AI Copilot
+- Implemented RAG-like career corpus: Master ATS bullet bank + 2-page template + 6 role playbooks (Integration Architect, GenAI Developer, FDE, Cloud Architect, AI/ML Engineer, Engineering Manager) + tagged evidence chunks with JD keyword matching and automatic playbook selection
+- Built resumable graph-based workflow engine with 25+ node types (Triggers, AI, Integrations, Logic, Data), topological execution, per-job step queue, and pg_cron scheduler resuming long-running slices every minute
+- Implemented fully automated 18-node daily pipeline: Schedule (7 AM) → Google Doc sync → LinkedIn search → Apify scrape → parse/dedup/limit → Gemini ATS optimization → store tailored resume → LaTeX → PDF → Storage → optional Drive → email summary (Resend)
+- Built multi-provider AI router: Gemini 3.6 Flash primary with Groq fallback, classified retries (429/5xx/timeout), per-provider token usage tracking, and mode dispatch (resume, ats_score, embed, chat) through a single ai-chat Edge Function
+- Shipped production FDE-style fixes end-to-end: Google OAuth reconnect on expired refresh tokens, repair_sync reconciling jobs ↔ resumes ↔ Drive files, Corpus vs job-resume split, resume-actions for on-demand PDF/Drive sync
+- Built LaTeX → PDF pipeline (moderncv), Google Drive OAuth2 upload with token refresh, Bootstrap-on-Login provisioning (workflow, automation, corpus, settings), and visual Workflow Studio with live execution monitoring
 
 Technical Highlights:
-  - 7 Supabase Edge Functions (Deno): workflow-run, workflow-step (resumable), workflow-scheduler, ai-chat, google-oauth-callback, google-oauth-start, google-oauth-refresh
-  - RAG prompt construction: pickPlaybook() + selectEvidence() + buildResumeUserPrompt() with ATS_SYSTEM_PROMPT enforcing strict rules (only select existing bullets, preserve real metrics)
-  - 25+ workflow node types across 5 categories with visual builder
-  - 5 SQL migration files, RLS on all tables, pg_cron + pg_net for scheduling
-  - Multi-auth: Email/password, Google OAuth, GitHub OAuth, Magic Link
-  - Command palette (Cmd+K), page transitions (AnimatePresence), responsive design
-  - Service layer pattern with typed service classes (JobSearchService, ResumeService, WorkflowService, etc.)
+  - 8+ Supabase Edge Functions (Deno): workflow-run, workflow-step, workflow-scheduler, ai-chat, resume-actions, google-oauth-callback, google-oauth-start, google-oauth-refresh
+  - 17+ SQL migrations; ai_usage_events table for token telemetry; RLS on all tables; pg_cron + pg_net scheduling
+  - RAG prompt construction: pickPlaybook() + selectEvidence() + buildResumeUserPrompt() with ATS_SYSTEM_PROMPT (select existing bullets only, preserve real metrics)
+  - Multi-auth: email/password, Google/GitHub OAuth, magic link; SPA deployed on Render.com with Supabase backend
+  - Dashboard AI usage breakdown (Gemini vs Groq tokens), command palette (Cmd+K), typed service layer (JobSearch, Resume, Workflow, Analytics)
 
 --- Project: Cric-Scorer — Cricket Tournament & Live Scoring Platform (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Complex Domain Logic via AI-Augmented Development
@@ -380,6 +387,7 @@ Demonstrated ability to operate as a Forward Deployment Engineer: identifying re
 --- Forward Deployment Skills Demonstrated ---
 
 PROBLEM IDENTIFICATION & REQUIREMENTS ENGINEERING:
+- Built CareerPilot AI (Personal) — identified fragmented job-search workflow while actively applying → shipped unified GenAI command center (dogfooded daily)
 - Built autonomous AI job search platform (CareerPilot AI) — identified fragmented workflow → built unified command center
 - Identified photographer workflow gap → built Pic-Reel (free hyperlapse tool)
 - Received friend group requirement → built IPL 2026 prediction game
@@ -390,6 +398,7 @@ PROBLEM IDENTIFICATION & REQUIREMENTS ENGINEERING:
 - Identified legacy logging risk → prevented critical incident
 
 PRODUCTION DEBUGGING & DEPLOYMENT:
+- Debugged CareerPilot production drift (jobs vs resumes vs Google Drive) with repair_sync and OAuth token refresh/reconnect flows on live Render + Supabase deployment
 - Diagnosed Kong gateway "no Route matched" error in Kubernetes cluster by tracing request path from DNS → Ingress → Service → Pod, identifying missing Ingress template
 - Identified Harness CI trigger filter (deployment/.* exclusion) preventing build on infrastructure-only changes through systematic analysis of webhook delivery + payload conditions
 - Debugged OAuth token caching with force-refresh on 401 retry logic for SnapLogic API calls
@@ -559,7 +568,7 @@ PC to CC BigQuery Migration      | 4-10x latency, 10-80x cost savings | 5 pipeli
 Automations Portal (AI-Built)    | 99.95% uptime, <300ms response     | 100+ users, 35+ APIs
 RAG Corpus Optimization          | 40% → <5% AI review inconsistency  | 58→20 clusters, v3.0
 Critical Incident Response       | <2hr resolution, $0 business impact| Quarter-end period
-CareerPilot AI (Personal)       | Autonomous AI job search platform | Runtime GenAI, RAG, workflow engine
+CareerPilot AI (Personal)       | Autonomous GenAI job search platform | Gemini 3.6 + Groq, RAG, 18-node pipeline
 Cric-Scorer (Personal)          | Cricket tournament & live scoring  | 3 domain engines, 14 tables
 Pic-Reel Hyperlapse (Personal)   | Free tool for photographers        | Concept→prod in 1 week
 IPL 2026 Prediction (Personal)   | Friends group prediction game      | Full app in 2 weeks
@@ -651,17 +660,17 @@ FOR "Integration Architect" ROLES:
 - Highlight: 66% reduction, standardization, error handling patterns
 
 FOR "GenAI Developer" ROLES:
-- Lead with GenAI-Augmented Development Methodology section
-- Emphasize: AI pair programming, prompt engineering, RAG optimization, rapid prototyping
-- Highlight: Built 4+ production apps using AI, 10x development speed, RAG optimization reducing inconsistency from 40% to <5%
-- Include personal projects: CareerPilot AI (strongest GenAI — runtime AI, RAG, workflow engine), Cric-Scorer, Pic-Reel, IPL 2026, PlanItX (shows initiative and AI fluency)
+- Lead with CareerPilot AI (Personal) + GenAI-Augmented Development Methodology
+- Emphasize: AI pair programming, prompt engineering, RAG optimization, rapid prototyping, multi-provider LLM routing
+- Highlight: Built CareerPilot AI end-to-end (RAG corpus, Gemini 3.6 Flash, workflow engine), 4+ production apps using AI, 10x development speed, RAG optimization reducing inconsistency from 40% to <5%
+- Include personal projects: CareerPilot AI (strongest GenAI — runtime AI, RAG, workflow engine, dogfooded), Cric-Scorer, Pic-Reel, IPL 2026, PlanItX (shows initiative and AI fluency)
 - Keywords: prompt engineering, LLM, RAG, AI agent, Cursor AI, ChatGPT, generative AI, AI-augmented development
 
 FOR "Forward Deployment Engineer" ROLES:
-- Lead with Forward Deployment Engineering section + Portal Development
-- Emphasize: Problem identification, rapid solution delivery, production debugging, customer engagement
-- Highlight: Real-world problem → working app pipeline, Kubernetes debugging, CI/CD diagnosis, user adoption
-- Include personal projects as evidence of identifying problems and shipping solutions
+- Lead with CareerPilot AI (Personal) + Forward Deployment Engineering section + Portal Development
+- Emphasize: Problem identification, rapid solution delivery, production debugging, customer engagement, dogfooding
+- Highlight: Real-world job-search pain → production app on Render; OAuth/sync repair in live environment; Kubernetes debugging, CI/CD diagnosis, user adoption
+- Include personal projects: CareerPilot AI first (FDE + GenAI), then Pic-Reel, IPL 2026, Cric-Scorer, PlanItX as evidence of identifying problems and shipping solutions
 - Keywords: forward deployment, customer engineering, solutions engineer, production debugging, rapid prototyping, stakeholder engagement
 
 FOR "Cloud Architect" ROLES:

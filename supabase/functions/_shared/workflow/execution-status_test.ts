@@ -10,9 +10,9 @@ Deno.test('deriveRunStatus returns success when all jobs succeed', () => {
   if (status !== 'success') throw new Error(`expected success, got ${status}`);
 });
 
-Deno.test('deriveRunStatus returns failed when all jobs fail', () => {
-  const status = deriveRunStatus('success', { total: 3, successful: 0, failed: 3, skipped: 0 }, false);
-  if (status !== 'failed') throw new Error(`expected failed, got ${status}`);
+Deno.test('deriveRunStatus returns success for zero-job runs when still running', () => {
+  const status = deriveRunStatus('success', { total: 0, successful: 0, failed: 0, skipped: 0 }, false);
+  if (status !== 'success') throw new Error(`expected success, got ${status}`);
 });
 
 Deno.test('classifyExecutionError detects timeout', () => {

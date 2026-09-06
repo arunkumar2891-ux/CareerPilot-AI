@@ -161,7 +161,8 @@ GPT/
 | File | Purpose |
 |------|---------|
 | `experience-bullets.md` | Polished resume bullets, skills sections, achievements summary, and a cover letter template |
-| `MASTER_RESUME_ATS.md` | Comprehensive ATS-optimized master resume (v2.0, 70+ bullets), GenAI methodology, 3 personal projects, keyword lists for 6 role types |
+| `MASTER_RESUME_ATS.md` | Comprehensive ATS-optimized master resume (v2.0, 70+ bullets), GenAI methodology, 5 personal projects (CareerPilot AI lead), keyword lists for 6 role types |
+| `Master ATS Resume.md` | Mirror of master bullet bank for GPT retrieval (includes CareerPilot AI GenAI + FDE project) |
 | `RESUME_2PAGE_READY.md` | Condensed 2-page version for direct submission with the most impactful bullets |
 
 ### RAG/

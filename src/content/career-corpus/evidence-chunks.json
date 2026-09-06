@@ -413,6 +413,33 @@
     "text": "Implemented fully automated 18-node daily pipeline: Schedule (7 AM cron) → Google Doc header → LinkedIn URL → Apify scrape → Poll/wait → Parse jobs → Limit → Dedup filter → Gemini ATS optimization → Store → Build LaTeX → Compile PDF → Upload Storage → Google Drive → Build email → Send via Resend"
   },
   {
+    "id": "careerpilot-dogfood-fde",
+    "tags": [
+      "careerpilot_ai",
+      "fde",
+      "leadership"
+    ],
+    "text": "Identified fragmented job-search workflow while actively hunting for roles → built and dogfood CareerPilot AI, a unified GenAI command center for discovery, tailoring, tracking, and Copilot chat (deployed on Render.com + Supabase)"
+  },
+  {
+    "id": "careerpilot-ai-router",
+    "tags": [
+      "careerpilot_ai",
+      "gemini",
+      "integration"
+    ],
+    "text": "Built multi-provider AI router for CareerPilot AI: Gemini 3.6 Flash primary with Groq fallback, classified retries (429/5xx/timeout), per-provider token usage tracking, and mode dispatch (resume, ats_score, embed, chat)"
+  },
+  {
+    "id": "careerpilot-repair-sync",
+    "tags": [
+      "careerpilot_ai",
+      "fde",
+      "integration"
+    ],
+    "text": "Shipped production repair_sync for CareerPilot AI reconciling jobs ↔ resumes ↔ Google Drive files, plus OAuth reconnect flows for expired Google tokens and resume-actions for on-demand PDF/Drive sync"
+  },
+  {
     "id": "implemented-stateful-scoring-engine",
     "tags": [
       "cric_scorer",

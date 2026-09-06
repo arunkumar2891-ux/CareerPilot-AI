@@ -12,18 +12,18 @@
     "id": "genai_developer",
     "title": "GenAI Developer",
     "matchKeywords": ["genai", "generative ai", "prompt engineering", "cursor", "chatgpt", "llm developer", "ai-augmented", "ai native", "copilot"],
-    "leadWith": ["GenAI-Augmented Development Methodology", "SnapLogic Automations Portal"],
-    "emphasize": ["AI pair programming", "prompt engineering", "RAG optimization", "rapid prototyping"],
-    "highlight": ["4+ production apps using AI", "10x development speed", "RAG inconsistency 40% to <5%", "Pic-Reel", "IPL 2026", "PlanItX"],
+    "leadWith": ["CareerPilot AI — Autonomous Job Search Platform", "GenAI-Augmented Development Methodology", "SnapLogic Automations Portal"],
+    "emphasize": ["AI pair programming", "prompt engineering", "RAG optimization", "rapid prototyping", "multi-provider LLM routing", "workflow automation"],
+    "highlight": ["CareerPilot AI (Gemini 3.6 Flash + Groq)", "4+ production apps using AI", "10x development speed", "RAG inconsistency 40% to <5%", "Pic-Reel", "IPL 2026", "PlanItX"],
     "deemphasize": ["pure SnapLogic pipeline internals unless the JD also asks for iPaaS"]
   },
   {
     "id": "forward_deployment",
     "title": "Forward Deployment Engineer",
     "matchKeywords": ["forward deployment", "fde", "solutions engineer", "customer engineer", "field engineer", "customer-facing", "rapid prototyping", "production debugging"],
-    "leadWith": ["Forward Deployment Engineering", "SnapLogic Automations Portal"],
-    "emphasize": ["problem identification", "rapid solution delivery", "production debugging", "customer engagement", "Kubernetes", "CI/CD"],
-    "highlight": ["real-world problem to working app", "user adoption 100+", "distributed systems debugging"],
+    "leadWith": ["CareerPilot AI — Autonomous Job Search Platform", "Forward Deployment Engineering", "SnapLogic Automations Portal"],
+    "emphasize": ["problem identification", "rapid solution delivery", "production debugging", "customer engagement", "dogfooding", "Kubernetes", "CI/CD"],
+    "highlight": ["CareerPilot AI dogfooded in production", "real-world problem to working app", "user adoption 100+", "distributed systems debugging", "OAuth/sync repair"],
     "deemphasize": ["deep SnapLogic snap-count tables unless relevant"]
   },
   {

@@ -401,7 +401,15 @@ function resolveNodeStatus(
     runStatus?: WorkflowRunStatus;
   },
 ): WorkflowRunStatus | 'pending' {
-  if (exec?.status) return exec.status;
+  if (exec?.status) {
+    const runFinished = options.runStatus
+      && options.runStatus !== 'running'
+      && options.runStatus !== 'queued';
+    if (exec.status === 'running' && runFinished && !exec.completedAt) {
+      return result?.status ?? 'skipped';
+    }
+    return exec.status;
+  }
   if (result?.status) return result.status;
   if (
     options.runStatus === 'running'

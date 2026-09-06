@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'supabase/functions/**'
+      - 'src/content/career-corpus/master-resume.md'
+      - 'scripts/sync-careerpilot-section.mjs'
       - 'supabase/config.toml'
       - '.github/workflows/deploy-supabase-functions.yml'
   workflow_dispatch:
@@ -32,5 +34,35 @@ jobs:
         with:
           version: latest
 
+      - name: Generate CareerPilot section bundle
+        run: node scripts/sync-careerpilot-section.mjs
+
       - name: Deploy all Edge Functions
-        run: supabase functions deploy --use-api --project-ref "$SUPABASE_PROJECT_REF"
+        run: |
+          RAW="${SUPABASE_PROJECT_REF}"
+          if [[ "$RAW" == https://* ]]; then
+            PROJECT_REF="$(echo "$RAW" | sed -E 's#https://([^.]+)\.supabase\.co.*#\1#')"
+          else
+            PROJECT_REF="$RAW"
+          fi
+          supabase functions deploy --use-api --project-ref "$PROJECT_REF"
+
+      - name: Sync CareerPilot project section to Google Doc
+        if: success()
+        env:
+          DEPLOY_SYNC_SECRET: ${{ secrets.DEPLOY_SYNC_SECRET }}
+        run: |
+          RAW="${SUPABASE_PROJECT_REF}"
+          if [[ "$RAW" == https://* ]]; then
+            SUPABASE_URL="${RAW%/}"
+          else
+            SUPABASE_URL="https://${RAW}.supabase.co"
+          fi
+          if [ -z "$DEPLOY_SYNC_SECRET" ]; then
+            echo "Skipping Google Doc sync (DEPLOY_SYNC_SECRET not set)"
+            exit 0
+          fi
+          curl -sf -X POST "$SUPABASE_URL/functions/v1/careerpilot-doc-sync" \
+            -H "Authorization: Bearer $DEPLOY_SYNC_SECRET" \
+            -H "Content-Type: application/json" \
+            -d '{}'

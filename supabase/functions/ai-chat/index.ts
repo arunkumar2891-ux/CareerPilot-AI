@@ -61,6 +61,20 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (mode === 'sync_careerpilot_project' || mode === 'sync_careerpilot_metrics') {
+      const { createAdminClient } = await import('../_shared/supabase-admin.ts');
+      const { syncCareerPilotProjectToGoogleDoc } = await import('../_shared/google-doc-careerpilot-sync.ts');
+      const { getUserSettings } = await import('../_shared/credentials.ts');
+
+      const fileId = String(body.fileId || '').trim()
+        || String((await getUserSettings(user.id)).jobSearch as Record<string, unknown> | undefined)?.resumeFileId || '').trim();
+      if (!fileId) return jsonResponse({ error: 'fileId or Settings → Google Doc ID is required' }, 400);
+
+      const admin = createAdminClient();
+      const result = await syncCareerPilotProjectToGoogleDoc(admin, user.id, fileId);
+      return jsonResponse(result);
+    }
+
     if (mode === 'resume') {
       const jd = String(body.jobDescription || content || '');
       const corpus = await loadCareerCorpus(user.id, jd);

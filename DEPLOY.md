@@ -92,6 +92,7 @@ supabase secrets set \
   RESEND_FROM_EMAIL="CareerPilot <onboarding@resend.dev>" \
   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key \
   WORKFLOW_SCHEDULER_SECRET=your_random_secret_string \
+  DEPLOY_SYNC_SECRET=your_random_secret_string \
   GOOGLE_CLIENT_ID=your_google_client_id \
   GOOGLE_CLIENT_SECRET=your_google_client_secret \
   GOOGLE_REDIRECT_URI=https://YOUR_PROJECT_REF.supabase.co/functions/v1/google-oauth-callback \
@@ -102,6 +103,7 @@ supabase functions deploy workflow-run
 supabase functions deploy workflow-step
 supabase functions deploy workflow-scheduler
 supabase functions deploy ai-chat
+supabase functions deploy careerpilot-doc-sync --no-verify-jwt
 supabase functions deploy google-oauth-start --no-verify-jwt
 supabase functions deploy google-oauth-callback --no-verify-jwt
 ```
@@ -125,9 +127,26 @@ Merges to `main` that touch `supabase/functions/**` or `supabase/config.toml` tr
 | Secret | Value |
 |--------|--------|
 | `SUPABASE_ACCESS_TOKEN` | [Supabase access token](https://supabase.com/dashboard/account/tokens) with **Edge Functions (read-write)** scope |
-| `SUPABASE_PROJECT_REF` | Project ref from your Supabase URL (`https://<ref>.supabase.co`) |
+| `SUPABASE_PROJECT_REF` | Project ref (`qcywswnrknzwovvaixjl`) **or** full URL (`https://<ref>.supabase.co`) — used for deploy and post-deploy Google Doc sync |
+| `DEPLOY_SYNC_SECRET` | Random secret; set the same value as Supabase secret `DEPLOY_SYNC_SECRET` (see below) |
 
 After saving secrets, either merge a backend change to `main` or run the workflow manually from **Actions** → **Deploy Supabase Edge Functions** → **Run workflow**.
+
+### CareerPilot project → Google Doc sync
+
+The **CareerPilot AI** block in `src/content/career-corpus/master-resume.md` is bundled into Edge Functions (`npm run sync:corpus`) and written to your configured Google Doc (Settings → Google Doc Resume ID):
+
+- **On deploy** — GitHub Actions calls `careerpilot-doc-sync` after functions deploy (requires `DEPLOY_SYNC_SECRET`; reuses `SUPABASE_PROJECT_REF` for the API URL).
+- **After each successful pipeline run** — automatic.
+- **Manual** — Settings → **Sync CareerPilot project to Google Doc**.
+
+Set the deploy secret on Supabase (Dashboard → **Edge Functions** → **Secrets** or CLI):
+
+```bash
+supabase secrets set DEPLOY_SYNC_SECRET=your_random_secret_string
+```
+
+Reconnect Google Drive in Integrations after deploy if Docs write scope was added (`documents` scope).
 
 Frontend deploys (Vercel/Render) are unchanged — this workflow only updates Supabase Edge Functions.
 

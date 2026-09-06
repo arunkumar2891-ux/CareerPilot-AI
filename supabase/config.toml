@@ -417,6 +417,9 @@ enabled = true
 [functions.workflow-scheduler]
 verify_jwt = false
 
+[functions.careerpilot-doc-sync]
+verify_jwt = false
+
 [functions.workflow-step]
 verify_jwt = false
 

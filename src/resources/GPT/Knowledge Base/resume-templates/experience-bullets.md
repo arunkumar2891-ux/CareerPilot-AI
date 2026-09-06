@@ -38,6 +38,17 @@ Results-driven Integration Architect with 5+ years of experience designing and b
 
 ---
 
+## Experience Bullets - CareerPilot AI (Personal Project)
+
+- **Built and dogfood CareerPilot AI** (Aug 2026 – Present) — GenAI Developer & Forward Deployment Engineer role on Render.com + Supabase
+- **Implemented RAG-like career corpus** with Master ATS bank, 6 role playbooks (GenAI Developer, FDE, Integration Architect, etc.), and JD-matched evidence chunks for Gemini ATS tailoring
+- **Built resumable 18-node daily pipeline**: Apify LinkedIn scrape → Gemini 3.6 Flash ATS optimization → LaTeX/PDF → Storage → optional Google Drive → Resend email summary
+- **Designed multi-provider AI router** with Gemini 3.6 Flash primary, Groq fallback, classified retries, and per-provider token usage tracking on dashboard
+- **Shipped FDE-style production fixes**: repair_sync reconciling jobs ↔ resumes ↔ Drive, OAuth reconnect on expired tokens, Corpus vs job-resume split, on-demand PDF/Drive via resume-actions Edge Function
+- **Built visual Workflow Studio** with 25+ node types, live execution monitoring, Bootstrap-on-Login provisioning, and typed service layer (JobSearch, Resume, Workflow, Analytics)
+
+---
+
 ## Experience Bullets - Incident Response
 
 - **Resolved critical incident in <2 hours** during quarter-end/year-end processing, preventing potential revenue impact and restoring team observability

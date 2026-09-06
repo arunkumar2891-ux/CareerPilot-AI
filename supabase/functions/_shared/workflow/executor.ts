@@ -17,6 +17,7 @@ import {
   startNodeExecution,
 } from './execution-persistence.ts';
 import { deriveRunStatus } from './execution-status.ts';
+import { syncCareerPilotProjectToGoogleDoc } from '../google-doc-careerpilot-sync.ts';
 import { computeNextCronRun, isAutomationDue } from '../cron-schedule.ts';
 import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
@@ -356,9 +357,13 @@ export async function executeWorkflow(
         if (items.length === 0) {
           ctx.nodeOutputs[node.id] = [];
           const duration = Date.now() - start;
-          await recordNodeRun(admin, runId, userId, node.id, 'success', duration, []);
+          await completeNodeExecution(admin, commonNodeExecutionId, 'skipped', {
+            durationMs: duration,
+            output: [],
+          });
+          await recordNodeRun(admin, runId, userId, node.id, 'skipped', duration, []);
           await touchRunDuration(admin, runId);
-          await logStep(runId, userId, node.id, 'info', `Skipped: no items to process`);
+          await logStep(runId, userId, node.id, 'info', `Skipped: no items to process (${node.name})`);
           await saveRunContext(runId, ctx);
           const nextId = getNextNodeId(node.id, edges);
           if (nextId) {
@@ -519,7 +524,23 @@ export async function executeWorkflow(
     last_run: new Date().toISOString(),
   }).eq('id', workflowId);
 
+  await maybeSyncCareerPilotProject(admin, userId);
+
   return { runId, status: finalStatus };
+}
+
+async function maybeSyncCareerPilotProject(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+): Promise<void> {
+  try {
+    const settings = await getUserSettings(userId);
+    const fileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId || '').trim();
+    if (!fileId) return;
+    await syncCareerPilotProjectToGoogleDoc(admin, userId, fileId);
+  } catch (err) {
+    console.warn('CareerPilot Google Doc sync skipped:', err instanceof Error ? err.message : err);
+  }
 }
 
 export async function processDueSteps(): Promise<number> {

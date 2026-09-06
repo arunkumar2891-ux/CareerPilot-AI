@@ -52,6 +52,7 @@ export const ROLE_PLAYBOOKS = [
       "copilot"
     ],
     "leadWith": [
+      "CareerPilot AI — Autonomous Job Search Platform",
       "GenAI-Augmented Development Methodology",
       "SnapLogic Automations Portal"
     ],
@@ -59,9 +60,12 @@ export const ROLE_PLAYBOOKS = [
       "AI pair programming",
       "prompt engineering",
       "RAG optimization",
-      "rapid prototyping"
+      "rapid prototyping",
+      "multi-provider LLM routing",
+      "workflow automation"
     ],
     "highlight": [
+      "CareerPilot AI (Gemini 3.6 Flash + Groq)",
       "4+ production apps using AI",
       "10x development speed",
       "RAG inconsistency 40% to <5%",
@@ -87,6 +91,7 @@ export const ROLE_PLAYBOOKS = [
       "production debugging"
     ],
     "leadWith": [
+      "CareerPilot AI — Autonomous Job Search Platform",
       "Forward Deployment Engineering",
       "SnapLogic Automations Portal"
     ],
@@ -95,13 +100,16 @@ export const ROLE_PLAYBOOKS = [
       "rapid solution delivery",
       "production debugging",
       "customer engagement",
+      "dogfooding",
       "Kubernetes",
       "CI/CD"
     ],
     "highlight": [
+      "CareerPilot AI dogfooded in production",
       "real-world problem to working app",
       "user adoption 100+",
-      "distributed systems debugging"
+      "distributed systems debugging",
+      "OAuth/sync repair"
     ],
     "deemphasize": [
       "deep SnapLogic snap-count tables unless relevant"

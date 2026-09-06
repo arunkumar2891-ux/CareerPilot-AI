@@ -1,4 +1,4 @@
-import { classifyExecutionError } from './execution-status.ts';
+import { classifyExecutionError, deriveRunStatus } from './execution-status.ts';
 import type { WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 import type { createAdminClient } from '../supabase-admin.ts';
 
@@ -502,11 +502,23 @@ export async function buildEmailSummaryBlock(
     failedNodeNames.set(row.workflow_node_id as string, row.node_name as string);
   }
 
+  const counters = {
+    total: Number(run.jobs_total ?? latest.length),
+    successful: Number(run.jobs_successful ?? latest.filter((j) => j.status === 'success').length),
+    failed: Number(run.jobs_failed ?? latest.filter((j) => j.status === 'failed').length),
+    skipped: Number(run.jobs_skipped ?? latest.filter((j) => j.status === 'skipped').length),
+  };
+  const rawStatus = String(run.status || 'success');
+  // Email summary runs before the workflow marks the run finished — derive the final status.
+  const displayStatus = rawStatus === 'running'
+    ? deriveRunStatus('success', counters, false)
+    : deriveRunStatus(rawStatus, counters, false);
+
   const appUrl = Deno.env.get('APP_URL') || '';
   return buildEmailExecutionSummaryHtml(
     runId,
     workflowName,
-    String(run.status || 'success'),
+    displayStatus,
     String(run.started_at || new Date().toISOString()),
     run.finished_at as string | null,
     Number(run.duration_ms ?? 0),

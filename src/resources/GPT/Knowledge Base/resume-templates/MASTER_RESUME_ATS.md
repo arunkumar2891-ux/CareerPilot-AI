@@ -262,6 +262,34 @@ Technologies: Vertex AI, Gemini 2.5 Pro, RAG, Prompt Engineering, SnapLogic
 - Implemented 58→20 cluster deduplication for Error Report RAG, analyzing semantic similarity across cluster names and consolidating near-duplicates
 - Reduced AI review inconsistency from ~40% variance to <5% through structured RAG design and deterministic system instructions
 
+--- Project: CareerPilot AI — Autonomous Job Search Platform (Personal - GenAI-Native) ---
+Role: GenAI Developer & Forward Deployment Engineer | Concept → Production (Render.com + Supabase)
+Timeline: Aug 2026 – Present
+URL: https://careerpilot-ai-6i93.onrender.com
+Technologies: React 18, TypeScript, Vite 5, React Router 7, Tailwind CSS 3, shadcn/ui (Radix), Zustand, TanStack Query, Recharts, Framer Motion, Supabase (PostgreSQL + Auth + Storage + Edge Functions/Deno + RLS + pg_cron + pg_net), Google Gemini 3.6 Flash, Groq (fallback), Apify (LinkedIn scraper), Google Drive OAuth2, Resend (email), LaTeX→PDF (ytotech), Render.com
+
+Live metrics (synced from production — auto-updated):
+- [CareerPilot] Jobs discovered: 0
+- [CareerPilot] Job-tailored resumes: 0
+- [CareerPilot] Pipeline runs completed: 0
+- [CareerPilot] AI tokens used (month): 0
+- [CareerPilot] Last synced: (pending first pipeline run)
+
+- Identified fragmented job-search workflow while actively hunting for roles → built and dogfood an autonomous command center unifying discovery, AI tailoring, application tracking, and Copilot chat
+- Designed and built autonomous AI-powered job search platform — LinkedIn job discovery (Apify), Gemini ATS resume tailoring, cover letter generation, visual workflow engine, application kanban, and conversational AI Copilot
+- Implemented RAG-like career corpus: Master ATS bullet bank + 2-page template + 6 role playbooks (Integration Architect, GenAI Developer, FDE, Cloud Architect, AI/ML Engineer, Engineering Manager) + tagged evidence chunks with JD keyword matching
+- Built resumable graph-based workflow engine with 25+ node types, per-job step queue, and pg_cron scheduler resuming long-running slices every minute
+- Implemented fully automated 18-node daily pipeline: Schedule (7 AM) → Google Doc sync → Apify scrape → Gemini ATS optimization → LaTeX/PDF → Storage → optional Drive → email summary (Resend)
+- Built multi-provider AI router: Gemini 3.6 Flash primary with Groq fallback, classified retries, per-provider token usage tracking, and mode dispatch (resume, ats_score, embed, chat)
+- Shipped production FDE-style fixes: Google OAuth reconnect on expired tokens, repair_sync reconciling jobs ↔ resumes ↔ Drive, Corpus vs job-resume split, resume-actions for on-demand PDF/Drive sync
+- Built Bootstrap-on-Login provisioning, visual Workflow Studio with live execution monitoring, and dashboard AI usage breakdown (Gemini vs Groq)
+
+Technical Highlights:
+  - 8+ Supabase Edge Functions (Deno): workflow-run, workflow-step, workflow-scheduler, ai-chat, resume-actions, google-oauth-*
+  - 17+ SQL migrations; ai_usage_events for token telemetry; RLS on all tables
+  - RAG: pickPlaybook() + selectEvidence() + buildResumeUserPrompt() with strict ATS rules (existing bullets only)
+  - Deployed SPA on Render.com; multi-auth (email, Google/GitHub OAuth, magic link)
+
 --- Project: Pic-Reel / FrameFlow Hyperlapse Tool (Personal - AI-Built) ---
 Role: Solo GenAI Developer | Concept-to-Production
 Technologies: React 19, TanStack Start (SSR), TypeScript, Vite 7, Tailwind CSS v4, FFmpeg.wasm, dnd-kit, Canvas API, Render.com
@@ -328,6 +356,7 @@ Demonstrated ability to operate as a Forward Deployment Engineer: identifying re
 --- Forward Deployment Skills Demonstrated ---
 
 PROBLEM IDENTIFICATION & REQUIREMENTS ENGINEERING:
+- Built CareerPilot AI (Personal) — identified fragmented job-search workflow while actively applying → shipped unified GenAI command center (dogfooded daily)
 - Identified photographer workflow gap → built Pic-Reel (free hyperlapse tool)
 - Received friend group requirement → built IPL 2026 prediction game
 - Received social need → built PlanItX event planning app
@@ -336,6 +365,7 @@ PROBLEM IDENTIFICATION & REQUIREMENTS ENGINEERING:
 - Identified legacy logging risk → prevented critical incident
 
 PRODUCTION DEBUGGING & DEPLOYMENT:
+- Debugged CareerPilot production drift (jobs vs resumes vs Google Drive) with repair_sync and OAuth token refresh/reconnect on live Render + Supabase deployment
 - Diagnosed Kong gateway "no Route matched" error in Kubernetes cluster by tracing request path from DNS → Ingress → Service → Pod, identifying missing Ingress template
 - Identified Harness CI trigger filter (deployment/.* exclusion) preventing build on infrastructure-only changes through systematic analysis of webhook delivery + payload conditions
 - Debugged OAuth token caching with force-refresh on 401 retry logic for SnapLogic API calls
@@ -431,6 +461,7 @@ DevOps & Infrastructure:
 - IaC: Terraform, Helm Charts
 
 AI/ML & LLM:
+- Google Gemini 3.6 Flash (CareerPilot AI — primary runtime model)
 - Google Gemini 2.5 Flash (Fast Inference, Story Generation)
 - Google Gemini 2.5 Pro (Multi-Turn Agents, Complex Analysis)
 - RAG Architecture: Corpus Design, Embedding, Retrieval, Ranking
@@ -488,6 +519,8 @@ PC to CC BigQuery Migration      | 4-10x latency, 10-80x cost savings | 5 pipeli
 Automations Portal (AI-Built)    | 99.95% uptime, <300ms response     | 100+ users, 35+ APIs
 RAG Corpus Optimization          | 40% → <5% AI review inconsistency  | 58→20 clusters, v3.0
 Critical Incident Response       | <2hr resolution, $0 business impact| Quarter-end period
+CareerPilot AI (Personal)       | Autonomous GenAI job search platform | Gemini 3.6 + Groq, RAG, 18-node pipeline
+Cric-Scorer (Personal)          | Cricket tournament & live scoring  | 3 domain engines, 14 tables
 Pic-Reel Hyperlapse (Personal)   | Free tool for photographers        | Concept→prod in 1 week
 IPL 2026 Prediction (Personal)   | Friends group prediction game      | Full app in 2 weeks
 PlanItX Events (Personal)        | Collaborative event planning       | Full app via AI
@@ -578,17 +611,17 @@ FOR "Integration Architect" ROLES:
 - Highlight: 66% reduction, standardization, error handling patterns
 
 FOR "GenAI Developer" ROLES:
-- Lead with GenAI-Augmented Development Methodology section
-- Emphasize: AI pair programming, prompt engineering, RAG optimization, rapid prototyping
-- Highlight: Built 4+ production apps using AI, 10x development speed, RAG optimization reducing inconsistency from 40% to <5%
-- Include personal projects: Pic-Reel, IPL 2026, PlanItX (shows initiative and AI fluency)
+- Lead with CareerPilot AI (Personal) + GenAI-Augmented Development Methodology
+- Emphasize: AI pair programming, prompt engineering, RAG optimization, rapid prototyping, multi-provider LLM routing
+- Highlight: CareerPilot AI end-to-end (RAG corpus, Gemini 3.6 Flash, workflow engine), 4+ production apps using AI, 10x development speed, RAG 40% → <5%
+- Include personal projects: CareerPilot AI (strongest — runtime AI, RAG, dogfooded), Pic-Reel, IPL 2026, PlanItX, Cric-Scorer
 - Keywords: prompt engineering, LLM, RAG, AI agent, Cursor AI, ChatGPT, generative AI, AI-augmented development
 
 FOR "Forward Deployment Engineer" ROLES:
-- Lead with Forward Deployment Engineering section + Portal Development
-- Emphasize: Problem identification, rapid solution delivery, production debugging, customer engagement
-- Highlight: Real-world problem → working app pipeline, Kubernetes debugging, CI/CD diagnosis, user adoption
-- Include personal projects as evidence of identifying problems and shipping solutions
+- Lead with CareerPilot AI (Personal) + Forward Deployment Engineering section + Portal Development
+- Emphasize: Problem identification, rapid solution delivery, production debugging, dogfooding, customer engagement
+- Highlight: Job-search pain → production app on Render; OAuth/sync repair in live environment; Kubernetes debugging, user adoption 100+
+- Include personal projects: CareerPilot AI first, then Pic-Reel, IPL 2026, Cric-Scorer, PlanItX
 - Keywords: forward deployment, customer engineering, solutions engineer, production debugging, rapid prototyping, stakeholder engagement
 
 FOR "Cloud Architect" ROLES:
@@ -615,5 +648,5 @@ Last Updated: July 30, 2026
 Total Experience Bullets: 70+
 Tailoring Scenarios: 6
 ATS Keyword Categories: 11
-Personal Projects: 3
+Personal Projects: 5 (CareerPilot AI, Cric-Scorer, Pic-Reel, IPL 2026, PlanItX)
 AI Development Methodology: Documented with examples

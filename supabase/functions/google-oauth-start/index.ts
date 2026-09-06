@@ -23,6 +23,7 @@ Deno.serve(async (req) => {
         'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/documents',
       ].join(' ');
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
         client_id: clientId,

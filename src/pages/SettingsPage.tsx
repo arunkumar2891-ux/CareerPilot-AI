@@ -37,6 +37,7 @@ export function SettingsPage() {
   const [linkedin, setLinkedin] = useState('');
   const [github, setGithub] = useState('');
   const [startDate, setStartDate] = useState('');
+  const [syncingCareerPilot, setSyncingCareerPilot] = useState(false);
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
 
@@ -117,6 +118,33 @@ export function SettingsPage() {
       }
     }
     toast.success('Job search settings saved');
+  };
+
+  const syncCareerPilotProject = async () => {
+    const parsedResumeId = parseGoogleDocFileId(resumeFileId);
+    if (!parsedResumeId) {
+      toast.error('Add a Google Doc Resume ID first');
+      return;
+    }
+    setSyncingCareerPilot(true);
+    try {
+      const res = await supabase.functions.invoke('ai-chat', {
+        body: { mode: 'sync_careerpilot_project', fileId: parsedResumeId },
+      });
+      if (res.error) throw new Error(res.error.message);
+      const data = res.data as {
+        metrics?: { jobsDiscovered?: number; resumesTailored?: number };
+        replacements?: number;
+        sectionChars?: number;
+      };
+      const jobs = data.metrics?.jobsDiscovered ?? 0;
+      const resumes = data.metrics?.resumesTailored ?? 0;
+      toast.success(`CareerPilot project section synced (${jobs} jobs, ${resumes} tailored resumes)`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Google Doc sync failed — reconnect Google Drive in Integrations');
+    } finally {
+      setSyncingCareerPilot(false);
+    }
   };
 
   return (
@@ -207,7 +235,20 @@ export function SettingsPage() {
               <p className="text-xs text-muted-foreground">
                 Searches all work types (on-site, remote, hybrid) in your location. Tailoring uses the in-app Master ATS corpus.
               </p>
-              <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save Job Search Settings</Button>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save Job Search Settings</Button>
+                <Button
+                  variant="outline"
+                  onClick={syncCareerPilotProject}
+                  disabled={syncingCareerPilot || !resumeFileId.trim()}
+                  className="gap-2"
+                >
+                  {syncingCareerPilot ? 'Syncing…' : 'Sync CareerPilot project to Google Doc'}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Pushes the full CareerPilot AI project section (features, architecture, bullets, live metrics) from the deployed corpus to your Google Doc. Auto-runs after each successful pipeline and after Edge Function deploys. Reconnect Google Drive if sync fails (documents write scope).
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
