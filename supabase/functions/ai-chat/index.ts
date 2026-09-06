@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     if (mode === 'ats_score') {
       const result = await callGeminiGenerateContent(
         'Return valid JSON only.',
-        `Score this resume 0-100 for ATS compatibility. Return JSON: {"score": number, "feedback": string[]}\n\n${content}`,
+        `Score this resume 0-100 for ATS compatibility. Return JSON only: {"score": number, "feedback": string[], "suggestions": string[]}. Feedback should identify specific issues; suggestions should be truthful, actionable improvements that do not invent experience.\n\n${content}`,
         { operation: 'ats_score', userId: user.id },
       );
       try {
@@ -92,6 +92,29 @@ Deno.serve(async (req) => {
       });
       const reply = await callGeminiAtsGenerateContent(ATS_SYSTEM_PROMPT, userPrompt, user.id);
       return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });
+    }
+
+    if (mode === 'resume_improvement') {
+      const review = (body.atsReview && typeof body.atsReview === 'object')
+        ? body.atsReview as Record<string, unknown>
+        : {};
+      const feedback = Array.isArray(review.feedback) ? review.feedback.map(String) : [];
+      const suggestions = Array.isArray(review.suggestions) ? review.suggestions.map(String) : [];
+      const score = Number(review.score || 0);
+      const resumeContent = String(body.resumeContent || '');
+      const prompt = [
+        'You are a collaborative resume editor in CareerPilot AI.',
+        'Work as a natural conversation, not as a one-shot rewrite. Use the ATS review and resume below as context.',
+        'Never invent achievements, responsibilities, metrics, skills, certifications, employers, or dates. When a useful change needs missing facts, ask focused clarifying questions before proposing it.',
+        'Do not assume you can edit the resume directly. The user decides whether to apply suggestions manually. After the user has resolved the needed uncertainties, offer precise Markdown edits or a clearly labelled revised section that they can review.',
+        'When the user opens this conversation, first summarize the highest-impact issues briefly and ask the minimum necessary question(s) to determine what can be changed truthfully. If no clarification is needed, say so and ask whether they want a proposed patch.',
+        `ATS SCORE: ${score}/100`,
+        `ATS FEEDBACK:\n${feedback.length ? feedback.map((item, index) => `${index + 1}. ${item}`).join('\n') : 'No feedback was returned.'}`,
+        `ATS SUGGESTIONS:\n${suggestions.length ? suggestions.map((item, index) => `${index + 1}. ${item}`).join('\n') : 'No additional suggestions were returned.'}`,
+        `CURRENT RESUME:\n${resumeContent || 'Resume content was unavailable. Ask the user to provide the relevant section.'}`,
+      ].join('\n\n');
+      const reply = await callGemini(user.id, messages || [{ role: 'user', content: content || '' }], prompt);
+      return jsonResponse({ reply, tokens: reply.length / 4 });
     }
 
     let prompt = systemPrompt || ATS_SYSTEM_PROMPT;

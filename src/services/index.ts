@@ -2,6 +2,7 @@ import type {
   Job, Resume, CoverLetter, Application, Workflow, Agent,
   Document, Notification, Integration, Prompt, Automation,
   ChatConversation, DashboardMetrics, AnalyticsPoint, UserProfile, AiUsageSummary,
+  AtsReview,
   JobSearchConfig, ChatMessage, AgentRun, WorkflowRunDetail,
   JobExecution, NodeExecution, WorkflowSnapshot, WorkflowRun,
 } from '@/types';
@@ -91,6 +92,7 @@ function mapResume(row: Record<string, unknown>): Resume {
     type: (row.type as Resume['type']) ?? 'general',
     content: String(row.content ?? ''),
     atsScore: Number(row.ats_score ?? 0),
+    atsReview: parseAtsReview(row.ats_review),
     jobId: row.job_id as string | undefined,
     driveFileId: row.drive_file_id as string | undefined,
     driveSyncedAt: row.drive_synced_at as string | undefined,
@@ -288,11 +290,28 @@ function mapAutomation(row: Record<string, unknown>): Automation {
   };
 }
 
+function parseAtsReview(raw: unknown): AtsReview | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const score = Number(r.score);
+  const feedback = Array.isArray(r.feedback) ? r.feedback.map(String) : [];
+  if (!score && !feedback.length) return undefined;
+  return {
+    score,
+    feedback,
+    suggestions: Array.isArray(r.suggestions) ? r.suggestions.map(String) : undefined,
+    scoredAt: String(r.scoredAt || r.scored_at || new Date().toISOString()),
+  };
+}
+
 function mapConversation(row: Record<string, unknown>): ChatConversation {
+  const messageRows = (row.chat_messages as Record<string, unknown>[]) || [];
+  messageRows.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   return {
     id: String(row.id),
     title: String(row.title ?? ''),
-    messages: (row.chat_messages as Record<string, unknown>[])?.map((m) => ({
+    resumeId: row.resume_id as string | undefined,
+    messages: messageRows.map((m) => ({
       id: String(m.id),
       role: (m.role as ChatMessage['role']) ?? 'user',
       content: String(m.content ?? ''),
@@ -423,6 +442,16 @@ export class ResumeService {
   async updateScore(id: string, score: number, content?: string): Promise<void> {
     const patch: Record<string, unknown> = {
       ats_score: score,
+      updated_at: new Date().toISOString(),
+    };
+    if (content !== undefined) patch.content = content;
+    const { error } = await supabase.from('resumes').update(patch).eq('id', id);
+    if (error) throw error;
+  }
+  async updateAtsReview(id: string, review: AtsReview, content?: string): Promise<void> {
+    const patch: Record<string, unknown> = {
+      ats_score: review.score,
+      ats_review: review,
       updated_at: new Date().toISOString(),
     };
     if (content !== undefined) patch.content = content;
@@ -562,10 +591,16 @@ export class ResumeService {
 }
 
 export class ATSService {
-  async score(content: string): Promise<{ score: number; feedback: string[] }> {
+  async score(content: string): Promise<AtsReview> {
     const { data, error } = await invokeAiChat({ mode: 'ats_score', content });
     if (error) throw error;
-    return data as { score: number; feedback: string[] };
+    const raw = data as { score?: number; feedback?: string[]; suggestions?: string[] };
+    return {
+      score: Number(raw.score ?? 0),
+      feedback: Array.isArray(raw.feedback) ? raw.feedback.map(String) : [],
+      suggestions: Array.isArray(raw.suggestions) ? raw.suggestions.map(String) : undefined,
+      scoredAt: new Date().toISOString(),
+    };
   }
 }
 
@@ -1476,34 +1511,130 @@ export class ChatService {
     if (error) throw error;
     return (data || []).map(mapConversation);
   }
-  async createConversation(title: string): Promise<ChatConversation> {
+  async getConversation(id: string): Promise<ChatConversation | undefined> {
+    const { data, error } = await supabase.from('chat_conversations').select('*, chat_messages(*)').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? mapConversation(data) : undefined;
+  }
+  async createConversation(title: string, options?: { resumeId?: string }): Promise<ChatConversation> {
     const userId = await requireUserId();
-    const { data, error } = await supabase.from('chat_conversations').insert({ user_id: userId, title }).select('*, chat_messages(*)').single();
+    const { data, error } = await supabase.from('chat_conversations').insert({
+      user_id: userId,
+      title,
+      resume_id: options?.resumeId || null,
+    }).select('*, chat_messages(*)').single();
     if (error) throw error;
     return mapConversation(data);
   }
-  async sendMessage(conversationId: string, content: string): Promise<ChatMessage> {
+  async findConversationForResume(resumeId: string): Promise<ChatConversation | undefined> {
+    const { data, error } = await supabase
+      .from('chat_conversations')
+      .select('*, chat_messages(*)')
+      .eq('resume_id', resumeId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapConversation(data) : undefined;
+  }
+  async appendMessage(
+    conversationId: string,
+    role: ChatMessage['role'],
+    content: string,
+    artifact?: ChatMessage['artifact'],
+  ): Promise<ChatMessage> {
     const userId = await requireUserId();
-    await supabase.from('chat_messages').insert({ user_id: userId, conversation_id: conversationId, role: 'user', content });
-    const { data: history } = await supabase.from('chat_messages').select('role, content').eq('conversation_id', conversationId).order('created_at');
+    const { data, error } = await supabase.from('chat_messages').insert({
+      user_id: userId,
+      conversation_id: conversationId,
+      role,
+      content,
+      artifact_type: artifact?.type || null,
+      artifact_title: artifact?.title || null,
+      artifact_content: artifact?.content || null,
+    }).select().single();
+    if (error) throw error;
+    await supabase.from('chat_conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+    return {
+      id: String(data.id),
+      role,
+      content,
+      artifact,
+      createdAt: String(data.created_at),
+      pinned: Boolean(data.pinned),
+    };
+  }
+  async sendMessage(conversationId: string, content: string, options?: {
+    resumeId?: string;
+    resumeContent?: string;
+    atsReview?: AtsReview;
+  }): Promise<ChatMessage> {
+    await this.appendMessage(conversationId, 'user', content);
+    const { data: history } = await supabase
+      .from('chat_messages')
+      .select('role, content')
+      .eq('conversation_id', conversationId)
+      .order('created_at');
     const { data, error } = await invokeAiChat({
       messages: (history || []).map((m) => ({ role: m.role, content: m.content })),
+      mode: options?.resumeId ? 'resume_improvement' : undefined,
+      resumeId: options?.resumeId,
+      resumeContent: options?.resumeContent,
+      atsReview: options?.atsReview,
     });
     if (error) throw error;
     const reply = data?.reply || '';
-    const { data: msg } = await supabase.from('chat_messages').insert({
-      user_id: userId,
-      conversation_id: conversationId,
-      role: 'assistant',
-      content: reply,
-    }).select().single();
-    await supabase.from('chat_conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
-    return {
-      id: String(msg?.id),
-      role: 'assistant',
-      content: reply,
-      createdAt: new Date().toISOString(),
-    };
+    return await this.appendMessage(conversationId, 'assistant', reply);
+  }
+  async streamReply(
+    conversationId: string,
+    history: ChatMessage[],
+    onToken: (token: string) => void,
+    options?: {
+      resumeId?: string;
+      resumeContent?: string;
+      atsReview?: AtsReview;
+    },
+  ): Promise<ChatMessage> {
+    const { data, error } = await invokeAiChat({
+      messages: history.map((m) => ({ role: m.role, content: m.content })),
+      mode: options?.resumeId ? 'resume_improvement' : undefined,
+      resumeId: options?.resumeId,
+      resumeContent: options?.resumeContent,
+      atsReview: options?.atsReview,
+    });
+    if (error) throw error;
+    const reply = data?.reply || '';
+    onToken(reply);
+    return await this.appendMessage(conversationId, 'assistant', reply);
+  }
+  async openResumeImprovement(resumeId: string): Promise<ChatConversation> {
+    const resume = await new ResumeService().get(resumeId);
+    if (!resume) throw new Error('Resume not found');
+    if (!resume.atsReview) throw new Error('Run Score ATS on this resume first');
+
+    let conv = await this.findConversationForResume(resumeId);
+    if (!conv) {
+      conv = await this.createConversation(`ATS: ${resume.name}`.slice(0, 120), { resumeId });
+    }
+
+    if (!conv.messages.length) {
+      const kickoff = `I scored "${resume.name}" and want help implementing the ATS feedback. Please review the feedback, ask me any clarifying questions you need, and help me update the resume step by step.`;
+      await this.appendMessage(conv.id, 'user', kickoff);
+      const assistant = await this.streamReply(conv.id, [
+        { id: 'kickoff-user', role: 'user', content: kickoff, createdAt: new Date().toISOString() },
+      ], () => {}, {
+        resumeId,
+        resumeContent: resume.content,
+        atsReview: resume.atsReview,
+      });
+      conv = await this.getConversation(conv.id) || conv;
+      if (!conv.messages.some((m) => m.id === assistant.id)) {
+        conv.messages.push(assistant);
+      }
+    }
+
+    return conv;
   }
   async pinMessage(conversationId: string, messageId: string): Promise<void> {
     const { data: msg } = await supabase.from('chat_messages').select('pinned').eq('id', messageId).maybeSingle();

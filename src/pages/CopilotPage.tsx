@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   Sparkles, Send, Plus, Pin, MessageSquare, Trash2, Paperclip,
   FileText, Mail, Briefcase, Code, TrendingUp, Star, PanelLeft,
 } from 'lucide-react';
-import { PageHeader } from '@/components/shared/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,6 +28,8 @@ const CAPABILITIES = [
 ];
 
 export function CopilotPage() {
+  const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const { data: conversations } = useQuery({ queryKey: ['conversations'], queryFn: () => services.chat.listConversations() });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -36,6 +38,12 @@ export function CopilotPage() {
   const [pinned, setPinned] = useState(false);
   const [conversationsOpen, setConversationsOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeConversation = conversations?.find((conversation) => conversation.id === activeId);
+  const { data: linkedResume } = useQuery({
+    queryKey: ['resume', activeConversation?.resumeId],
+    queryFn: () => services.resume.get(activeConversation!.resumeId!),
+    enabled: Boolean(activeConversation?.resumeId),
+  });
 
   useEffect(() => {
     if (activeId) {
@@ -45,8 +53,15 @@ export function CopilotPage() {
   }, [activeId, conversations]);
 
   useEffect(() => {
-    if (!activeId && conversations?.length) setActiveId(conversations[0].id);
-  }, [conversations, activeId]);
+    if (!conversations?.length) return;
+    const requestedId = searchParams.get('conversation');
+    const requestedExists = requestedId && conversations.some((conversation) => conversation.id === requestedId);
+    if (requestedExists && activeId !== requestedId) {
+      setActiveId(requestedId);
+    } else if (!activeId) {
+      setActiveId(conversations[0].id);
+    }
+  }, [conversations, activeId, searchParams]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -54,6 +69,13 @@ export function CopilotPage() {
 
   const send = async () => {
     if (!input.trim() || streaming) return;
+    let conversationId = activeId;
+    if (!conversationId) {
+      const conversation = await services.chat.createConversation('New conversation');
+      conversationId = conversation.id;
+      setActiveId(conversationId);
+    }
+
     const userMsg: ChatMessage = { id: uid('msg'), role: 'user', content: input, createdAt: new Date().toISOString() };
     setMessages((m) => [...m, userMsg]);
     setInput('');
@@ -62,14 +84,22 @@ export function CopilotPage() {
     const assistantMsg: ChatMessage = { id: uid('msg'), role: 'assistant', content: '', createdAt: new Date().toISOString() };
     setMessages((m) => [...m, assistantMsg]);
 
-    await services.ai.stream('claude', [...messages, userMsg], (token) => {
-      setMessages((m) => {
-        const copy = [...m];
-        copy[copy.length - 1] = { ...copy[copy.length - 1], content: token };
-        return copy;
-      });
-    });
-    setStreaming(false);
+    try {
+      await services.chat.sendMessage(conversationId, userMsg.content, activeConversation?.resumeId ? {
+        resumeId: activeConversation.resumeId,
+        resumeContent: linkedResume?.content,
+        atsReview: linkedResume?.atsReview,
+      } : undefined);
+      const updatedConversation = await services.chat.getConversation(conversationId);
+      setMessages(updatedConversation?.messages || []);
+      await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    } catch (err) {
+      setMessages((current) => current.filter((message) => message.id !== assistantMsg.id));
+      toast.error(err instanceof Error ? err.message : 'Could not send message');
+      await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    } finally {
+      setStreaming(false);
+    }
   };
 
   const newChat = async () => {
@@ -77,6 +107,7 @@ export function CopilotPage() {
     setActiveId(conv.id);
     setMessages([]);
     setConversationsOpen(false);
+    await queryClient.invalidateQueries({ queryKey: ['conversations'] });
     toast.success('New conversation started');
   };
 
@@ -137,7 +168,13 @@ export function CopilotPage() {
             </Button>
             <Sparkles className="h-5 w-5 shrink-0 text-primary" />
             <span className="truncate font-medium">AI Copilot</span>
-            <Badge variant="secondary" className="hidden text-[10px] sm:inline-flex">Claude 3.5 Sonnet</Badge>
+            {activeConversation?.resumeId ? (
+              <Badge variant="secondary" className="hidden max-w-48 truncate text-[10px] sm:inline-flex">
+                ATS review: {linkedResume?.name || 'linked resume'}
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="hidden text-[10px] sm:inline-flex">Career assistant</Badge>
+            )}
           </div>
           <Button variant="ghost" size="sm" onClick={() => setPinned(!pinned)} className="shrink-0 gap-1.5">
             <Pin className={cn('h-3.5 w-3.5', pinned && 'fill-primary text-primary')} />
@@ -203,7 +240,7 @@ export function CopilotPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-                placeholder="Ask anything about your job search..."
+                placeholder={activeConversation?.resumeId ? 'Continue improving this resume…' : 'Ask anything about your job search…'}
                 rows={1}
                 className="min-h-[2.5rem] border-0 bg-transparent shadow-none focus-visible:ring-0"
               />

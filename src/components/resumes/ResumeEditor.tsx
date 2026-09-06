@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
-  FileText, Download, Sparkles, FileCheck, Cloud, CloudUpload, TrendingUp,
+  FileText, Download, Sparkles, FileCheck, Cloud, CloudUpload, TrendingUp, MessageSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { services } from '@/services';
 import { toast } from 'sonner';
-import type { Resume } from '@/types';
+import type { AtsReview, Resume } from '@/types';
 
 export function ResumeEditor({
   resume,
@@ -26,10 +27,13 @@ export function ResumeEditor({
   showGenerateTailored?: boolean;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [content, setContent] = useState('');
   const [atsScore, setAtsScore] = useState(0);
+  const [atsReview, setAtsReview] = useState<AtsReview | undefined>();
   const [driveFileId, setDriveFileId] = useState<string | undefined>();
   const [scoring, setScoring] = useState(false);
+  const [openingCopilot, setOpeningCopilot] = useState(false);
   const [syncingDrive, setSyncingDrive] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [activeTab, setActiveTab] = useState('edit');
@@ -38,9 +42,10 @@ export function ResumeEditor({
     if (!resume) return;
     setContent('');
     setAtsScore(resume.atsScore);
+    setAtsReview(resume.atsReview);
     setDriveFileId(resume.driveFileId);
     setActiveTab('edit');
-  }, [resume?.id, resume?.atsScore, resume?.driveFileId]);
+  }, [resume?.id, resume?.atsScore, resume?.atsReview, resume?.driveFileId]);
 
   if (!resume) return null;
   const displayContent = content || resume.content;
@@ -56,18 +61,33 @@ export function ResumeEditor({
   const scoreATS = async () => {
     setScoring(true);
     try {
-      const { score, feedback } = await services.ats.score(displayContent);
-      await services.resume.updateScore(resume.id, score, displayContent);
-      setAtsScore(score);
+      const review = await services.ats.score(displayContent);
+      await services.resume.updateAtsReview(resume.id, review, displayContent);
+      setAtsScore(review.score);
+      setAtsReview(review);
       await qc.invalidateQueries({ queryKey: ['resumes'] });
-      toast.success(`ATS Score: ${score}/100`);
-      if (feedback?.length) {
-        toast.message('ATS feedback', { description: feedback.slice(0, 2).join(' · ') });
-      }
+      onResumeUpdated();
+      setActiveTab('ats-review');
+      toast.success(`ATS Score: ${review.score}/100`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'ATS scoring failed');
     } finally {
       setScoring(false);
+    }
+  };
+
+  const discussAtsReview = async () => {
+    if (!atsReview) return;
+    setOpeningCopilot(true);
+    try {
+      const conversation = await services.chat.openResumeImprovement(resume.id);
+      await qc.invalidateQueries({ queryKey: ['conversations'] });
+      onClose();
+      navigate(`/copilot?conversation=${encodeURIComponent(conversation.id)}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not open the ATS review conversation');
+    } finally {
+      setOpeningCopilot(false);
     }
   };
 
@@ -137,6 +157,7 @@ export function ResumeEditor({
             <TabsTrigger value="edit">Markdown Editor</TabsTrigger>
             <TabsTrigger value="preview">Preview</TabsTrigger>
             <TabsTrigger value="pdf">PDF View</TabsTrigger>
+            <TabsTrigger value="ats-review" disabled={!atsReview}>ATS Review</TabsTrigger>
           </TabsList>
           <TabsContent value="edit" className="mt-4">
             <Textarea
@@ -169,6 +190,35 @@ export function ResumeEditor({
               </div>
             </div>
           </TabsContent>
+          <TabsContent value="ats-review" className="mt-4">
+            {atsReview ? (
+              <div className="max-h-[55vh] space-y-5 overflow-y-auto scrollbar-thin pr-1">
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Latest ATS score</p>
+                  <p className="mt-1 text-3xl font-semibold text-primary">{atsReview.score}<span className="text-base text-muted-foreground">/100</span></p>
+                  <p className="mt-2 text-xs text-muted-foreground">Scored {new Date(atsReview.scoredAt).toLocaleString()}</p>
+                </div>
+
+                <ReviewSection title="Feedback" items={atsReview.feedback} />
+                <ReviewSection title="Suggested improvements" items={atsReview.suggestions} />
+
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="text-sm font-medium">Choose how to apply this review</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Edit the Markdown tab yourself, or continue in a resume-linked Copilot conversation. The conversation is saved so you can return to it later.</p>
+                  <Button
+                    className="mt-3 gap-2"
+                    onClick={discussAtsReview}
+                    disabled={openingCopilot}
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {openingCopilot ? 'Opening Copilot…' : 'Discuss in Copilot'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Run Score ATS to save a review for this resume.</p>
+            )}
+          </TabsContent>
         </Tabs>
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button onClick={save} className="gap-2"><FileCheck className="h-4 w-4" /> Save</Button>
@@ -188,6 +238,22 @@ export function ResumeEditor({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReviewSection({ title, items }: { title: string; items?: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <section>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <ul className="mt-2 space-y-2">
+        {items.map((item, index) => (
+          <li key={`${title}-${index}`} className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
+            {item}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

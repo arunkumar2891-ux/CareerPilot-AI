@@ -70,12 +70,20 @@ export interface Job {
   createdAt: string;
 }
 
+export interface AtsReview {
+  score: number;
+  feedback: string[];
+  suggestions?: string[];
+  scoredAt: string;
+}
+
 export interface Resume {
   id: string;
   name: string;
   type: 'technical' | 'executive' | 'creative' | 'general';
   content: string;
   atsScore: number;
+  atsReview?: AtsReview;
   versions: ResumeVersion[];
   jobId?: string;
   driveFileId?: string;
@@ -389,6 +397,7 @@ export interface ChatMessage {
 export interface ChatConversation {
   id: string;
   title: string;
+  resumeId?: string;
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;

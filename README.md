@@ -2,441 +2,215 @@
 
 [![Open in Bolt](https://bolt.new/static/open-in-bolt.svg)](https://bolt.new/~/sb1-4mtzrxod)
 
-An autonomous AI-powered job search platform that discovers roles, tailors resumes, compiles PDFs, uploads to Google Drive, and emails you a daily summary — all without manual intervention.
+CareerPilot AI is a full-stack job-search workspace. It discovers LinkedIn roles, creates job-specific resumes, tracks applications, and runs a resumable automation pipeline from a React dashboard.
 
----
+The frontend is a Vite single-page application. Supabase supplies authentication, PostgreSQL, storage, and Deno Edge Functions; no external workflow orchestrator is required.
 
-## Overview
+## What it does
 
-CareerPilot AI is a production-ready React SPA that acts as a **command center for your job search**. It combines LinkedIn job discovery, ATS-optimized resume tailoring, application tracking, a visual workflow engine, and conversational AI into one cohesive product.
-
-The backend runs entirely on **Supabase** — PostgreSQL for data, Auth for identity, Storage for PDFs, and **Edge Functions (Deno)** for server-side workflow execution. No external orchestrators (n8n, Zapier, Make) are required.
-
----
-
-## How It Works
-
-```
-┌─────────────┐        ┌───────────────────────────────────────────┐
-│  React SPA  │───────▶│  Supabase (Auth · PostgreSQL · Storage)   │
-│  (Vite)     │        └───────────────────────────────────────────┘
-└──────┬──────┘                          ▲
-       │ invoke                          │ service role
-       ▼                                 │
-┌──────────────────────────────────────────────────┐
-│  Supabase Edge Functions (Deno)                  │
-│  workflow-run · workflow-step · workflow-scheduler │
-│  workflow-cancel · workflow-retry-failed          │
-│  ai-chat · google-oauth-start · google-oauth-cb   │
-└──────────────────────────────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────────────────────────┐
-│  External APIs                                   │
-│  Apify · Gemini · Groq · Resend · Google Drive   │
-└──────────────────────────────────────────────────┘
-```
-
----
-
-## Built-in Job Search Pipeline
-
-Every user gets a **pre-provisioned 18-node workflow** on first login — zero setup required.
-
-On sign-in, the app automatically creates:
-
-| Resource | Details |
-|----------|---------|
-| **Daily Job Search Pipeline** | Full workflow in Workflow Studio |
-| **Daily 7 AM Automation** | Active cron schedule (`0 7 * * *`) |
-| **Master ATS Bullet Bank** + **2-Page Template** + **6 role banks** (`ATS Bank: …`) | Seeded from `src/content/career-corpus`; ATS picks the bank that matches the job |
-| **Role Playbooks** | Integration Architect, GenAI Developer, FDE, Cloud Architect, AI/ML Engineer, Engineering Manager |
-| **Default Settings** | Job query, location, posted-within window, max jobs, Google Doc ID, Drive folder ID, notification email |
-| **Career Evidence Chunks** | Tagged knowledge chunks for RAG-style resume tailoring |
-
-### Pipeline Steps
-
-```
-Schedule (7 AM daily)
-  → Sync Google Doc master resume (optional; Settings → Google Doc ID)
-  → Build LinkedIn search from Settings (keywords + location + date posted)
-  → Apify scrape (explicit keywords/location — not a loose URL search)
-  → Parse jobs and drop listings that do not match the search query
-  → Limit + duplicate filter
-  → For each new job (one Edge Function slice per job):
-      → Store job in Supabase
-      → Pick role-specific ATS bank from the JD
-      → Gemini ATS tailoring (copy/light-edit real bullets; human-like voice)
-      → Build LaTeX (NAME, CONTACT, SUMMARY, EXPERIENCE, SKILLS, EDUCATION)
-      → Compile PDF
-      → Upload to Storage
-      → Upload to the Google Drive folder from Settings
-        File name: Company_YourName_Role_ddmmyyyy.pdf
-  → Email summary via Resend
-```
-
-Configure in **Settings → Job Search**. Paste a **Google Doc** link/ID for the master resume and a **Drive folder** link/ID for PDFs — both are stored in settings and can be changed anytime. Fill **Profile** contact + name so PDFs and headers are complete.
-
-**Executions:** live progress, per-job observability, **Stop** (sets `cancelled` and clears the step queue), **Retry Failed Jobs**, delete one run or clear all. Stop persists in the database; an in-flight Gemini call may finish that one job but will not start the next slice.
-
-Aliases like `FDE` expand to `Forward Deployed Engineer` before LinkedIn search.
-
-The workflow definition lives in `src/constants/workflow-seed.ts` and is provisioned by `BootstrapService` in `src/services/index.ts`.
-
----
-
-## Features
-
-### Dashboard & Discovery
-| Module | Description |
-|--------|-------------|
-| **Dashboard** | Real-time metrics, 14-day trend charts, workflow run history, active agents, and notifications |
-| **Job Discovery** | Search and filter jobs with kanban/table views; **Run Search** triggers the pipeline on-demand |
-| **Applications** | Full lifecycle tracking with status timelines, recruiters, notes, and attachments |
-
-### Studio
-| Module | Description |
-|--------|-------------|
-| **Resumes** | ATS scoring, version history, and AI-tailored generation per job listing |
-| **Cover Letters** | Draft and version cover letters, optionally linked to specific jobs |
-| **AI Copilot** | Multi-conversation chat (resume improvement, JD analysis, interview prep, salary negotiation) |
-
-### Automation
-| Module | Description |
-|--------|-------------|
-| **Automations** | Cron-scheduled workflow runs (daily job search is pre-created); clone, pause, toggle |
-| **Workflow Studio** | Visual DAG builder with 28 node types; inspect or customize the pipeline |
-| **AI Agents** | 10 agent types: resume optimizer, ATS analyzer, job matcher, interview coach, and more |
-
-### Resources & Insights
-| Module | Description |
-|--------|-------------|
-| **Documents** | File management with folders, tags, and version history |
-| **Knowledge Base** | Career evidence chunks with tag-based retrieval for RAG-style resume tailoring |
-| **Analytics** | Job funnel metrics, interview/offer rates, and AI usage tracking |
-| **Execution History** | Live duration, current step, per-job progress with observability; **Stop** a running/zombie run; **Retry Failed Jobs**; delete one or all |
-
-### Configuration
-| Module | Description |
-|--------|-------------|
-| **Integrations** | Add from a catalog of 15+ services (Google Drive/Docs, Apify, OpenAI, Claude, Gemini, Slack, GitHub, SMTP, and more); connect/disconnect, test connections, view sync logs |
-| **Prompt Library** | Versioned prompt templates with variable substitution and in-app AI testing |
-| **Setup Guide** | Step-by-step onboarding checklist |
-| **Settings** | Profile/contact, job search (query, location, posted within, max jobs, Google Doc ID, Drive folder), appearance, notifications |
-
----
-
-## Standalone Workflow Engine
-
-CareerPilot includes a **generic, resumable workflow executor** on Supabase Edge Functions:
-
-- Visual Workflow Studio saves DAGs to `workflow_nodes` / `workflow_edges`
-- Resumable execution via `workflow_step_queue` (Apify polling, wait nodes, **one job per ATS/PDF slice**)
-- Stop/cancel writes `workflow_runs.status = cancelled` and deletes queued steps
-- Retry failed jobs requeues them for re-execution
-- Scheduled automations via pg_cron → `workflow-scheduler` Edge Function
-- 28 node types across 5 categories: triggers, AI, integrations, logic, and data transforms
-- Per-item processing with conditional branching, loops, and merge nodes
-- Execution observability: per-job and per-node execution records with error types, retry counts, and duration tracking
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Framework | React 18 + TypeScript |
-| Build | Vite 5 |
-| Routing | React Router DOM 7 |
-| Styling | Tailwind CSS 3 + shadcn/ui (New York variant, ~45 primitives) |
-| State | Zustand 5 (UI, auth, notifications) |
-| Server State | TanStack React Query 5 |
-| Backend | Supabase (PostgreSQL 17 + Auth + Storage + Edge Functions) |
-| Edge Runtime | Deno (Supabase Edge Functions) |
-| Scheduler | pg_cron + pg_net (Postgres extensions) |
-| Forms | React Hook Form + Zod |
-| Charts | Recharts |
-| Animation | Framer Motion |
-| Icons | Lucide React |
-| PDF | LaTeX → PDF via ytotech.com API |
-| Email | Resend |
-| Scraping | Apify (LinkedIn Jobs Scraper actor) |
-| AI | Google Gemini primary (`gemini-3.6-flash`); Groq fallback (`openai/gpt-oss-120b`) |
-
----
+- Finds LinkedIn jobs through an Apify actor and filters duplicates.
+- Uses a career corpus, role playbooks, and tagged evidence to tailor resumes for a job description.
+- Produces a PDF with LaTeX, stores it in Supabase Storage, and can sync it to Google Drive from the Resume workspace.
+- Tracks jobs and applications, including status timelines, notes, and attachments.
+- Provides an AI Copilot, ATS scoring/review, cover-letter drafting, analytics, an integrations catalog, and a knowledge base.
+- Runs scheduled searches and exposes run, job, and node-level execution history, with cancellation and retry of failed jobs.
 
 ## Architecture
 
+```text
+React + Vite SPA
+        │
+        ▼
+Supabase Auth / PostgreSQL / Storage / RLS
+        │
+        ▼
+Supabase Edge Functions
+  workflow-run · workflow-step · workflow-scheduler
+  ai-chat · resume-actions · Google OAuth helpers
+        │
+        ▼
+Apify · Gemini (primary) · Groq (fallback) · Resend · Google APIs · LaTeX compiler
 ```
+
+The client uses React Router, TanStack Query, Zustand, Tailwind CSS, and shadcn/ui components. Server-side operations are implemented in TypeScript/Deno Edge Functions, keeping provider keys out of the browser.
+
+## Job-search pipeline
+
+On first authenticated load, `BootstrapService` provisions default settings, career-corpus records, the workflow, and a daily automation. The current default workflow has 17 nodes:
+
+```text
+Daily schedule
+  → optional Google Doc resume sync
+  → build LinkedIn query
+  → start and poll Apify scrape
+  → fetch and parse results
+  → limit and de-duplicate jobs
+  → store job
+  → ATS optimization
+  → build LaTeX and compile PDF
+  → store PDF
+  → assemble and send summary email
+```
+
+Long-running work is checkpointed in `workflow_step_queue`. The scheduler resumes Apify polling, waiting nodes, and queued job slices, which keeps a multi-job run within Edge Function execution limits. A user can cancel a run or retry failed job slices from Execution History.
+
+The default workflow definition is in [src/constants/workflow-seed.ts](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/constants/workflow-seed.ts). The workflow can be customized through the data model; the available node types cover triggers, AI, integrations, logic, and transforms.
+
+## Application areas
+
+| Area | Purpose |
+| --- | --- |
+| Dashboard | Metrics, trends, notifications, and recent activity |
+| Job Discovery | Search results, filtering, and on-demand pipeline runs |
+| Applications | Application status, events, recruiter details, notes, and files |
+| Corpus | Seeded master resume, two-page template, and role-specific bullet banks |
+| Resumes | Resume editing, versions, ATS reviews, PDF generation, and Google Drive sync |
+| Cover Letters and AI Copilot | Drafting, resume/JD assistance, interview preparation, and chat history |
+| Knowledge Base | Google Doc sync and tagged career-evidence retrieval |
+| Execution History | Workflow graph, logs, per-job/node outcomes, cancellation, and retries |
+| Analytics | Funnel metrics and AI usage |
+| Integrations and Settings | Third-party connections, profile/contact data, queries, schedules, and notifications |
+
+## Repository layout
+
+```text
 src/
-├── App.tsx                        # Root router, auth guard, QueryClient provider
-├── layouts/AppLayout.tsx          # Shell (Sidebar + Topbar) + auto-bootstrap on login
-├── pages/ (14 pages)              # One page per route
-├── components/
-│   ├── ui/ (~45 files)            # shadcn/ui primitives (Button, Dialog, Table, etc.)
-│   ├── layout/                    # Sidebar, Topbar, CommandPalette
-│   ├── shared/                    # PageHeader, MetricCard, StatusBadge, EmptyState
-│   └── executions/                # ExecutionGraph, ExecutionNodeDetailSheet
-├── services/index.ts              # Supabase service layer + BootstrapService
-├── constants/
-│   ├── index.ts                   # Navigation, statuses, colors, job boards
-│   └── workflow-seed.ts           # Built-in pipeline definition (18 nodes, 17 edges)
-├── content/career-corpus/         # Master bullet bank, role playbooks, evidence
-├── store/index.ts                 # Zustand stores (UI, auth, notifications)
-├── types/index.ts                 # Domain TypeScript interfaces
-├── hooks/                         # Custom hooks (use-toast, etc.)
-├── lib/                           # supabase.ts, auth.ts, utils.ts
-└── utils/                         # cron-schedule, execution-graph, google, index
+  pages/                       Routed product pages
+  components/                  Layout, shared, resume, execution, and UI components
+  services/index.ts            Typed Supabase-facing service layer and bootstrap logic
+  content/career-corpus/       Resume source material, role playbooks, and evidence chunks
+  constants/workflow-seed.ts   Default 17-node workflow
+  lib/                         Supabase client and auth helpers
+  store/                       Zustand stores
 
 supabase/
-├── config.toml                    # Local dev config (ports, JWT, functions)
-├── migrations/ (12 SQL files)     # Schema, RLS, storage, cron, chunks, observability
-└── functions/
-    ├── workflow-run/              # Start a workflow run (returns immediately; work continues in waitUntil)
-    ├── workflow-step/             # Resume due steps (next job slice, Apify wait)
-    ├── workflow-scheduler/        # Cron: due automations + wait queue
-    ├── workflow-cancel/           # Stop a run (also done from the client + RLS)
-    ├── workflow-retry-failed/     # Requeue failed job slices for re-execution
-    ├── ai-chat/                   # LLM gateway (chat, tailoring, ATS scoring, Google Doc sync)
-    ├── google-oauth-start/        # Initiate Google OAuth (Drive read + write to your folder)
-    ├── google-oauth-callback/     # Token exchange + credential storage
-    ├── google-access-token/       # Token refresh utility
-    └── _shared/
-        ├── supabase-admin.ts
-        ├── credentials.ts
-        ├── ai/                    # Gemini primary + Groq fallback router, timeouts, retries
-        ├── google-drive.ts        # Folder/Doc ID parse, PDF file names
-        ├── google-doc-sync.ts     # Pull master resume from Google Docs
-        ├── resume-latex.ts        # ATS text → moderncv
-        ├── career-corpus/         # Playbooks, role banks, prompts
-        └── workflow/              # DAG executor, job pipeline slices, cancel, observability
+  migrations/                  Ordered schema, RLS, storage, scheduler, and feature migrations
+  functions/                   Deno Edge Functions and shared workflow/AI helpers
+
+scripts/
+  sync-careerpilot-section.mjs Bundles the CareerPilot resume section for Edge Functions
 ```
 
-### Data Flow
+## Prerequisites
 
-1. **Pages** fetch data via TanStack Query, calling typed methods on the `services` object.
-2. **Services** map Supabase rows to domain objects and encapsulate business logic.
-3. **BootstrapService** runs on login to ensure the pipeline, automation, corpus, and settings exist.
-4. **Edge Functions** execute workflow nodes server-side using credentials from the `integrations` table.
-5. **Zustand** manages client-side UI state: theme, sidebar collapse, auth session, notifications.
-6. **Protected routes** redirect unauthenticated users to `/auth`.
+- Node.js 18 or later
+- A Supabase project
+- Gemini API key for AI functionality
+- Apify token for the automated LinkedIn search
+- Resend API key for email summaries
+- Google OAuth credentials only if using Google Docs or Drive
 
-### Authentication
+## Local development
 
-Supports multiple sign-in methods via Supabase Auth:
-
-- Email + password (sign up / sign in)
-- OAuth (Google)
-- Magic link (OTP via email)
-
-User profiles are stored in a `profiles` table and auto-created on first login via a database trigger.
-
----
-
-## Database Schema
-
-Key tables (all protected by Row-Level Security):
-
-| Table | Purpose |
-|-------|---------|
-| `profiles` | User profile (name, title, email, plan tier, AI credits) |
-| `jobs` | Discovered listings (company, role, description, match score, skills, resume status) |
-| `resumes` / `resume_versions` | Resume content with versioning and ATS scores |
-| `cover_letters` | Generated cover letters linked to jobs |
-| `applications` / `application_events` | Application tracker with timeline |
-| `workflows` / `workflow_nodes` / `workflow_edges` | DAG-based workflow definitions |
-| `workflow_runs` / `workflow_run_nodes` / `workflow_logs` | Execution state and logging |
-| `workflow_job_executions` / `workflow_node_executions` | Per-job and per-node observability |
-| `workflow_step_queue` | Resumable async step queue |
-| `knowledge_chunks` | Career evidence chunks (tags, collection, content) |
-| `integrations` / `integration_logs` | Third-party connections (credentials hidden from client) |
-| `chat_conversations` / `chat_messages` | AI Copilot history |
-| `automations` | Scheduled workflow triggers |
-| `prompts` / `prompt_versions` | Versioned prompt templates |
-| `agents` / `agent_runs` | AI agent definitions and execution history |
-| `documents` / `document_versions` | File metadata and versions |
-| `notifications` | In-app and email notifications |
-| `settings` | Per-user settings (JSONB) |
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- A [Supabase](https://supabase.com) project (free tier works)
-- API keys: Gemini (required), Apify (for job scraping), Resend (for email)
-
-### Installation
+Install dependencies and create a local frontend environment file:
 
 ```bash
-git clone https://github.com/your-username/CareerPilot-AI.git
-cd CareerPilot-AI
 npm install
 ```
 
-### Environment Variables
-
-Copy `.env.example` to `.env` and fill in your Supabase project values:
+Create `.env` with only the public Supabase values:
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-> **Important:** API keys for Apify, Gemini, Groq, Resend, and Google OAuth belong in **Supabase Edge Function secrets**, not in the frontend `.env`. See [DEPLOY.md](DEPLOY.md).
-
-### Database Migrations
-
-Run in the Supabase SQL Editor, in order:
-
-| # | File | Purpose |
-|---|------|---------|
-| 1 | `001_workflow_engine.sql` | Core schema: all tables, RLS policies, RPCs |
-| 2 | `002_storage.sql` | `resumes` storage bucket + RLS |
-| 3 | Enable `pg_cron` + `pg_net` extensions | Dashboard → Database → Extensions |
-| 4 | `003_cron.sql` | pg_cron scheduler (edit project ref + secret first) |
-| 5 | `004_fix_integrations_security.sql` | SECURITY INVOKER for integrations RPC |
-| 6 | `005_knowledge_chunks.sql` | Career evidence chunks for RAG tailoring |
-| 7 | `006_knowledge_chunks_source_id.sql` | `source_id` on knowledge chunks |
-| 8 | `007_workflow_runs_delete.sql` | Delete own execution history |
-| 9 | `008_workflow_runs_cancel.sql` | Update own runs (Stop) + delete step queue |
-| 10 | `009_knowledge_chunks_tags.sql` | Tags column on knowledge chunks |
-| 11 | `010_workflow_runs_status.sql` | Workflow run status corrections |
-| 12 | `011_execution_observability.sql` | Per-job and per-node execution tracking tables |
-| 13 | `012_automation_schedule_utc.sql` | Store automation schedules in UTC |
-
-### Development
+Then run the application:
 
 ```bash
-npm run dev        # Start dev server (http://localhost:5173)
-npm run build      # Type-check + production build
-npm run preview    # Preview production build locally
+npm run dev        # http://localhost:5173
 npm run lint       # ESLint
-npm run typecheck  # TypeScript check (no emit)
+npm run typecheck  # TypeScript, no emit
+npm run build      # sync corpus, type-check, then Vite production build
+npm run preview    # serve the production build
 ```
 
-### First Run
+Do not put provider API keys in `.env` or expose them through `VITE_` variables. Configure those as Supabase Edge Function secrets instead.
 
-1. Sign up / log in — the pipeline, automation, and corpus are created automatically
-2. **Settings → Profile** — name (used in PDF file names) and contact (resume header)
-3. **Settings → Job Search** — query, location, posted within, max jobs, Google Doc resume ID/URL, **Drive folder ID/URL**, notification email
-4. **Integrations → Add Integration** — choose from the catalog; connect Google (required to read the Doc and write PDFs into your folder)
-5. Add Apify / Gemini / Resend as Edge Function secrets if not already set
-6. **Jobs → Run Search** — trigger the pipeline
-7. **Executions** — watch per-job slices; **Stop** if a run is stuck; **Retry Failed Jobs** to requeue
+## Supabase setup
 
----
+Apply every SQL migration in filename order. Before `003_cron.sql`, enable the `pg_cron` and `pg_net` extensions. Migration `003` contains placeholders for the project reference and scheduler secret; replace them before running it.
 
-## Edge Function Secrets
+| Range | Scope |
+| --- | --- |
+| `001`–`004` | Workflow engine, resume storage, scheduler, and integrations security |
+| `005`–`010` | Career knowledge chunks, execution deletion/cancellation, and status support |
+| `011`–`013` | Execution observability and automation scheduling repairs |
+| `014`–`016` | Resume-to-job links, PDF/Drive fields, and corpus classification |
+| `017`–`018` | AI usage events, persisted ATS reviews, and resume-linked chat |
 
-Set via `supabase secrets set` (see [DEPLOY.md](DEPLOY.md)):
+For exact migration and scheduler instructions, see [DEPLOY.md](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/DEPLOY.md). The deployment guide is especially important for the cron endpoint, because scheduled and waiting workflows require `workflow-scheduler` to run every minute.
 
-| Secret | Purpose |
-|--------|---------|
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side DB access (bypass RLS) |
-| `GEMINI_API_KEY` | Primary AI (resume tailoring, chat, ATS scoring) |
-| `GEMINI_MODEL` | Optional; default `gemini-3.6-flash` |
-| `GROQ_API_KEY` | Fallback AI if Gemini times out, rate-limits, or is missing |
-| `GROQ_MODEL` | Optional; default `openai/gpt-oss-120b` |
-| `AI_PRIMARY_PROVIDER` | Optional; default `gemini` |
-| `AI_FALLBACK_PROVIDER` | Optional; default `groq` |
-| `AI_TIMEOUT_MS` | Optional chat timeout; default `30000` |
-| `AI_ATS_TIMEOUT_MS` | Optional ATS/Gemini tailoring timeout; default `75000` |
-| `AI_MAX_RETRIES` | Optional; default `1` (do not stack long Gemini retries) |
-| `APIFY_TOKEN` | LinkedIn job scraping via Apify actor |
-| `RESEND_API_KEY` | Email summaries |
-| `RESEND_FROM_EMAIL` | Sender email address |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL |
-| `APP_URL` | Frontend URL (for OAuth redirects) |
-| `LATEX_COMPILER_URL` | PDF generation endpoint (default: `latex.ytotech.com`) |
-| `WORKFLOW_SCHEDULER_SECRET` | Authenticate pg_cron → scheduler calls |
+### Edge Function secrets
 
----
+Set the secrets needed by the features you enable, for example:
 
-## AI Providers
+```bash
+supabase secrets set \
+  SUPABASE_SERVICE_ROLE_KEY=your_service_role_key \
+  GEMINI_API_KEY=your_gemini_key \
+  APIFY_TOKEN=your_apify_token \
+  RESEND_API_KEY=your_resend_key \
+  RESEND_FROM_EMAIL='CareerPilot <onboarding@resend.dev>' \
+  WORKFLOW_SCHEDULER_SECRET=your_random_secret \
+  APP_URL=http://localhost:5173
+```
 
-CareerPilot AI uses **Gemini** as the primary model (`gemini-3.6-flash` by default) for ATS tailoring, chat, and ATS scoring. **Groq** (`openai/gpt-oss-120b` by default) is used only as a fallback when Gemini times out, returns 429/5xx, or has no API key. Workflow prompts, role-specific ATS banks, and LaTeX/PDF generation are unchanged.
+Optional configuration includes:
 
-Calls run only in Edge Functions (`supabase/functions/_shared/ai/`). Do not set `VITE_GROQ_API_KEY` or any provider key on the frontend.
+| Secret | Use |
+| --- | --- |
+| `GEMINI_MODEL` | Overrides the primary Gemini model (default: `gemini-3.6-flash`) |
+| `GROQ_API_KEY`, `GROQ_MODEL` | Enables the Groq fallback (default model: `openai/gpt-oss-120b`) |
+| `AI_PRIMARY_PROVIDER`, `AI_FALLBACK_PROVIDER` | Selects provider order; defaults to Gemini then Groq |
+| `AI_TIMEOUT_MS`, `AI_ATS_TIMEOUT_MS`, `AI_MAX_RETRIES` | Adjusts AI timeouts and retries |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Google Docs/Drive OAuth |
+| `DEPLOY_SYNC_SECRET` | Authenticates the deploy-triggered CareerPilot Google Doc sync |
+| `LATEX_COMPILER_URL` | Overrides the PDF compiler endpoint |
 
-| Provider | Notes |
-|----------|--------|
-| Gemini (primary) | Set `GEMINI_MODEL` to change the model id |
-| Groq (fallback) | Set `GROQ_API_KEY` / `GROQ_MODEL`; used after retryable Gemini failures |
-| Other node types | `openai` / `claude` nodes use the same AI router |
+Deploy all functions after setting secrets:
 
----
+```bash
+supabase functions deploy --project-ref YOUR_PROJECT_REF
+```
 
-## Workflow Node Types
+The repository also includes a GitHub Actions workflow that deploys Edge Functions after relevant changes land on `main`; it requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` repository secrets. See [`.github/workflows/deploy-supabase-functions.yml`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/.github/workflows/deploy-supabase-functions.yml).
 
-The Workflow Studio supports **28 node types** across five categories:
+## First-run checklist
 
-| Category | Nodes |
-|----------|-------|
-| **Triggers** | schedule, webhook, trigger |
-| **AI** | gemini, openai, claude, resume_optimizer, cover_letter, prompt |
-| **Integrations** | http, gdrive, gdocs, apify, linkedin, supabase, email, notification, storage, pdf |
-| **Logic** | condition, loop, switch, merge, wait |
-| **Data** | job_search, duplicate_checker, function, transform |
+1. Sign up or sign in. The bootstrap service creates the default workflow, daily automation, corpus, and starter settings.
+2. In **Settings**, add your profile/contact data and configure the search query, location, posted-within window, maximum jobs, and notification email.
+3. Connect Google in **Integrations** if you want to pull a master Google Doc or send generated PDFs to Drive.
+4. Use **Knowledge Base** to sync a Google Doc into the corpus if applicable.
+5. Use **Job Discovery → Run Search** to test the pipeline, then follow progress in **Execution History**.
 
----
+## Career corpus
 
-## Integrations Catalog
+`src/content/career-corpus/` is the versioned source for resume-safe seed data: the master resume, two-page template, role playbooks, ATS keywords, and evidence chunks. When the CareerPilot project block in `master-resume.md` changes, run:
 
-The Integrations page includes a built-in catalog of 15+ services you can add with a few clicks:
+```bash
+npm run sync:corpus
+```
 
-| Category | Services |
-|----------|----------|
-| **Job Boards** | LinkedIn, Indeed, Glassdoor |
-| **Email** | Gmail, SMTP |
-| **AI Providers** | OpenAI, Anthropic Claude, Google Gemini |
-| **Storage** | Google Drive, Supabase |
-| **Notifications** | Slack |
-| **Scheduling** | Google Calendar |
-| **Developer** | GitHub |
-| **Scraping** | Apify |
-| **Browser** | Chrome Extension |
-
-Each integration has its own credential fields (API key, client ID/secret, webhook URL, etc.). Already-connected services are marked as "Connected" to prevent duplicates.
-
----
+This regenerates `supabase/functions/_shared/career-corpus/careerpilot-section.generated.ts`, which is used by the Edge Functions and included automatically by `npm run build`.
 
 ## Deployment
 
-The frontend is a static SPA deployable to any static host:
+The frontend is a static Vite application and includes host configuration for Render, Vercel, and Netlify-style redirects:
 
-| Platform | Config |
-|----------|--------|
-| **Render** | `render.yaml` (Static Site blueprint) |
-| **Vercel** | `vercel.json` (SPA rewrite) |
-| **Netlify** | `public/_redirects` |
+- [render.yaml](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/render.yaml) for Render Static Sites
+- [vercel.json](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/vercel.json) for Vercel SPA rewrites
+- [public/_redirects](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/public/_redirects) for Netlify-compatible hosts
 
-Backend (Supabase) is managed via the Supabase dashboard or CLI. Merges to `main` that change `supabase/functions/**` auto-deploy Edge Functions via GitHub Actions once `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` repo secrets are set. See **[DEPLOY.md](DEPLOY.md)** for the full end-to-end deployment guide.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` on the static host, update `APP_URL` in Supabase secrets to the deployed URL, and add that URL to Supabase Auth redirect settings.
 
----
+## Notes and limits
 
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd/Ctrl + K` | Open command palette |
-
----
-
-## Known Limitations
-
-- **Google OAuth** requires a Google Cloud project with Drive scopes (read docs + write files into a folder you choose). Reconnect after changing scopes.
-- **LaTeX PDF** depends on `latex.ytotech.com` availability (configurable via `LATEX_COMPILER_URL`)
-- **pg_cron** must be enabled in Supabase before running migration `003_cron.sql`
-- Edge Function wall-clock is short (~150s on many plans). The job pipeline **checkpoints after each job** and resumes via `workflow-step` / the scheduler. Do not expect 9 ATS calls in one isolate.
-- Embedding vectors are architecturally supported but not yet active (knowledge chunks use tag-based retrieval)
-- LinkedIn's AI job search is noisy; we send Apify **keywords + location + datePosted** and post-filter titles/descriptions against your query
-
----
+- Google Docs and Drive features require a Google Cloud OAuth client with the requested scopes and a connected user account.
+- PDFs depend on the configured LaTeX compiler service.
+- `pg_cron`/`pg_net`, or an equivalent external minute-level scheduler, is required for scheduled runs and delayed workflow steps. Manual runs do not depend on cron.
+- Knowledge-base embeddings are represented in the schema, while the current retrieval path is tag/evidence based.
+- LinkedIn scraping results are subject to Apify actor output and can be noisy; the workflow filters using the configured query and URL de-duplication.
 
 ## License
 
