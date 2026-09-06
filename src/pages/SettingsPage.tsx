@@ -134,12 +134,18 @@ export function SettingsPage() {
       if (res.error) throw new Error(res.error.message);
       const data = res.data as {
         metrics?: { jobsDiscovered?: number; resumesTailored?: number };
-        replacements?: number;
-        sectionChars?: number;
+        strategy?: string;
+        occurrencesChanged?: number;
+        sectionFound?: boolean;
       };
       const jobs = data.metrics?.jobsDiscovered ?? 0;
       const resumes = data.metrics?.resumesTailored ?? 0;
-      toast.success(`CareerPilot project section synced (${jobs} jobs, ${resumes} tailored resumes)`);
+      const changed = data.occurrencesChanged ?? 0;
+      if (changed === 0) {
+        toast.warning('Sync ran but Google Doc reported no text changes — check the CareerPilot AI section header in your Doc');
+      } else {
+        toast.success(`CareerPilot synced via ${data.strategy || 'update'} (${jobs} jobs, ${resumes} tailored resumes)`);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Google Doc sync failed — reconnect Google Drive in Integrations');
     } finally {
