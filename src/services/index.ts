@@ -576,12 +576,15 @@ export class ResumeService {
     const userId = await requireUserId();
     const { data: resumes, error: listError } = await supabase
       .from('resumes')
-      .select('id')
+      .select('id, job_id')
       .eq('user_id', userId)
       .eq('is_corpus', false);
     if (listError) throw listError;
-    const ids = (resumes || []).map((r) => r.id as string);
-    if (ids.length === 0) return 0;
+    const rows = (resumes || []) as Array<{ id: string; job_id: string | null }>;
+    if (rows.length === 0) return 0;
+
+    const ids = rows.map((r) => r.id);
+    const jobIds = [...new Set(rows.map((r) => r.job_id).filter((id): id is string => !!id))];
 
     const { error: versionsError } = await supabase
       .from('resume_versions')
@@ -597,12 +600,14 @@ export class ResumeService {
       .eq('user_id', userId);
     if (resumeError) throw resumeError;
 
-    const { error: jobError } = await supabase
-      .from('jobs')
-      .update({ resume_status: 'none', resume_id: null })
-      .eq('user_id', userId)
-      .in('resume_id', ids);
-    if (jobError) throw jobError;
+    if (jobIds.length > 0) {
+      const { error: jobError } = await supabase
+        .from('jobs')
+        .update({ resume_status: 'none' })
+        .eq('user_id', userId)
+        .in('id', jobIds);
+      if (jobError) throw jobError;
+    }
 
     return ids.length;
   }
