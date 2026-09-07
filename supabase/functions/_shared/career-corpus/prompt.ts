@@ -18,16 +18,17 @@ SOURCE-LOCKED BULLET CONTRACT:
 - Use the 2-page template only as a length target. It is not a factual source.
 - Never print bullet IDs (e.g. B001) in the final resume.
 - Never write that the resume was tailored, optimized, generated, or customized.
+- NEVER include ATS keyword reference lines (e.g. "AI/ML Keywords:", "Forward Deployment Keywords:", "Leadership Keywords:") or tailoring-guide content. Those are internal metadata, not resume content.
 
 Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
-Use ONLY these section headers (ALL CAPS): NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, EDUCATION, SKILLS
+Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, EDUCATION
 For bullets use: - (hyphen + space)
-Each section header may appear exactly once.
+Each section header may appear exactly once. SKILLS and EDUCATION must never be empty.
 Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, or CORE COMPETENCIES as headers.
 Under every section, copy complete catalog lines only. Do not add labels such as "Name:" or "Title:" unless the exact label is present in the catalog.
 
-OUTPUT SKELETON (use exactly these headers once each):
+OUTPUT SKELETON (use exactly these headers once each, in this order):
 NAME
 <full name from catalog>
 
@@ -38,14 +39,14 @@ CONTACT
 SUMMARY
 <one verbatim summary line from catalog>
 
+SKILLS
+<skill lines copied from REQUIRED SKILLS SOURCE — select/reorder only, never empty>
+
 PROFESSIONAL EXPERIENCE
 <company/project headers and bullets from catalog>
 
 EDUCATION
-<education lines from catalog>
-
-SKILLS
-<skill lines from catalog>`;
+<education lines copied from REQUIRED EDUCATION SOURCE — never empty>`;
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;
@@ -61,6 +62,9 @@ export function buildResumeUserPrompt(input: {
   lexicalMatches?: string;
   contactBlock: string;
   googleHeader?: string;
+  skillsSource?: string;
+  educationSource?: string;
+  summarySource?: string;
 }): string {
   const jobDescription = trimForAts(input.jobDescription, 8000, 'Job description');
   const twoPageTemplate = trimForAts(input.twoPageTemplate, 8000, '2-page template');
@@ -68,6 +72,8 @@ export function buildResumeUserPrompt(input: {
   const lexicalMatches = trimForAts(input.lexicalMatches || '', 8000, 'Lexically matched master excerpts');
   const bulletCatalog = trimForAts(input.bulletCatalog, 12000, 'Bullet catalog');
   const retrievedEvidence = trimForAts(input.retrievedEvidence, 4000, 'Retrieved evidence');
+  const skillsSource = trimForAts(input.skillsSource || '', 4000, 'Required skills source');
+  const educationSource = trimForAts(input.educationSource || '', 1200, 'Required education source');
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
@@ -77,6 +83,8 @@ export function buildResumeUserPrompt(input: {
     `JOB DESCRIPTION:\n${jobDescription}`,
     input.contactBlock ? `CONTACT VALUES (only use values that also appear in the bullet catalog):\n${input.contactBlock}` : '',
     input.googleHeader ? `GOOGLE DOC HEADER OVERRIDE (do not add facts unless present in catalog):\n${input.googleHeader}` : '',
+    skillsSource ? `REQUIRED SKILLS SOURCE (copy verbatim into SKILLS section — select/reorder lines for the JD, but SKILLS must not be empty):\n${skillsSource}` : '',
+    educationSource ? `REQUIRED EDUCATION SOURCE (copy verbatim into EDUCATION section — never leave EDUCATION empty):\n${educationSource}` : '',
     input.rerankedSelection,
     input.retrievedEvidence,
     bulletCatalog,

@@ -5,7 +5,7 @@ export function stripModelFences(text: string): string {
     .trim();
 }
 
-const REQUIRED_HEADERS = ['NAME', 'CONTACT', 'SUMMARY', 'PROFESSIONAL EXPERIENCE', 'EDUCATION', 'SKILLS'];
+const REQUIRED_HEADERS = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'EDUCATION'];
 const HEADER_ALIASES: Record<string, string> = {
   'PROFESSIONAL SUMMARY': 'SUMMARY',
   'EXECUTIVE SUMMARY': 'SUMMARY',
@@ -13,6 +13,7 @@ const HEADER_ALIASES: Record<string, string> = {
   'CORE COMPETENCIES': 'SKILLS',
   'WORK EXPERIENCE': 'PROFESSIONAL EXPERIENCE',
 };
+const KEYWORD_REFERENCE_RE = /(?:^|\s)[\w\s/&.-]+\s+Keywords:/i;
 const CONTACT_LINE_RE = /^(?:location|phone|email|linkedin|github|title|panw start)\s*:/i;
 const LABEL_PREFIX_RE = /^(?:name|title|email|phone|location|linkedin|github|panw start|role focus):\s*/i;
 const SECTION_MARKER_RE = /^={5,}$/;
@@ -74,7 +75,10 @@ function splitPreamble(lines: string[]): { name: string[]; contact: string[] } {
 /** Map legacy template output (PROFESSIONAL SUMMARY, === markers, etc.) to the strict ATS header contract. */
 export function canonicalizeAtsResumeOutput(raw: string): string {
   let text = stripModelFences(raw);
-  text = text.split('\n').filter((line) => !SECTION_MARKER_RE.test(line.trim())).join('\n');
+  text = text.split('\n')
+    .filter((line) => !SECTION_MARKER_RE.test(line.trim()))
+    .filter((line) => !KEYWORD_REFERENCE_RE.test(line.trim()))
+    .join('\n');
   if (hasAllRequiredHeaders(text)) return text.trim();
 
   const sections = new Map<string, string[]>();
@@ -116,7 +120,23 @@ function shouldSkipGroundingLine(line: string): boolean {
   if (PROJECT_MARKER_RE.test(trimmed)) return true;
   if (/^technical highlights:/i.test(trimmed)) return true;
   if (/^role focus:/i.test(trimmed)) return true;
+  if (KEYWORD_REFERENCE_RE.test(trimmed)) return true;
   return false;
+}
+
+function extractSectionBody(text: string, header: string): string {
+  const sections = new Map<string, string[]>();
+  let current: string | null = null;
+  for (const line of text.split('\n')) {
+    const canonical = canonicalHeader(line);
+    if (canonical) {
+      current = canonical;
+      if (!sections.has(canonical)) sections.set(canonical, []);
+      continue;
+    }
+    if (current) sections.get(current)!.push(line);
+  }
+  return (sections.get(header) || []).join('\n').trim();
 }
 
 export function buildAllowedResumeLines(groundingSource: string): Set<string> {
@@ -179,6 +199,12 @@ export function validateResumeOutput(
     const headerCount = countRequiredHeaders(text)[header];
     if (headerCount !== 1) {
       return { ok: false, reason: headerCount ? 'duplicate_ats_section' : 'missing_ats_section' };
+    }
+  }
+
+  for (const header of ['SKILLS', 'EDUCATION', 'SUMMARY', 'PROFESSIONAL EXPERIENCE'] as const) {
+    if (!extractSectionBody(text, header)) {
+      return { ok: false, reason: 'empty_section' };
     }
   }
 

@@ -9,15 +9,15 @@ email@example.com
 SUMMARY
 Senior engineer with distributed systems experience.
 
+SKILLS
+TypeScript, Python
+
 PROFESSIONAL EXPERIENCE
 Acme — Staff Engineer
 - Shipped APIs used by millions of users.
 
 EDUCATION
 B.S. Computer Science
-
-SKILLS
-TypeScript, Python
 `;
 
 function mockAdapter(

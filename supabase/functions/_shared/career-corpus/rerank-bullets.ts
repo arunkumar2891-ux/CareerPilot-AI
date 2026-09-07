@@ -4,6 +4,7 @@ import type { ScoredBullet } from './resume-bullets.ts';
 const RERANK_SYSTEM_PROMPT = `You rerank resume bullet IDs for a target job description.
 Return ONLY a JSON array of bullet ID strings in priority order (highest relevance first).
 Use only IDs from the candidate list. Include 12-24 IDs when enough strong matches exist.
+Never select ATS keyword reference lines (e.g. lines containing "Keywords:").
 Do not include explanations, markdown, or any text outside the JSON array.`;
 
 export function parseRerankIds(raw: string, allowedIds: string[]): string[] {

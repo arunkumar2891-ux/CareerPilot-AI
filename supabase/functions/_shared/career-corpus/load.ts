@@ -1,7 +1,7 @@
 import { createAdminClient } from '../supabase-admin.ts';
 import { getUserSettings } from '../credentials.ts';
 import { ROLE_PLAYBOOKS, EVIDENCE_CHUNKS } from './data.ts';
-import { selectMasterResumeForJob } from './resume-bank.ts';
+import { selectMasterResumeForJob, extractMandatoryResumeSections } from './resume-bank.ts';
 import {
   applyContactOverlay,
   formatContact,
@@ -41,6 +41,9 @@ export interface CareerCorpusBundle {
   contactBlock: string;
   contact: Record<string, string | undefined>;
   rerankedBulletIds: string[];
+  skillsSource: string;
+  educationSource: string;
+  summarySource: string;
 }
 
 export async function loadCareerCorpus(
@@ -95,9 +98,9 @@ export async function loadCareerCorpus(
   const pool = dbChunks.length ? dbChunks : [...EVIDENCE_CHUNKS];
   const evidenceChunks = selectEvidence(jobDescription, pool);
 
-  const { playbook } = pickPlaybook(jobDescription, [...ROLE_PLAYBOOKS]);
-
   const fullMaster = applyContactOverlay(String(masterRow.content), contact);
+  const { playbook } = pickPlaybook(jobDescription, [...ROLE_PLAYBOOKS]);
+  const mandatorySections = extractMandatoryResumeSections(fullMaster, playbook.emphasize);
   const resumeRows = (resumes || []).map((r) => ({
     name: String(r.name),
     content: r.content as string | null,
@@ -133,7 +136,11 @@ export async function loadCareerCorpus(
   const bulletCatalog = formatBulletCatalogBlock(priorityLines.length ? priorityLines : catalog.slice(0, 40));
   const retrievedEvidence = formatRetrievedEvidenceBlock(evidenceMatches);
   const rerankedSelection = formatRerankedSelection(rerankedBulletIds);
-  const groundingSource = buildCatalogGroundingSource(catalog, [contactBlock]);
+  const groundingSource = buildCatalogGroundingSource(catalog, [
+    contactBlock,
+    mandatorySections.skills,
+    mandatorySections.education,
+  ]);
 
   return {
     masterResume,
@@ -150,5 +157,8 @@ export async function loadCareerCorpus(
     contactBlock,
     contact,
     rerankedBulletIds,
+    skillsSource: mandatorySections.skills,
+    educationSource: mandatorySections.education,
+    summarySource: mandatorySections.summary,
   };
 }

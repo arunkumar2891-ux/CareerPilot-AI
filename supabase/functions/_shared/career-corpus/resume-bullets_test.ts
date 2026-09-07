@@ -2,6 +2,7 @@ import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
   buildBulletCatalog,
   formatRetrievedEvidenceBlock,
+  isExcludedFromResumeCatalog,
   matchEvidenceToCatalog,
   scoreRetrievalCandidates,
 } from './resume-bullets.ts';
@@ -24,6 +25,20 @@ Built scalable integration platforms.
 
 --- Project: Pic-Reel ---
 - Delivered browser-side FFmpeg hyperlapse tool.`;
+
+Deno.test('buildBulletCatalog excludes ATS keyword reference metadata', () => {
+  const master = `${SAMPLE_MASTER}
+
+================================================================================
+ATS KEYWORDS (FOR TAILORING)
+================================================================================
+
+AI/ML Keywords: Gemini, RAG, prompt engineering
+Forward Deployment Keywords: POC, customer-facing engineering`;
+  assertEquals(isExcludedFromResumeCatalog('AI/ML Keywords: Gemini', false), true);
+  const catalog = buildBulletCatalog(master);
+  assertEquals(catalog.some((line) => /Keywords:/i.test(line.text)), false);
+});
 
 Deno.test('buildBulletCatalog assigns stable IDs and normalizes bullets', () => {
   const catalog = buildBulletCatalog(SAMPLE_MASTER);

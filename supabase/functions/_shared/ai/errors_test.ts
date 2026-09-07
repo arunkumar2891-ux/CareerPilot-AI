@@ -67,21 +67,21 @@ jane@example.com
 SUMMARY
 Distributed systems engineer.
 
+SKILLS
+TypeScript, Python
+
 PROFESSIONAL EXPERIENCE
 Acme
 - Shipped APIs used by millions of users.
 
 EDUCATION
 B.S. Computer Science
-
-SKILLS
-TypeScript, Python
 `;
   const ok = validateResumeOutput(output, { groundingSource: source });
   if (!ok.ok) throw new Error('expected valid');
   const invented = validateResumeOutput(output.replace('Distributed systems engineer.', 'AI executive with 15 years of experience.'), { groundingSource: source });
   if (invented.ok) throw new Error('expected unsupported source line to fail');
-  const duplicateSummary = validateResumeOutput(output.replace('SKILLS\nTypeScript, Python', 'SUMMARY\nTypeScript, Python'), { groundingSource: source });
+  const duplicateSummary = validateResumeOutput(output.replace('EDUCATION\nB.S. Computer Science', 'SUMMARY\nTypeScript, Python'), { groundingSource: source });
   if (duplicateSummary.ok) throw new Error('expected duplicate section to fail');
 });
 
@@ -112,15 +112,16 @@ arun@example.com
 SUMMARY
 ${truncated}
 
+SKILLS
+TypeScript, Python
+
 PROFESSIONAL EXPERIENCE
 Palo Alto Networks
 - Built scalable APIs.
 
 EDUCATION
 B.Tech in Information Technology
-
-SKILLS
-TypeScript, Python`;
+`;
   const ok = validateResumeOutput(output, { groundingSource: source });
   if (!ok.ok) throw new Error(`expected truncated summary to pass: ${ok.ok ? '' : ok.reason}`);
 });

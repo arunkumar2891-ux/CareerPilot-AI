@@ -467,6 +467,9 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         lexicalMatches: corpus.lexicalMatches,
         contactBlock: corpus.contactBlock,
         googleHeader: String(ctx.variables.googleHeader || ''),
+        skillsSource: corpus.skillsSource,
+        educationSource: corpus.educationSource,
+        summarySource: corpus.summarySource,
       });
       const output = await callGemini(ctx, systemPrompt, userPrompt, true, corpus.groundingSource);
       ctx.variables.lastAgentOutput = output;

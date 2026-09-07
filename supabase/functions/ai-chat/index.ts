@@ -95,6 +95,9 @@ Deno.serve(async (req) => {
         rerankedSelection: corpus.rerankedSelection,
         lexicalMatches: corpus.lexicalMatches,
         contactBlock: corpus.contactBlock,
+        skillsSource: corpus.skillsSource,
+        educationSource: corpus.educationSource,
+        summarySource: corpus.summarySource,
       });
       const reply = await callGeminiAtsGenerateContent(
         ATS_SYSTEM_PROMPT,

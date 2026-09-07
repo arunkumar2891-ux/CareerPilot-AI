@@ -26,6 +26,20 @@ export interface EvidenceMatch {
 
 const BULLET_PREFIX_RE = /^\s*[-·•*]\s*/;
 const SKIP_LINE_RE = /^={5,}$/;
+const ATS_KEYWORDS_REGION_RE = /^={5,}\s*ATS KEYWORDS|^ATS KEYWORDS\s*\(|^RESUME TAILORING GUIDE/i;
+const KEYWORD_REFERENCE_RE = /(?:^|\s)[\w\s/&.-]+\s+Keywords:/i;
+
+/** Internal ATS metadata — never selectable resume content. */
+export function isExcludedFromResumeCatalog(line: string, inAtsKeywordsRegion: boolean): boolean {
+  if (inAtsKeywordsRegion) return true;
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (ATS_KEYWORDS_REGION_RE.test(trimmed)) return true;
+  if (KEYWORD_REFERENCE_RE.test(trimmed)) return true;
+  if (/^this section contains additional keywords/i.test(trimmed)) return true;
+  if (/^remove this section before submitting/i.test(trimmed)) return true;
+  return false;
+}
 
 function parseCatalogLine(raw: string): { text: string; isBullet: boolean } | null {
   const trimmed = raw.trim().replace(/\\/g, '');
@@ -40,8 +54,13 @@ function parseCatalogLine(raw: string): { text: string; isBullet: boolean } | nu
 export function buildBulletCatalog(fullMaster: string): CatalogLine[] {
   const catalog: CatalogLine[] = [];
   let counter = 1;
+  let inAtsKeywordsRegion = false;
 
   for (const raw of fullMaster.split('\n')) {
+    const trimmed = raw.trim();
+    if (ATS_KEYWORDS_REGION_RE.test(trimmed)) inAtsKeywordsRegion = true;
+    if (isExcludedFromResumeCatalog(raw, inAtsKeywordsRegion)) continue;
+
     const parsed = parseCatalogLine(raw);
     if (!parsed || parsed.text.length < 2) continue;
     const id = `B${String(counter).padStart(3, '0')}`;

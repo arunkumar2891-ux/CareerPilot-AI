@@ -27,7 +27,7 @@ function extractHeader(master: string): string {
   return idx > 0 ? master.slice(0, idx).trim() : master.slice(0, 600).trim();
 }
 
-function extractSectionByTitle(master: string, title: string): string | null {
+export function extractSectionByTitle(master: string, title: string): string | null {
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`={10,}\\s*${escaped}\\s*={10,}`, 'i');
   const match = pattern.exec(master);
@@ -221,4 +221,28 @@ export function selectMasterResumeForJob(
     return { content: bankRow.content, source: 'role-bank' };
   }
   return { content: buildFocusedMasterResume(fullMaster, playbook), source: 'generated' };
+}
+
+/** Canonical SKILLS / EDUCATION / SUMMARY source blocks for the final resume template. */
+export function extractMandatoryResumeSections(
+  fullMaster: string,
+  emphasize: readonly string[] = [],
+): { summary: string; skills: string; education: string } {
+  const summaryBlock = extractSectionByTitle(fullMaster, 'PROFESSIONAL SUMMARY');
+  const skillsBlock = extractSectionByTitle(fullMaster, 'TECHNICAL SKILLS')
+    || extractSectionByTitle(fullMaster, 'CORE COMPETENCIES');
+  const educationBlock = extractSectionByTitle(fullMaster, 'EDUCATION');
+
+  const rawSkills = skillsBlock
+    ? skillsBlock.replace(/^(?:TECHNICAL SKILLS|CORE COMPETENCIES)\s*/i, '').trim()
+    : '';
+  const skills = rawSkills
+    ? (emphasize.length ? filterSkillsSection(rawSkills, emphasize) : rawSkills.slice(0, 4000))
+    : '';
+
+  return {
+    summary: summaryBlock ? summaryBlock.replace(/^PROFESSIONAL SUMMARY\s*/i, '').trim().slice(0, 1400) : '',
+    skills,
+    education: educationBlock ? educationBlock.replace(/^EDUCATION\s*/i, '').trim() : '',
+  };
 }
