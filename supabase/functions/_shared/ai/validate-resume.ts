@@ -112,6 +112,51 @@ export function canonicalizeAtsResumeOutput(raw: string): string {
   return parts.join('\n\n').trim();
 }
 
+function fillMandatorySections(
+  text: string,
+  mandatory?: { skillsSource?: string; educationSource?: string },
+): string {
+  if (!mandatory?.skillsSource?.trim() && !mandatory?.educationSource?.trim()) return text;
+
+  const sections = new Map<string, string[]>();
+  const preamble: string[] = [];
+  let current: string | null = null;
+
+  for (const line of text.split('\n')) {
+    const header = canonicalHeader(line);
+    if (header) {
+      current = header;
+      if (!sections.has(header)) sections.set(header, []);
+      continue;
+    }
+    if (current) sections.get(current)!.push(line);
+    else preamble.push(line);
+  }
+
+  if (!sections.has('NAME') || !sections.has('CONTACT')) {
+    const { name, contact } = splitPreamble(preamble);
+    if (!sections.has('NAME') && name.length) sections.set('NAME', name);
+    if (!sections.has('CONTACT') && contact.length) sections.set('CONTACT', contact);
+  }
+
+  const ensureSection = (header: string, source?: string) => {
+    if (!source?.trim()) return;
+    const body = sections.get(header)?.join('\n').trim();
+    if (!body) sections.set(header, source.split('\n'));
+  };
+
+  ensureSection('SKILLS', mandatory?.skillsSource);
+  ensureSection('EDUCATION', mandatory?.educationSource);
+
+  const parts: string[] = [];
+  for (const header of REQUIRED_HEADERS) {
+    const body = sections.get(header)?.join('\n').trim();
+    if (!body) continue;
+    parts.push(header, body);
+  }
+  return parts.join('\n\n').trim();
+}
+
 function shouldSkipGroundingLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return true;
@@ -188,9 +233,13 @@ function validateGrounding(text: string, groundingSource: string): { ok: true } 
 /** Same contract as LaTeX builder: ATS text must include SUMMARY and PROFESSIONAL EXPERIENCE. */
 export function validateResumeOutput(
   raw: string,
-  options?: { groundingSource?: string },
+  options?: { groundingSource?: string; skillsSource?: string; educationSource?: string },
 ): { ok: true; text: string } | { ok: false; reason: string } {
-  const text = canonicalizeAtsResumeOutput(raw);
+  let text = canonicalizeAtsResumeOutput(raw);
+  text = fillMandatorySections(text, {
+    skillsSource: options?.skillsSource,
+    educationSource: options?.educationSource,
+  });
   if (!text || text.length < 40) {
     return { ok: false, reason: 'empty_or_too_short' };
   }

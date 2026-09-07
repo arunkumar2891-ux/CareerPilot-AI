@@ -51,6 +51,16 @@ export function classifyProviderFailure(
     });
   }
 
+  if (/quota exceeded|rate.?limit|resource.?exhausted|too many requests/i.test(message)) {
+    return new ProviderError({
+      provider,
+      message,
+      retryable: true,
+      kind: 'rate_limit',
+      status: status ?? 429,
+    });
+  }
+
   if (/not configured|api_key|api key/i.test(message)) {
     return new ProviderError({
       provider,

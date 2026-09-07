@@ -3,7 +3,7 @@ import { getSecretOrIntegration, getIntegrationCredentials, getUserSettings } fr
 import { resolveTemplate } from './graph.ts';
 import { createAdminClient } from '../supabase-admin.ts';
 import { buildEmailSummaryBlock } from './execution-persistence.ts';
-import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../career-corpus/prompt.ts';
+import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt, buildGroqResumeUserPrompt } from '../career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../career-corpus/load.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
@@ -34,8 +34,17 @@ async function callGemini(
   userPrompt: string,
   forAts = false,
   groundingSource?: string,
+  mandatorySections?: { skillsSource?: string; educationSource?: string; groqUserPrompt?: string },
 ): Promise<string> {
-  if (forAts) return await callGeminiAtsGenerateContent(systemPrompt, userPrompt, ctx.userId, groundingSource);
+  if (forAts) {
+    return await callGeminiAtsGenerateContent(
+      systemPrompt,
+      userPrompt,
+      ctx.userId,
+      groundingSource,
+      mandatorySections,
+    );
+  }
   return await callGeminiGenerateContent(systemPrompt, userPrompt, { userId: ctx.userId });
 }
 
@@ -471,7 +480,23 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         educationSource: corpus.educationSource,
         summarySource: corpus.summarySource,
       });
-      const output = await callGemini(ctx, systemPrompt, userPrompt, true, corpus.groundingSource);
+      const groqUserPrompt = buildGroqResumeUserPrompt({
+        jobTitle: String(job.title || job.role || ''),
+        company: String(job.company || job.companyName || ''),
+        jobDescription: jd,
+        bulletCatalog: corpus.bulletCatalog,
+        retrievedEvidence: corpus.retrievedEvidence,
+        rerankedSelection: corpus.rerankedSelection,
+        contactBlock: corpus.contactBlock,
+        skillsSource: corpus.skillsSource,
+        educationSource: corpus.educationSource,
+        summarySource: corpus.summarySource,
+      });
+      const output = await callGemini(ctx, systemPrompt, userPrompt, true, corpus.groundingSource, {
+        skillsSource: corpus.skillsSource,
+        educationSource: corpus.educationSource,
+        groqUserPrompt,
+      });
       ctx.variables.lastAgentOutput = output;
       ctx.variables.playbook = corpus.playbookTitle;
       ctx.variables.masterResumeSource = corpus.masterResumeSource;

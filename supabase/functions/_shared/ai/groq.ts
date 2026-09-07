@@ -21,7 +21,11 @@ export const groqAdapter: ProviderAdapter = {
       });
     }
 
-    let fitted = fitGroqPrompt(req.systemPrompt, req.userPrompt);
+    let userPrompt = req.userPrompt;
+    if (req.operation === 'resume_tailoring' && req.groqUserPrompt) {
+      userPrompt = req.groqUserPrompt;
+    }
+    let fitted = fitGroqPrompt(req.systemPrompt, userPrompt);
     const timeoutMs = req.timeoutMs ?? 30000;
 
     for (let attempt = 1; attempt <= 2; attempt++) {

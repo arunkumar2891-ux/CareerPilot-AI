@@ -1,5 +1,5 @@
 import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
-import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
+import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt, buildGroqResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
 import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../_shared/gemini.ts';
 import { sanitizeAiErrorMessage } from '../_shared/ai/errors.ts';
@@ -99,11 +99,28 @@ Deno.serve(async (req) => {
         educationSource: corpus.educationSource,
         summarySource: corpus.summarySource,
       });
+      const groqUserPrompt = buildGroqResumeUserPrompt({
+        jobTitle: String(body.jobTitle || ''),
+        company: String(body.company || ''),
+        jobDescription: jd,
+        bulletCatalog: corpus.bulletCatalog,
+        retrievedEvidence: corpus.retrievedEvidence,
+        rerankedSelection: corpus.rerankedSelection,
+        contactBlock: corpus.contactBlock,
+        skillsSource: corpus.skillsSource,
+        educationSource: corpus.educationSource,
+        summarySource: corpus.summarySource,
+      });
       const reply = await callGeminiAtsGenerateContent(
         ATS_SYSTEM_PROMPT,
         userPrompt,
         user.id,
         corpus.groundingSource,
+        {
+          skillsSource: corpus.skillsSource,
+          educationSource: corpus.educationSource,
+          groqUserPrompt,
+        },
       );
       return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });
     }

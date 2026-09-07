@@ -94,6 +94,39 @@ export function buildResumeUserPrompt(input: {
   ].filter(Boolean).join('\n\n');
 }
 
+/** Compact prompt for Groq fallback — fits TPM limits while keeping catalog + mandatory sections. */
+export function buildGroqResumeUserPrompt(input: {
+  jobTitle?: string;
+  company?: string;
+  jobDescription: string;
+  bulletCatalog: string;
+  retrievedEvidence?: string;
+  rerankedSelection: string;
+  contactBlock?: string;
+  skillsSource?: string;
+  educationSource?: string;
+  summarySource?: string;
+}): string {
+  const jobDescription = trimForAts(input.jobDescription, 2500, 'Job description');
+  const bulletCatalog = trimForAts(input.bulletCatalog, 8000, 'Bullet catalog');
+  const skillsSource = trimForAts(input.skillsSource || '', 2500, 'Required skills source');
+  const educationSource = trimForAts(input.educationSource || '', 800, 'Required education source');
+  const retrievedEvidence = trimForAts(input.retrievedEvidence || '', 1500, 'Retrieved evidence');
+  const summarySource = trimForAts(input.summarySource || '', 800, 'Summary source');
+
+  return [
+    `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
+    `JOB DESCRIPTION (excerpt):\n${jobDescription}`,
+    input.contactBlock ? `CONTACT VALUES:\n${input.contactBlock}` : '',
+    summarySource ? `SUMMARY SOURCE (copy verbatim once under SUMMARY):\n${summarySource}` : '',
+    skillsSource ? `REQUIRED SKILLS SOURCE:\n${skillsSource}` : '',
+    educationSource ? `REQUIRED EDUCATION SOURCE:\n${educationSource}` : '',
+    input.rerankedSelection,
+    retrievedEvidence,
+    bulletCatalog,
+  ].filter(Boolean).join('\n\n');
+}
+
 const RETRIEVAL_STOP_WORDS = new Set([
   'about', 'after', 'among', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into', 'is', 'of', 'on', 'or', 'that', 'the', 'this', 'to', 'with', 'you', 'your',
 ]);

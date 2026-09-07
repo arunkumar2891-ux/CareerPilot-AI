@@ -9,6 +9,10 @@ export interface GenerateRequest {
   timeoutMs?: number;
   /** For resume tailoring, every output line must be traceable to this source. */
   groundingSource?: string;
+  skillsSource?: string;
+  educationSource?: string;
+  /** Smaller user prompt for Groq TPM limits on resume fallback. */
+  groqUserPrompt?: string;
 }
 
 export class ProviderError extends Error {

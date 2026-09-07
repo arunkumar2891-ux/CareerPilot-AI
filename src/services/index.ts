@@ -58,11 +58,40 @@ function logEdgeFunctionFailure(
   console.groupEnd();
 }
 
+async function readFunctionErrorMessage(error: unknown): Promise<string | null> {
+  if (!error || typeof error !== 'object') return null;
+  const context = (error as { context?: Response }).context;
+  if (!context || typeof context.json !== 'function') return null;
+  try {
+    const body = await context.json() as { error?: string };
+    return body?.error ? String(body.error) : null;
+  } catch {
+    return null;
+  }
+}
+
+function payloadErrorMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object' || !('error' in data)) return null;
+  const message = (data as { error?: unknown }).error;
+  return message ? String(message) : null;
+}
+
 async function invokeAiChat(body: Record<string, unknown>) {
   const result = await supabase.functions.invoke('ai-chat', { body });
-  if (result.error || (result.data && typeof result.data === 'object' && result.data !== null && 'error' in result.data)) {
-    logEdgeFunctionFailure('ai-chat', body, result);
+  const serverMessage = payloadErrorMessage(result.data)
+    ?? (result.error ? await readFunctionErrorMessage(result.error) : null);
+
+  if (result.error || serverMessage) {
+    logEdgeFunctionFailure('ai-chat', body, {
+      data: result.data ?? (serverMessage ? { error: serverMessage } : null),
+      error: result.error,
+    });
+    return {
+      data: result.data,
+      error: new Error(serverMessage || (result.error instanceof Error ? result.error.message : 'ai-chat request failed')),
+    };
   }
+
   if (!result.error) void refreshHeaderCredits();
   return result;
 }
@@ -490,6 +519,8 @@ export class ResumeService {
       company: job.company,
     });
     if (error) throw error;
+    const serverError = payloadErrorMessage(data);
+    if (serverError) throw new Error(serverError);
     const content = String(data?.reply || '');
     if (!content) throw new Error('Resume tailoring returned empty output');
 

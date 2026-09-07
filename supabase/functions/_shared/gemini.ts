@@ -39,12 +39,20 @@ export async function callGeminiAtsGenerateContent(
   userPrompt: string,
   userId?: string,
   groundingSource?: string,
+  mandatorySections?: {
+    skillsSource?: string;
+    educationSource?: string;
+    groqUserPrompt?: string;
+  },
 ): Promise<string> {
   return await generateText({
     systemPrompt,
     userPrompt,
+    groqUserPrompt: mandatorySections?.groqUserPrompt,
     operation: 'resume_tailoring',
     timeoutMs: getGeminiAtsTimeoutMs(),
     groundingSource,
+    skillsSource: mandatorySections?.skillsSource,
+    educationSource: mandatorySections?.educationSource,
   }, { userId });
 }

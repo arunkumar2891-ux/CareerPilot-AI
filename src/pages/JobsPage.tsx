@@ -420,11 +420,15 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
   if (!job) return null;
 
   const generateResume = async () => {
-    toast.success('Generating tailored resume from Master ATS corpus...');
-    await services.resume.generateTailored(job.id);
-    toast.success('Resume generated — check Resumes');
-    await qc.invalidateQueries({ queryKey: ['resumes'] });
-    onClose();
+    try {
+      toast.success('Generating tailored resume from Master ATS corpus...');
+      await services.resume.generateTailored(job.id);
+      toast.success('Resume generated — check Resumes');
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Resume generation failed');
+    }
   };
 
   return (

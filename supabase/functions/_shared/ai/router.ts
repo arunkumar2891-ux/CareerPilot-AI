@@ -27,7 +27,11 @@ function applyResumeValidation(
   request: GenerateRequest,
 ): string {
   if (request.operation !== 'resume_tailoring') return text;
-  const checked = validateResumeOutput(text, { groundingSource: request.groundingSource });
+  const checked = validateResumeOutput(text, {
+    groundingSource: request.groundingSource,
+    skillsSource: request.skillsSource,
+    educationSource: request.educationSource,
+  });
   if (!checked.ok) {
     throw new ProviderError({
       provider: provider === 'groq' ? 'groq' : 'gemini',
@@ -95,6 +99,14 @@ async function tryProvider(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+function formatAllProvidersFailed(errors: string[]): string {
+  const joined = errors.join(' | ');
+  if (/quota exceeded|rate.?limit|free_tier/i.test(joined)) {
+    return `Gemini API quota reached (free tier is ~20 requests/min for gemini-3.6-flash). Wait 30–60 seconds and retry, or upgrade Gemini billing. Groq fallback: ${errors.find((e) => e.startsWith('groq:'))?.replace(/^groq:\s*/, '') || 'also failed'}`;
+  }
+  return `All AI providers failed. ${joined}`;
+}
+
 /**
  * Gemini primary, Groq fallback. Default is one attempt on primary, then fallback on
  * retryable errors or a missing Gemini key. HTTP 4xx (except 429) does not fall back.
@@ -140,17 +152,17 @@ export async function generateWithProviders(
 
   if (fallback?.isConfigured()) {
     try {
-      return await tryProvider(fallback, { ...request, timeoutMs: getAiTimeoutMs() }, 'fallback', 1, log, deps.userId);
+      return await tryProvider(fallback, { ...request, timeoutMs: getAtsTimeoutMs() }, 'fallback', 1, log, deps.userId);
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${fallback.name}: ${message}`);
-      throw new Error(`All AI providers failed. ${errors.join(' | ')}`);
+      throw new Error(formatAllProvidersFailed(errors));
     }
   }
 
   throw new Error(
     errors.length
-      ? `All AI providers failed. ${errors.join(' | ')}`
+      ? formatAllProvidersFailed(errors)
       : 'No AI provider is configured (set GEMINI_API_KEY and/or GROQ_API_KEY)',
   );
 }
