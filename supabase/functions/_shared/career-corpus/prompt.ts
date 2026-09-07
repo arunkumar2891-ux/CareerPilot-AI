@@ -23,7 +23,29 @@ Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
 Use ONLY these section headers (ALL CAPS): NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, EDUCATION, SKILLS
 For bullets use: - (hyphen + space)
-Each section header may appear exactly once.`;
+Each section header may appear exactly once.
+Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, or CORE COMPETENCIES as headers.
+Under every section, copy complete catalog lines only. Do not add labels such as "Name:" or "Title:" unless the exact label is present in the catalog.
+
+OUTPUT SKELETON (use exactly these headers once each):
+NAME
+<full name from catalog>
+
+CONTACT
+<title line from catalog>
+<email, phone, location, linkedin, github lines from catalog>
+
+SUMMARY
+<one verbatim summary line from catalog>
+
+PROFESSIONAL EXPERIENCE
+<company/project headers and bullets from catalog>
+
+EDUCATION
+<education lines from catalog>
+
+SKILLS
+<skill lines from catalog>`;
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;

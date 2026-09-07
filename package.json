@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run sync:corpus && tsc -b && vite build",
+    "build:debug": "npm run sync:corpus && tsc -b && VITE_DEBUG_BUILD=true vite build",
     "sync:corpus": "node scripts/sync-careerpilot-section.mjs",
     "lint": "eslint .",
     "preview": "vite preview",

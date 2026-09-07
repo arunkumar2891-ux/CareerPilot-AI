@@ -3,6 +3,8 @@ import path from 'path';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+const isDebugBuild = process.env.VITE_DEBUG_BUILD === 'true';
+
 export default defineConfig({
   plugins: [
     react(),
@@ -23,5 +25,13 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
+  },
+  build: {
+    // Readable bundles + source maps for debugging; set VITE_DEBUG_BUILD=false for release builds.
+    minify: isDebugBuild ? false : 'esbuild',
+    sourcemap: isDebugBuild,
+  },
+  esbuild: {
+    keepNames: isDebugBuild,
   },
 });

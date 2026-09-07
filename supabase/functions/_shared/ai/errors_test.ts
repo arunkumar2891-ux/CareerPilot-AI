@@ -1,6 +1,7 @@
 import { classifyProviderFailure, sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
 import {
   buildAllowedResumeLines,
+  canonicalizeAtsResumeOutput,
   normalizeResumeLine,
   validateResumeOutput,
 } from './validate-resume.ts';
@@ -17,6 +18,34 @@ Deno.test('timeout and 5xx are retryable', () => {
   if (!shouldFallback(rate)) throw new Error('429 should fallback');
   const bad = classifyProviderFailure('gemini', new Error('invalid argument'), 400);
   if (shouldFallback(bad)) throw new Error('400 should not fallback');
+});
+
+Deno.test('canonicalizeAtsResumeOutput maps legacy template headers to strict ATS sections', () => {
+  const legacy = `ARUN KUMAR
+Integration Architect | GenAI Developer
+
+Location: Chennai
+Email: arun@example.com
+
+PROFESSIONAL SUMMARY
+Results-driven Integration Architect with 10+ years of experience.
+
+PROFESSIONAL EXPERIENCE
+Palo Alto Networks
+- Built scalable APIs.
+
+EDUCATION
+B.Tech in Information Technology
+
+CORE COMPETENCIES
+TypeScript, Python`;
+  const canonical = canonicalizeAtsResumeOutput(legacy);
+  if (!canonical.includes('NAME\nARUN KUMAR')) throw new Error('missing NAME');
+  if (!canonical.includes('CONTACT\nIntegration Architect | GenAI Developer')) throw new Error('missing CONTACT');
+  if (!canonical.includes('SUMMARY\nResults-driven Integration Architect')) throw new Error('missing SUMMARY');
+  if (!canonical.includes('SKILLS\nTypeScript, Python')) throw new Error('missing SKILLS');
+  const ok = validateResumeOutput(canonical, { groundingSource: legacy });
+  if (!ok.ok) throw new Error(`expected canonical legacy output to validate: ${ok.reason}`);
 });
 
 Deno.test('validateResumeOutput accepts a complete source-grounded resume and rejects unsupported facts', () => {

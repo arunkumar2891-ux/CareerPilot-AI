@@ -5,6 +5,8 @@ services:
     name: careerpilot-ai
     runtime: static
     buildCommand: npm install && npm run build
+    # For readable console stacks while debugging, temporarily use:
+    # buildCommand: npm install && npm run build:debug
     staticPublishPath: ./dist
     routes:
       - type: rewrite

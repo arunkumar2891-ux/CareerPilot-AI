@@ -43,8 +43,26 @@ async function refreshHeaderCredits(): Promise<void> {
   }
 }
 
+const isDebugClient = import.meta.env.DEV || import.meta.env.VITE_DEBUG_BUILD === 'true';
+
+function logEdgeFunctionFailure(
+  functionName: string,
+  body: Record<string, unknown>,
+  result: { data: unknown; error: unknown },
+): void {
+  if (!isDebugClient) return;
+  console.groupCollapsed(`[${functionName}] request failed`);
+  console.error('error', result.error);
+  console.error('response data', result.data);
+  console.error('request body', body);
+  console.groupEnd();
+}
+
 async function invokeAiChat(body: Record<string, unknown>) {
   const result = await supabase.functions.invoke('ai-chat', { body });
+  if (result.error || (result.data && typeof result.data === 'object' && result.data !== null && 'error' in result.data)) {
+    logEdgeFunctionFailure('ai-chat', body, result);
+  }
   if (!result.error) void refreshHeaderCredits();
   return result;
 }
