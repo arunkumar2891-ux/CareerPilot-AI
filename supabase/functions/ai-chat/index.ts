@@ -88,9 +88,15 @@ Deno.serve(async (req) => {
         masterResume: corpus.masterResume,
         twoPageTemplate: corpus.twoPageTemplate,
         evidence: corpus.evidence,
+        lexicalMatches: corpus.lexicalMatches,
         contactBlock: corpus.contactBlock,
       });
-      const reply = await callGeminiAtsGenerateContent(ATS_SYSTEM_PROMPT, userPrompt, user.id);
+      const reply = await callGeminiAtsGenerateContent(
+        ATS_SYSTEM_PROMPT,
+        userPrompt,
+        user.id,
+        corpus.groundingSource,
+      );
       return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });
     }
 

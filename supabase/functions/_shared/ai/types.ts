@@ -7,6 +7,8 @@ export interface GenerateRequest {
   userPrompt: string;
   operation: AiOperation;
   timeoutMs?: number;
+  /** For resume tailoring, every output line must be traceable to this source. */
+  groundingSource?: string;
 }
 
 export class ProviderError extends Error {

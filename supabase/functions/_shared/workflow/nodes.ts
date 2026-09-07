@@ -33,8 +33,9 @@ async function callGemini(
   systemPrompt: string,
   userPrompt: string,
   forAts = false,
+  groundingSource?: string,
 ): Promise<string> {
-  if (forAts) return await callGeminiAtsGenerateContent(systemPrompt, userPrompt, ctx.userId);
+  if (forAts) return await callGeminiAtsGenerateContent(systemPrompt, userPrompt, ctx.userId, groundingSource);
   return await callGeminiGenerateContent(systemPrompt, userPrompt, { userId: ctx.userId });
 }
 
@@ -458,10 +459,11 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         masterResume: corpus.masterResume,
         twoPageTemplate: corpus.twoPageTemplate,
         evidence: corpus.evidence,
+        lexicalMatches: corpus.lexicalMatches,
         contactBlock: corpus.contactBlock,
         googleHeader: String(ctx.variables.googleHeader || ''),
       });
-      const output = await callGemini(ctx, systemPrompt, userPrompt, true);
+      const output = await callGemini(ctx, systemPrompt, userPrompt, true, corpus.groundingSource);
       ctx.variables.lastAgentOutput = output;
       ctx.variables.playbook = corpus.playbookTitle;
       ctx.variables.masterResumeSource = corpus.masterResumeSource;

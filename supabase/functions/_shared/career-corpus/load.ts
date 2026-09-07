@@ -7,6 +7,7 @@ import {
   formatContact,
   pickPlaybook,
   playbookInstructions,
+  selectLexicalMasterMatches,
   selectEvidence,
 } from './prompt.ts';
 
@@ -21,6 +22,8 @@ export interface CareerCorpusBundle {
   masterResumeSource: 'role-bank' | 'generated';
   playbookInstructions: string;
   evidence: string;
+  lexicalMatches: string;
+  groundingSource: string;
   contactBlock: string;
   contact: Record<string, string | undefined>;
 }
@@ -91,6 +94,8 @@ export async function loadCareerCorpus(userId: string, jobDescription: string): 
     masterResumeSource: selectedResume.source,
     playbookInstructions: playbookInstructions(playbook),
     evidence: evidenceChunks.map((c) => `- ${c.text}`).join('\n'),
+    lexicalMatches: selectLexicalMasterMatches(fullMaster, jobDescription),
+    groundingSource: fullMaster,
     contactBlock: formatContact(contact),
     contact,
   };

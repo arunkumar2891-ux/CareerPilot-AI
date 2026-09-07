@@ -6,31 +6,22 @@ export function trimForAts(text: string, maxChars: number, label: string): strin
 
 export const ATS_SYSTEM_PROMPT = `You write resumes that sound like a senior engineer wrote them after a careful edit — not like a language model.
 
-VOICE (must read as human):
-- Prefer copying bullets from the MASTER BULLET BANK with small edits (cut fluff, drop a clause, swap order). Do not rewrite every sentence into a new "perfect" template.
-- Vary sentence length. Mix short facts with one longer technical sentence. Avoid starting several bullets the same way.
-- Do not use these phrases: results-driven, proven track record, passionate, leveraged, spearheaded, demonstrated ability, highly skilled, cutting-edge, seamless, robust ecosystem, utilizing, furthermore, additionally, in order to, played a key role.
-- Do not use em dashes, en dashes as separators, or stacked adjectives like "scalable, resilient, enterprise-grade".
-- Do not keyword-stuff. Mention JD tools only where they already appear in the bank or evidence.
-- Never write that the resume was tailored, optimized, generated, or customized for a company.
-- Never mention AI, prompts, ATS, playbooks, or this instruction set.
-
-CONTENT RULES:
-- SELECT bullets that already exist. Do not invent companies, titles, tools, or metrics.
-- EDUCATION must be copied exactly from the MASTER BULLET BANK. Never invent degrees, schools, or locations.
-- Every number must appear in the master bank or EVIDENCE CHUNKS.
-- Lead with projects that match the job. Keep 4-6 bullets per project. Drop the rest.
-- Reorder SKILLS so relevant technologies appear first. No stuffing.
-- Target TWO PAGES. Use the 2-page template as length/layout only.
-- Fill CONTACT from the CONTACT block. Never leave placeholders like [Email Address].
-- CONTACT Title should be a realistic professional title (can match the target role if it fits experience). Do not write "Tailored for …".
-- SUMMARY: 3-5 sentences in first person omitted (third-person implied resume style). State years, domain, and a few concrete outcomes. Do not open with the job title as a slogan.
+SOURCE-LOCKED CONTENT RULES:
+- The MASTER ATS RESUME is the only factual source. The role bank and lexical excerpts are retrieval aids from that same source, not permission to add facts.
+- Copy every non-heading line verbatim from the MASTER ATS RESUME. You may select, omit, and reorder complete lines and bullets, but never paraphrase, combine, split, or rewrite them.
+- Do not invent or infer companies, titles, tools, skills, metrics, dates, certifications, education, responsibilities, locations, or contact details. Do not add a JD keyword unless it already appears verbatim in the master source.
+- Use the existing PROFESSIONAL SUMMARY verbatim once; do not write an executive summary or any second summary.
+- Use 4-6 existing bullets per included project. Preserve every selected bullet exactly.
+- Reorder existing skill lines only; do not add skills or keyword-stuff.
+- Use the 2-page template only as a length target. It is not a factual source.
+- Never write that the resume was tailored, optimized, generated, or customized for a company. Never mention prompts, ATS, playbooks, RAG, or this instruction set.
 
 Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
 Use ONLY these section headers (ALL CAPS): NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, EDUCATION, SKILLS
 For bullets use: - (hyphen + space)
-CONTACT lines: Name, Title, Email, Phone, Location, LinkedIn, GitHub when available.`;
+Each section header may appear exactly once. Do not include PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, or any other summary heading.
+Under every section, copy complete source lines only. Do not add labels such as "Name:" or "Title:" unless the exact label is present in the source.`;
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;
@@ -41,25 +32,59 @@ export function buildResumeUserPrompt(input: {
   masterResume: string;
   twoPageTemplate: string;
   evidence: string;
+  lexicalMatches?: string;
   contactBlock: string;
   googleHeader?: string;
 }): string {
   const jobDescription = trimForAts(input.jobDescription, 8000, 'Job description');
   const twoPageTemplate = trimForAts(input.twoPageTemplate, 8000, '2-page template');
-  const masterResume = trimForAts(input.masterResume, 32000, 'Master bullet bank');
+  const masterResume = trimForAts(input.masterResume, 24000, 'Master ATS resume');
+  const lexicalMatches = trimForAts(input.lexicalMatches || '', 8000, 'Lexically matched master excerpts');
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
-    `Focus: pick and lightly edit existing bullets that match this posting. Do not invent a new career story.`,
+    `Retrieval strategy: semantic role-bank selection plus lexical matching against the same master source. Select complete source lines only; do not create a new career story.`,
     `MATCHED PLAYBOOK: ${input.playbookTitle || 'none — infer from JD'}`,
     input.playbookInstructions ? `PLAYBOOK INSTRUCTIONS:\n${input.playbookInstructions}` : '',
     `JOB DESCRIPTION:\n${jobDescription}`,
-    input.contactBlock ? `CONTACT:\n${input.contactBlock}` : '',
-    input.googleHeader ? `GOOGLE DOC HEADER OVERRIDE:\n${input.googleHeader}` : '',
+    input.contactBlock ? `CONTACT VALUES (only use values that also appear in the master source):\n${input.contactBlock}` : '',
+    input.googleHeader ? `GOOGLE DOC HEADER OVERRIDE (do not add facts from this unless present in the master source):\n${input.googleHeader}` : '',
     `2-PAGE TEMPLATE (length/layout target):\n${twoPageTemplate}`,
-    `MASTER BULLET BANK (source of truth — select from these bullets only):\n${masterResume}`,
-    input.evidence ? `EVIDENCE CHUNKS (allowed metrics only):\n${input.evidence}` : '',
+    `SEMANTIC ROLE BANK (retrieved from the master source):\n${masterResume}`,
+    lexicalMatches ? `LEXICALLY MATCHED MASTER EXCERPTS (also retrieved from the master source):\n${lexicalMatches}` : '',
+    `MASTER-ONLY POLICY: EVIDENCE CHUNKS and the job description may guide selection, but neither is an allowed factual source for the final resume.`,
   ].filter(Boolean).join('\n\n');
+}
+
+const RETRIEVAL_STOP_WORDS = new Set([
+  'about', 'after', 'among', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'into', 'is', 'of', 'on', 'or', 'that', 'the', 'this', 'to', 'with', 'you', 'your',
+]);
+
+function retrievalTerms(text: string): string[] {
+  return [...new Set((text.toLowerCase().match(/[a-z0-9+#./-]{3,}/g) || [])
+    .filter((term) => !RETRIEVAL_STOP_WORDS.has(term)))];
+}
+
+/**
+ * Lexical half of the hybrid retriever. Role playbooks provide the curated/semantic
+ * half; this picks additional master-resume blocks that use the JD's terminology.
+ */
+export function selectLexicalMasterMatches(masterResume: string, jobDescription: string, limit = 8): string {
+  const terms = retrievalTerms(jobDescription);
+  if (!terms.length) return '';
+
+  return masterResume
+    .split(/\n\s*\n/)
+    .map((block, index) => {
+      const haystack = block.toLowerCase();
+      const score = terms.reduce((total, term) => total + (haystack.includes(term) ? 1 : 0), 0);
+      return { block: block.trim(), index, score };
+    })
+    .filter((entry) => entry.block.length > 30 && entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .map((entry) => entry.block)
+    .join('\n\n');
 }
 
 export function pickPlaybook(

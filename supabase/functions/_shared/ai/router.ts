@@ -24,10 +24,10 @@ export type GenerateDeps = {
 function applyResumeValidation(
   provider: string,
   text: string,
-  operation: GenerateRequest['operation'],
+  request: GenerateRequest,
 ): string {
-  if (operation !== 'resume_tailoring') return text;
-  const checked = validateResumeOutput(text);
+  if (request.operation !== 'resume_tailoring') return text;
+  const checked = validateResumeOutput(text, { groundingSource: request.groundingSource });
   if (!checked.ok) {
     throw new ProviderError({
       provider: provider === 'groq' ? 'groq' : 'gemini',
@@ -51,7 +51,7 @@ async function callAdapter(
   log(`${prefix}provider=${adapter.name} operation=${req.operation} started`);
   try {
     const result = await adapter.generate(req);
-    const text = applyResumeValidation(adapter.name, result.text, req.operation);
+    const text = applyResumeValidation(adapter.name, result.text, req);
     await recordAiUsage(userId, {
       provider: adapter.name,
       operation: req.operation,
@@ -113,7 +113,7 @@ export async function generateWithProviders(
   const primary = adapters[primaryName];
   const fallback = fallbackName !== primaryName ? adapters[fallbackName] : undefined;
   // Primary: one shot by default (AI_MAX_RETRIES=1). Extra retries stay on the same provider only if raised.
-  const maxAttempts = deps.maxAttempts ?? Math.min(getAiMaxRetries(), 1);
+  const maxAttempts = deps.maxAttempts ?? getAiMaxRetries();
 
   const errors: string[] = [];
 

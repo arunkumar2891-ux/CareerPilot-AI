@@ -15,14 +15,39 @@ Deno.test('timeout and 5xx are retryable', () => {
   if (shouldFallback(bad)) throw new Error('400 should not fallback');
 });
 
-Deno.test('validateResumeOutput accepts ATS text and rejects garbage', () => {
-  const ok = validateResumeOutput(`SUMMARY
-Hello
+Deno.test('validateResumeOutput accepts a complete source-grounded resume and rejects unsupported facts', () => {
+  const source = `Jane Doe
+Principal Engineer
+jane@example.com
+Distributed systems engineer.
+Acme
+- Shipped APIs used by millions of users.
+B.S. Computer Science
+TypeScript, Python`;
+  const output = `NAME
+Jane Doe
+
+CONTACT
+Principal Engineer
+jane@example.com
+
+SUMMARY
+Distributed systems engineer.
 
 PROFESSIONAL EXPERIENCE
-Worked at Acme
-`);
+Acme
+- Shipped APIs used by millions of users.
+
+EDUCATION
+B.S. Computer Science
+
+SKILLS
+TypeScript, Python
+`;
+  const ok = validateResumeOutput(output, { groundingSource: source });
   if (!ok.ok) throw new Error('expected valid');
-  const bad = validateResumeOutput('hello world');
-  if (bad.ok) throw new Error('expected invalid');
+  const invented = validateResumeOutput(output.replace('Distributed systems engineer.', 'AI executive with 15 years of experience.'), { groundingSource: source });
+  if (invented.ok) throw new Error('expected unsupported source line to fail');
+  const duplicateSummary = validateResumeOutput(output.replace('SKILLS\nTypeScript, Python', 'SUMMARY\nTypeScript, Python'), { groundingSource: source });
+  if (duplicateSummary.ok) throw new Error('expected duplicate section to fail');
 });

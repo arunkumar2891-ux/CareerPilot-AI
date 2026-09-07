@@ -37,7 +37,8 @@ export const groqAdapter: ProviderAdapter = {
           signal: controller.signal,
           body: JSON.stringify({
             model: getGroqModel(),
-            temperature: 0.55,
+            // Keep source-locked resume selection deterministic across provider fallback.
+            temperature: req.operation === 'resume_tailoring' ? 0.1 : 0.55,
             max_completion_tokens: fitted.maxCompletionTokens,
             reasoning_effort: 'low',
             messages: [

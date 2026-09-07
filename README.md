@@ -12,7 +12,8 @@ The frontend is a Vite single-page application. Supabase supplies authentication
 - Uses a career corpus, role playbooks, and tagged evidence to tailor resumes for a job description.
 - Produces a PDF with LaTeX, stores it in Supabase Storage, and can sync it to Google Drive from the Resume workspace.
 - Tracks jobs and applications, including status timelines, notes, and attachments.
-- Provides an AI Copilot, ATS scoring/review, cover-letter drafting, analytics, an integrations catalog, and a knowledge base.
+- Scores resumes for ATS compatibility, persists the feedback with the resume, and opens a resume-linked Copilot conversation for follow-up improvements.
+- Provides an AI Copilot, cover-letter drafting, analytics, an integrations catalog, and a knowledge base.
 - Runs scheduled searches and exposes run, job, and node-level execution history, with cancellation and retry of failed jobs.
 
 ## Architecture
@@ -56,6 +57,14 @@ Long-running work is checkpointed in `workflow_step_queue`. The scheduler resume
 
 The default workflow definition is in [src/constants/workflow-seed.ts](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/constants/workflow-seed.ts). The workflow can be customized through the data model; the available node types cover triggers, AI, integrations, logic, and transforms.
 
+## Resume review and Copilot
+
+The Resume workspace keeps the latest ATS review alongside the Markdown resume. Select **Score ATS** to generate a score, specific feedback, and actionable suggestions; the review is saved in the `resumes.ats_review` column, so it is available when the resume is reopened.
+
+From the **ATS Review** tab, **Discuss in Copilot** opens (or resumes) a conversation linked to that resume. The Copilot receives the current resume and saved review as context, retains its conversation history, and is instructed not to invent experience, metrics, skills, certifications, employers, or dates. It asks for missing facts before proposing Markdown edits; changes remain user-reviewed and are not applied automatically.
+
+This flow requires migration `018_resume_ats_review_chat.sql` and the deployed `ai-chat` Edge Function. General Copilot conversations continue to work without a linked resume.
+
 ## Application areas
 
 | Area | Purpose |
@@ -64,8 +73,8 @@ The default workflow definition is in [src/constants/workflow-seed.ts](/Users/ar
 | Job Discovery | Search results, filtering, and on-demand pipeline runs |
 | Applications | Application status, events, recruiter details, notes, and files |
 | Corpus | Seeded master resume, two-page template, and role-specific bullet banks |
-| Resumes | Resume editing, versions, ATS reviews, PDF generation, and Google Drive sync |
-| Cover Letters and AI Copilot | Drafting, resume/JD assistance, interview preparation, and chat history |
+| Resumes | Markdown editing, persisted ATS reviews, versions, PDF generation, and Google Drive sync |
+| Cover Letters and AI Copilot | Drafting, resume/JD assistance, ATS-review follow-up, interview preparation, and saved chat history |
 | Knowledge Base | Google Doc sync and tagged career-evidence retrieval |
 | Execution History | Workflow graph, logs, per-job/node outcomes, cancellation, and retries |
 | Analytics | Funnel metrics and AI usage |
@@ -137,7 +146,8 @@ Apply every SQL migration in filename order. Before `003_cron.sql`, enable the `
 | `005`–`010` | Career knowledge chunks, execution deletion/cancellation, and status support |
 | `011`–`013` | Execution observability and automation scheduling repairs |
 | `014`–`016` | Resume-to-job links, PDF/Drive fields, and corpus classification |
-| `017`–`018` | AI usage events, persisted ATS reviews, and resume-linked chat |
+| `017` | AI usage events |
+| `018` | Persisted ATS reviews and resume-linked Copilot conversations |
 
 For exact migration and scheduler instructions, see [DEPLOY.md](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/DEPLOY.md). The deployment guide is especially important for the cron endpoint, because scheduled and waiting workflows require `workflow-scheduler` to run every minute.
 
@@ -183,6 +193,7 @@ The repository also includes a GitHub Actions workflow that deploys Edge Functio
 3. Connect Google in **Integrations** if you want to pull a master Google Doc or send generated PDFs to Drive.
 4. Use **Knowledge Base** to sync a Google Doc into the corpus if applicable.
 5. Use **Job Discovery → Run Search** to test the pipeline, then follow progress in **Execution History**.
+6. Open a resume, select **Score ATS**, and use **Discuss in Copilot** to work through its saved review.
 
 ## Career corpus
 
@@ -193,6 +204,12 @@ npm run sync:corpus
 ```
 
 This regenerates `supabase/functions/_shared/career-corpus/careerpilot-section.generated.ts`, which is used by the Edge Functions and included automatically by `npm run build`.
+
+### Source-locked resume tailoring
+
+Resume tailoring uses hybrid retrieval without treating the job description as a source of candidate facts. A role playbook first selects a relevant master-resume bank, then lexical matching finds additional master-resume blocks that overlap with the job description. Evidence chunks and the posting influence selection only.
+
+The final resume is source-locked: every non-heading output line must match a line in the user's Master ATS resume, and the response must contain each required section exactly once. Outputs with unsupported lines or duplicate source lines are rejected before they are stored. This deliberately favors factual consistency over free-form rewriting; update the Master ATS resume when a fact, metric, or skill should become eligible for tailoring.
 
 ## Deployment
 
@@ -208,6 +225,7 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` on the static host, update 
 
 - Google Docs and Drive features require a Google Cloud OAuth client with the requested scopes and a connected user account.
 - PDFs depend on the configured LaTeX compiler service.
+- ATS scoring and resume-linked Copilot use the configured AI provider; quality depends on the supplied resume content and should be reviewed before use.
 - `pg_cron`/`pg_net`, or an equivalent external minute-level scheduler, is required for scheduled runs and delayed workflow steps. Manual runs do not depend on cron.
 - Knowledge-base embeddings are represented in the schema, while the current retrieval path is tag/evidence based.
 - LinkedIn scraping results are subject to Apify actor output and can be noisy; the workflow filters using the configured query and URL de-duplication.

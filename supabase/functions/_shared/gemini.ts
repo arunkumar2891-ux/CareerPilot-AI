@@ -38,11 +38,13 @@ export async function callGeminiAtsGenerateContent(
   systemPrompt: string,
   userPrompt: string,
   userId?: string,
+  groundingSource?: string,
 ): Promise<string> {
   return await generateText({
     systemPrompt,
     userPrompt,
     operation: 'resume_tailoring',
     timeoutMs: getGeminiAtsTimeoutMs(),
+    groundingSource,
   }, { userId });
 }

@@ -36,7 +36,8 @@ export const geminiAdapter: ProviderAdapter = {
           contents: [{ role: 'user', parts: [{ text: req.userPrompt }] }],
           generationConfig: {
             maxOutputTokens: 8192,
-            temperature: 0.55,
+            // Grounded tailoring benefits from selection consistency, not creative variation.
+            temperature: req.operation === 'resume_tailoring' ? 0.1 : 0.55,
           },
         }),
       });
