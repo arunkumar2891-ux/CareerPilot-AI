@@ -1,6 +1,6 @@
 export type AiProviderName = 'gemini' | 'groq';
 
-export type AiOperation = 'chat' | 'resume_tailoring' | 'ats_score';
+export type AiOperation = 'chat' | 'resume_tailoring' | 'resume_rerank' | 'ats_score';
 
 export interface GenerateRequest {
   systemPrompt: string;

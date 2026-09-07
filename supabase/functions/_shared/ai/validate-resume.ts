@@ -100,7 +100,7 @@ export function validateResumeOutput(
     }
   }
 
-  // A generated resume must not introduce facts absent from the user's Master ATS resume.
+  // A generated resume must not introduce facts absent from the bullet catalog / master source.
   if (options?.groundingSource) {
     const grounding = validateGrounding(text, options.groundingSource);
     if (!grounding.ok) return grounding;

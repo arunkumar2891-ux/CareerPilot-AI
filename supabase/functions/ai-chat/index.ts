@@ -78,7 +78,10 @@ Deno.serve(async (req) => {
 
     if (mode === 'resume') {
       const jd = String(body.jobDescription || content || '');
-      const corpus = await loadCareerCorpus(user.id, jd);
+      const corpus = await loadCareerCorpus(user.id, jd, {
+        jobTitle: String(body.jobTitle || ''),
+        company: String(body.company || ''),
+      });
       const userPrompt = buildResumeUserPrompt({
         jobTitle: String(body.jobTitle || ''),
         company: String(body.company || ''),
@@ -87,7 +90,9 @@ Deno.serve(async (req) => {
         playbookInstructions: corpus.playbookInstructions,
         masterResume: corpus.masterResume,
         twoPageTemplate: corpus.twoPageTemplate,
-        evidence: corpus.evidence,
+        bulletCatalog: corpus.bulletCatalog,
+        retrievedEvidence: corpus.retrievedEvidence,
+        rerankedSelection: corpus.rerankedSelection,
         lexicalMatches: corpus.lexicalMatches,
         contactBlock: corpus.contactBlock,
       });

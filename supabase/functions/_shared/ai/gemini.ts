@@ -37,7 +37,7 @@ export const geminiAdapter: ProviderAdapter = {
           generationConfig: {
             maxOutputTokens: 8192,
             // Grounded tailoring benefits from selection consistency, not creative variation.
-            temperature: req.operation === 'resume_tailoring' ? 0.1 : 0.55,
+            temperature: req.operation === 'resume_tailoring' || req.operation === 'resume_rerank' ? 0.1 : 0.55,
           },
         }),
       });

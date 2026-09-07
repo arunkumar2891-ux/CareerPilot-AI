@@ -9,8 +9,19 @@ import {
   playbookInstructions,
   selectLexicalMasterMatches,
   selectEvidence,
-  buildResumeGroundingSource,
+  retrievalTerms,
 } from './prompt.ts';
+import {
+  buildBulletCatalog,
+  buildCatalogGroundingSource,
+  formatBulletCatalogBlock,
+  formatRetrievedEvidenceBlock,
+  formatRerankedSelection,
+  matchEvidenceToCatalog,
+  scoreRetrievalCandidates,
+  selectCatalogLines,
+} from './resume-bullets.ts';
+import { rerankBulletsWithLlm } from './rerank-bullets.ts';
 
 const MASTER_NAME = 'Master ATS (bullet bank)';
 const TWO_PAGE_NAME = '2-page template';
@@ -22,14 +33,21 @@ export interface CareerCorpusBundle {
   playbookId: string;
   masterResumeSource: 'role-bank' | 'generated';
   playbookInstructions: string;
-  evidence: string;
+  bulletCatalog: string;
+  retrievedEvidence: string;
+  rerankedSelection: string;
   lexicalMatches: string;
   groundingSource: string;
   contactBlock: string;
   contact: Record<string, string | undefined>;
+  rerankedBulletIds: string[];
 }
 
-export async function loadCareerCorpus(userId: string, jobDescription: string): Promise<CareerCorpusBundle> {
+export async function loadCareerCorpus(
+  userId: string,
+  jobDescription: string,
+  context?: { jobTitle?: string; company?: string },
+): Promise<CareerCorpusBundle> {
   const admin = createAdminClient();
   const [{ data: resumes }, chunksQuery, settings] = await Promise.all([
     admin.from('resumes').select('name, content').eq('user_id', userId),
@@ -87,8 +105,35 @@ export async function loadCareerCorpus(userId: string, jobDescription: string): 
   const selectedResume = selectMasterResumeForJob(fullMaster, playbook, resumeRows);
   const masterResume = applyContactOverlay(selectedResume.content, contact);
   const lexicalMatches = selectLexicalMasterMatches(fullMaster, jobDescription);
-  const evidence = evidenceChunks.map((c) => `- ${c.text}`).join('\n');
   const contactBlock = formatContact(contact);
+
+  const catalog = buildBulletCatalog(fullMaster);
+  const evidenceMatches = matchEvidenceToCatalog(evidenceChunks, catalog);
+  const scoredCandidates = scoreRetrievalCandidates({
+    catalog,
+    roleBankText: masterResume,
+    lexicalMatches,
+    evidenceChunks,
+    jobDescription,
+    retrievalTerms: retrievalTerms(jobDescription),
+  });
+
+  const rerankedBulletIds = await rerankBulletsWithLlm(
+    scoredCandidates,
+    {
+      jobTitle: context?.jobTitle,
+      company: context?.company,
+      playbookTitle: playbook.title,
+      jobDescription,
+    },
+    userId,
+  );
+
+  const priorityLines = selectCatalogLines(catalog, rerankedBulletIds);
+  const bulletCatalog = formatBulletCatalogBlock(priorityLines.length ? priorityLines : catalog.slice(0, 40));
+  const retrievedEvidence = formatRetrievedEvidenceBlock(evidenceMatches);
+  const rerankedSelection = formatRerankedSelection(rerankedBulletIds);
+  const groundingSource = buildCatalogGroundingSource(catalog, [contactBlock]);
 
   return {
     masterResume,
@@ -97,16 +142,13 @@ export async function loadCareerCorpus(userId: string, jobDescription: string): 
     playbookId: playbook.id,
     masterResumeSource: selectedResume.source,
     playbookInstructions: playbookInstructions(playbook),
-    evidence,
+    bulletCatalog,
+    retrievedEvidence,
+    rerankedSelection,
     lexicalMatches,
-    groundingSource: buildResumeGroundingSource({
-      fullMaster,
-      masterResume,
-      evidence,
-      lexicalMatches,
-      contactBlock,
-    }),
+    groundingSource,
     contactBlock,
     contact,
+    rerankedBulletIds,
   };
 }

@@ -449,7 +449,10 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         return { output: { skipped: true, reason: 'no_job_input' }, status: 'success' };
       }
       const jd = String(job.jobDescription || job.description || '');
-      const corpus = await loadCareerCorpus(ctx.userId, jd);
+      const corpus = await loadCareerCorpus(ctx.userId, jd, {
+        jobTitle: String(job.title || job.role || ''),
+        company: String(job.company || job.companyName || ''),
+      });
       const userPrompt = buildResumeUserPrompt({
         jobTitle: String(job.title || job.role || ''),
         company: String(job.company || job.companyName || ''),
@@ -458,7 +461,9 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         playbookInstructions: corpus.playbookInstructions,
         masterResume: corpus.masterResume,
         twoPageTemplate: corpus.twoPageTemplate,
-        evidence: corpus.evidence,
+        bulletCatalog: corpus.bulletCatalog,
+        retrievedEvidence: corpus.retrievedEvidence,
+        rerankedSelection: corpus.rerankedSelection,
         lexicalMatches: corpus.lexicalMatches,
         contactBlock: corpus.contactBlock,
         googleHeader: String(ctx.variables.googleHeader || ''),

@@ -38,7 +38,7 @@ export const groqAdapter: ProviderAdapter = {
           body: JSON.stringify({
             model: getGroqModel(),
             // Keep source-locked resume selection deterministic across provider fallback.
-            temperature: req.operation === 'resume_tailoring' ? 0.1 : 0.55,
+            temperature: req.operation === 'resume_tailoring' || req.operation === 'resume_rerank' ? 0.1 : 0.55,
             max_completion_tokens: fitted.maxCompletionTokens,
             reasoning_effort: 'low',
             messages: [
