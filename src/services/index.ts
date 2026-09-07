@@ -572,6 +572,40 @@ export class ResumeService {
     link.click();
     URL.revokeObjectURL(objectUrl);
   }
+  async deleteAllJobResumes(): Promise<number> {
+    const userId = await requireUserId();
+    const { data: resumes, error: listError } = await supabase
+      .from('resumes')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_corpus', false);
+    if (listError) throw listError;
+    const ids = (resumes || []).map((r) => r.id as string);
+    if (ids.length === 0) return 0;
+
+    const { error: versionsError } = await supabase
+      .from('resume_versions')
+      .delete()
+      .in('resume_id', ids)
+      .eq('user_id', userId);
+    if (versionsError) throw versionsError;
+
+    const { error: resumeError } = await supabase
+      .from('resumes')
+      .delete()
+      .in('id', ids)
+      .eq('user_id', userId);
+    if (resumeError) throw resumeError;
+
+    const { error: jobError } = await supabase
+      .from('jobs')
+      .update({ resume_status: 'none', resume_id: null })
+      .eq('user_id', userId)
+      .in('resume_id', ids);
+    if (jobError) throw jobError;
+
+    return ids.length;
+  }
   async repairSync(): Promise<{
     resumesLinkedToJobs: number;
     jobsLinkedToResumes: number;

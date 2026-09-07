@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Plus, FileText, Download, GitCompare,
-  Clock, Sparkles, FileX, Cloud, CloudUpload,
+  Clock, Sparkles, FileX, Cloud, CloudUpload, Trash2, RefreshCw,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -41,6 +41,8 @@ export function ResumesPage() {
   const [newContent, setNewContent] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSyncing, setBulkSyncing] = useState(false);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -83,6 +85,20 @@ export function ResumesPage() {
     qc.invalidateQueries({ queryKey: ['resumes'] });
   };
 
+  const deleteAllJobResumes = async () => {
+    setDeleting(true);
+    try {
+      const count = await services.resume.deleteAllJobResumes();
+      await qc.invalidateQueries({ queryKey: ['resumes', 'jobs', 'metrics'] });
+      toast.success(`Deleted ${count} job resume${count === 1 ? '' : 's'}`);
+      setShowDeleteAll(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete resumes');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const compare = async () => {
     if (!compareA || !compareB || compareA === compareB) {
       toast.error('Select two different resumes to compare');
@@ -98,31 +114,36 @@ export function ResumesPage() {
         title="Resumes"
         description="Job-tailored resumes from search pipelines and manual generation"
         actions={
-          <Dialog open={showCreate} onOpenChange={setShowCreate}>
-            <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="h-4 w-4" /> New Resume</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Create Resume</DialogTitle></DialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="space-y-1.5"><Label>Name</Label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Senior Frontend Resume" /></div>
-                <div className="space-y-1.5">
-                  <Label>Type</Label>
-                  <Select value={newType} onValueChange={(v) => setNewType(v as Resume['type'])}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="technical">Technical</SelectItem>
-                      <SelectItem value="executive">Executive</SelectItem>
-                      <SelectItem value="creative">Creative</SelectItem>
-                      <SelectItem value="general">General</SelectItem>
-                    </SelectContent>
-                  </Select>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowDeleteAll(true)} disabled={!resumes?.length} className="gap-2">
+              <Trash2 className="h-4 w-4" /> Delete All
+            </Button>
+            <Dialog open={showCreate} onOpenChange={setShowCreate}>
+              <DialogTrigger asChild>
+                <Button className="gap-2"><Plus className="h-4 w-4" /> New Resume</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Create Resume</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="space-y-1.5"><Label>Name</Label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Senior Frontend Resume" /></div>
+                  <div className="space-y-1.5">
+                    <Label>Type</Label>
+                    <Select value={newType} onValueChange={(v) => setNewType(v as Resume['type'])}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="technical">Technical</SelectItem>
+                        <SelectItem value="executive">Executive</SelectItem>
+                        <SelectItem value="creative">Creative</SelectItem>
+                        <SelectItem value="general">General</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5"><Label>Content (Markdown)</Label><Textarea rows={6} value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="# Your Name..." /></div>
                 </div>
-                <div className="space-y-1.5"><Label>Content (Markdown)</Label><Textarea rows={6} value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="# Your Name..." /></div>
-              </div>
-              <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
-            </DialogContent>
-          </Dialog>
+                <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         }
       />
 
@@ -282,6 +303,24 @@ export function ResumesPage() {
           ))}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showDeleteAll} onOpenChange={setShowDeleteAll}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete all job resumes?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes all tailored job resumes and their version history from the database. Corpus resumes (master ATS, templates, role banks) are kept. Linked jobs will have their resume status reset so you can regenerate them from the Job Discovery page.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteAll(false)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={deleteAllJobResumes} disabled={deleting} className="gap-2">
+              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete all job resumes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ResumeEditor
         resume={selected}
