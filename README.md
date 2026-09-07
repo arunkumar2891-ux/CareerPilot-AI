@@ -132,7 +132,11 @@ npm run lint       # ESLint
 npm run typecheck  # TypeScript, no emit
 npm run build      # sync corpus, type-check, then Vite production build
 npm run preview    # serve the production build
+
+npm run version:bump  # 1.0 -> 1.1 -> ... -> 1.999 -> 2.0; run before each deploy
 ```
+
+The sidebar shows the current version as `beta v1` (sourced from `version` in `package.json`).
 
 Do not put provider API keys in `.env` or expose them through `VITE_` variables. Configure those as Supabase Edge Function secrets instead.
 

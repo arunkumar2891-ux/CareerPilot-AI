@@ -2,13 +2,14 @@
   "name": "careerpilot-ai",
   "description": "Autonomous AI job search platform with built-in workflow automation",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "npm run sync:corpus && tsc -b && vite build",
     "build:debug": "npm run sync:corpus && tsc -b && VITE_DEBUG_BUILD=true vite build",
     "sync:corpus": "node scripts/sync-careerpilot-section.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json"

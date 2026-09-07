@@ -190,6 +190,18 @@ Your URL will be `https://careerpilot-ai.onrender.com` (or similar).
 4. **Redirects/Rewrites** → add a **Rewrite** (not a Redirect): Source `/*`, Destination `/index.html`. Render ignores Netlify-style `public/_redirects` unless this is set (or you used the Blueprint `render.yaml` routes). The build also copies `dist/404.html` from `index.html` as a fallback.
 5. **Create Static Site**
 
+### Bump the app version before each deploy
+
+The sidebar shows `beta v1`, `beta v1.1`, … sourced from `version` in `package.json`. Bump it one step, then push — Render picks it up on the next build:
+
+```bash
+npm run version:bump
+git commit -am "Bump version"
+git push
+```
+
+`1.0 → 1.1 → 1.2 … 1.999 → 2.0`. The script keeps `package-lock.json` in sync so `npm ci` on the build host still works.
+
 ### After Render deploy
 
 Update Supabase and secrets with your live URL (e.g. `https://careerpilot-ai.onrender.com`):
