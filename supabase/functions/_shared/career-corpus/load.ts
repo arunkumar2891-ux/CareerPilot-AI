@@ -9,6 +9,7 @@ import {
   playbookInstructions,
   selectLexicalMasterMatches,
   selectEvidence,
+  buildResumeGroundingSource,
 } from './prompt.ts';
 
 const MASTER_NAME = 'Master ATS (bullet bank)';
@@ -85,6 +86,9 @@ export async function loadCareerCorpus(userId: string, jobDescription: string): 
   }));
   const selectedResume = selectMasterResumeForJob(fullMaster, playbook, resumeRows);
   const masterResume = applyContactOverlay(selectedResume.content, contact);
+  const lexicalMatches = selectLexicalMasterMatches(fullMaster, jobDescription);
+  const evidence = evidenceChunks.map((c) => `- ${c.text}`).join('\n');
+  const contactBlock = formatContact(contact);
 
   return {
     masterResume,
@@ -93,10 +97,16 @@ export async function loadCareerCorpus(userId: string, jobDescription: string): 
     playbookId: playbook.id,
     masterResumeSource: selectedResume.source,
     playbookInstructions: playbookInstructions(playbook),
-    evidence: evidenceChunks.map((c) => `- ${c.text}`).join('\n'),
-    lexicalMatches: selectLexicalMasterMatches(fullMaster, jobDescription),
-    groundingSource: fullMaster,
-    contactBlock: formatContact(contact),
+    evidence,
+    lexicalMatches,
+    groundingSource: buildResumeGroundingSource({
+      fullMaster,
+      masterResume,
+      evidence,
+      lexicalMatches,
+      contactBlock,
+    }),
+    contactBlock,
     contact,
   };
 }

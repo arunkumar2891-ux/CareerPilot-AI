@@ -140,6 +140,23 @@ export function formatContact(contact: Record<string, string | undefined>): stri
   ].filter(Boolean).join('\n');
 }
 
+/** Union of every factual line the model is allowed to select from during tailoring. */
+export function buildResumeGroundingSource(input: {
+  fullMaster: string;
+  masterResume: string;
+  evidence?: string;
+  lexicalMatches?: string;
+  contactBlock?: string;
+}): string {
+  return [
+    input.fullMaster,
+    input.masterResume,
+    input.evidence,
+    input.lexicalMatches,
+    input.contactBlock,
+  ].filter(Boolean).join('\n\n');
+}
+
 export const DEFAULT_EDUCATION = `B.Tech in Information Technology
 SASTRA University | Thanjavur`;
 
