@@ -148,6 +148,54 @@ export function formatContact(contact: Record<string, string | undefined>): stri
   ].filter(Boolean).join('\n');
 }
 
+export const DEFAULT_EDUCATION = `B.Tech in Information Technology
+SASTRA University | Thanjavur`;
+
+export function replaceEducationPlaceholders(text: string): string {
+  let out = text;
+  out = out.replace(
+    /\[Degree Name\][^\n]*\n\[University Name\][^\n]*(?:\n\[Graduation Year\][^\n]*)?/g,
+    DEFAULT_EDUCATION,
+  );
+  out = out.replace(
+    /Bachelor of Engineering in Computer Science\s*\n\s*Anna University[^\n]*/gi,
+    DEFAULT_EDUCATION,
+  );
+  return out;
+}
+
+export function applyContactOverlay(
+  text: string,
+  contact: Record<string, string | undefined>,
+): string {
+  let out = text;
+  const replacements: [string, string | undefined][] = [
+    ['[City, State]', contact.location],
+    ['[Location]', contact.location],
+    ['[Phone Number]', contact.phone],
+    ['[Email Address]', contact.email],
+    ['[LinkedIn URL]', contact.linkedin],
+    ['[GitHub URL]', contact.github],
+    ['[Start Date]', contact.startDate],
+  ];
+  for (const [token, value] of replacements) {
+    if (value) out = out.split(token).join(value);
+  }
+  const headerLines: [string, string | undefined][] = [
+    ['Location', contact.location],
+    ['Phone', contact.phone],
+    ['Email', contact.email],
+    ['LinkedIn', contact.linkedin],
+    ['GitHub', contact.github],
+  ];
+  for (const [label, value] of headerLines) {
+    if (!value) continue;
+    out = out.replace(new RegExp(`^${label}:.*$`, 'm'), `${label}: ${value}`);
+  }
+  if (contact.fullName) out = out.replace(/^ARUN KUMAR/m, contact.fullName.toUpperCase());
+  return replaceEducationPlaceholders(out);
+}
+
 export function selectEvidence(
   jd: string,
   chunks: readonly { id: string; tags: readonly string[]; text: string }[],
