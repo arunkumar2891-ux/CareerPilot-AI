@@ -299,7 +299,8 @@ export function SettingsPage() {
                 <li><code>GROQ_API_KEY</code> — Groq API key (third fallback after both Gemini keys)</li>
                 <li><code>GROQ_MODEL</code> — optional; defaults to <code>openai/gpt-oss-120b</code></li>
                 <li><code>AI_TIMEOUT_MS</code> — optional chat timeout; default 30000</li>
-                <li><code>AI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 75000</li>
+                <li><code>AI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 40000 (keep total under 150s edge limit)</li>
+                <li><code>AI_FORCE_GROQ</code> — optional; default off — skips Groq when catalog assembly is available</li>
                 <li><code>AI_MAX_RETRIES</code> — optional; only used when <code>AI_GEMINI_RETRY_ENABLED=true</code></li>
                 <li><code>AI_GEMINI_RETRY_ENABLED</code> — optional; default off — one Gemini attempt per key, then next provider</li>
                 <li><code>AI_LLM_RERANK_ENABLED</code> — optional; default off — saves Gemini quota by using scored bullet order instead of LLM rerank</li>

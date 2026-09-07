@@ -9,13 +9,26 @@ export function getAiTimeoutMs(): number {
   return parsePositiveInt(Deno.env.get('AI_TIMEOUT_MS'), 30000, 120000);
 }
 
-/** ATS prompts are large; 30s often expires before Groq can help. Default 75s for Gemini tailoring only. */
+/** ATS tailoring timeout. Keep under ~45s so two providers + corpus load stay within the 150s edge limit. */
 export function getAtsTimeoutMs(): number {
   return parsePositiveInt(
     Deno.env.get('AI_ATS_TIMEOUT_MS') || Deno.env.get('GEMINI_ATS_TIMEOUT_MS'),
-    75000,
-    120000,
+    40000,
+    90000,
   );
+}
+
+export function getGeminiFallbackTimeoutMs(): number {
+  return parsePositiveInt(Deno.env.get('AI_GEMINI_FALLBACK_TIMEOUT_MS'), 30000, 60000);
+}
+
+export function getGroqAtsTimeoutMs(): number {
+  return parsePositiveInt(Deno.env.get('AI_GROQ_ATS_TIMEOUT_MS'), 25000, 60000);
+}
+
+/** Skip Groq when catalog assembly is available (saves ~25s on quota-hit paths). Set AI_FORCE_GROQ=true to keep Groq. */
+export function isGroqResumeFallbackEnabled(): boolean {
+  return Deno.env.get('AI_FORCE_GROQ')?.trim().toLowerCase() === 'true';
 }
 
 export function getAiMaxRetries(): number {

@@ -1,4 +1,4 @@
-import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiMaxRetries, getProviderChain } from './config.ts';
+import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiFallbackTimeoutMs, getGeminiMaxRetries, getGroqAtsTimeoutMs, getProviderChain, isGroqResumeFallbackEnabled } from './config.ts';
 import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
 import { assembleSourceLockedResume } from '../career-corpus/assemble-source-locked-resume.ts';
 import { geminiAdapter, geminiFallbackAdapter } from './gemini.ts';
@@ -22,6 +22,30 @@ export type GenerateDeps = {
   log?: (message: string) => void;
 };
 
+function shouldRetrySameProvider(err: unknown): boolean {
+  if (!(err instanceof ProviderError) || !err.retryable) return false;
+  // Never burn wall-clock on quota, validation, or timeout — fall through to the next provider.
+  if (['rate_limit', 'invalid_output', 'timeout', 'http_429'].includes(err.kind)) return false;
+  return true;
+}
+
+function timeoutForProvider(providerName: string, operation: string, defaultTimeout: number): number {
+  if (operation !== 'resume_tailoring') return defaultTimeout;
+  if (providerName === 'gemini_fallback') return getGeminiFallbackTimeoutMs();
+  if (providerName === 'groq') return getGroqAtsTimeoutMs();
+  return getAtsTimeoutMs();
+}
+
+function filterTailChain(
+  tailChain: string[],
+  request: GenerateRequest,
+): string[] {
+  return tailChain.filter((name) => {
+    if (name !== 'groq') return true;
+    if (!request.deterministicResume) return true;
+    return isGroqResumeFallbackEnabled();
+  });
+}
 function maxAttemptsForProvider(providerName: string): number {
   if (providerName === 'gemini' || providerName === 'gemini_fallback') {
     return getGeminiMaxRetries();
@@ -113,7 +137,7 @@ async function tryProvider(
       return await callAdapter(adapter, req, role, log, userId);
     } catch (err) {
       lastErr = err;
-      const retryable = err instanceof ProviderError && err.retryable;
+      const retryable = shouldRetrySameProvider(err);
       if (!retryable || i >= attempts) throw err;
     }
   }
@@ -188,7 +212,11 @@ export async function generateWithProviders(
     });
   }
 
-  const { geminiChain, tailChain } = splitProviderChain(chain);
+  const { geminiChain, tailChain: rawTailChain } = splitProviderChain(chain);
+  const tailChain = filterTailChain(rawTailChain, request);
+  if (rawTailChain.includes('groq') && !tailChain.includes('groq')) {
+    log('[AI] provider=groq skipped (catalog assembly available; set AI_FORCE_GROQ=true to enable)');
+  }
 
   for (let index = 0; index < geminiChain.length; index++) {
     const providerName = geminiChain[index];
@@ -201,8 +229,10 @@ export async function generateWithProviders(
     const role = index === 0 ? 'primary' : 'fallback';
     const attempts = deps.maxAttempts ?? maxAttemptsForProvider(providerName);
 
+    const providerTimeout = timeoutForProvider(providerName, request.operation, timeoutMs);
+
     try {
-      return await tryProvider(adapter, { ...request, timeoutMs }, role, attempts, log, deps.userId);
+      return await tryProvider(adapter, { ...request, timeoutMs: providerTimeout }, role, attempts, log, deps.userId);
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${providerLabel(providerName)}: ${message}`);
@@ -224,9 +254,7 @@ export async function generateWithProviders(
       continue;
     }
 
-    const providerTimeout = providerName === 'groq' && req.operation === 'resume_tailoring'
-      ? getAtsTimeoutMs()
-      : timeoutMs;
+    const providerTimeout = timeoutForProvider(providerName, request.operation, timeoutMs);
 
     try {
       return await tryProvider(adapter, { ...request, timeoutMs: providerTimeout }, 'fallback', 1, log, deps.userId);
