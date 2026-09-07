@@ -177,18 +177,49 @@ function shouldSkipGroundingLine(line: string): boolean {
 }
 
 function extractSectionBody(text: string, header: string): string {
+  return parseAtsSections(text).get(header)?.join('\n').trim() || '';
+}
+
+export function extractAtsSection(text: string, header: string): string {
+  return extractSectionBody(text, header);
+}
+
+function parseAtsSections(text: string): Map<string, string[]> {
   const sections = new Map<string, string[]>();
+  const preamble: string[] = [];
   let current: string | null = null;
   for (const line of text.split('\n')) {
-    const canonical = canonicalHeader(line);
-    if (canonical) {
-      current = canonical;
-      if (!sections.has(canonical)) sections.set(canonical, []);
+    const header = canonicalHeader(line);
+    if (header) {
+      current = header;
+      if (!sections.has(header)) sections.set(header, []);
       continue;
     }
     if (current) sections.get(current)!.push(line);
+    else preamble.push(line);
   }
-  return (sections.get(header) || []).join('\n').trim();
+  if (!sections.has('NAME') || !sections.has('CONTACT')) {
+    const { name, contact } = splitPreamble(preamble);
+    if (!sections.has('NAME') && name.length) sections.set('NAME', name);
+    if (!sections.has('CONTACT') && contact.length) sections.set('CONTACT', contact);
+  }
+  return sections;
+}
+
+function overlayIdentitySections(
+  text: string,
+  identity?: { name?: string; contact?: string; education?: string },
+): string {
+  if (!identity?.name && !identity?.contact && !identity?.education) return text;
+  const sections = parseAtsSections(text);
+  const apply = (header: string, value?: string) => {
+    if (!value?.trim()) return;
+    sections.set(header, value.split('\n'));
+  };
+  apply('NAME', identity.name);
+  apply('CONTACT', identity.contact);
+  apply('EDUCATION', identity.education);
+  return joinSections(sections);
 }
 
 export function buildAllowedResumeLines(groundingSource: string): Set<string> {
@@ -209,27 +240,94 @@ export function buildAllowedResumeLines(groundingSource: string): Set<string> {
   return allowed;
 }
 
-function isGroundedLine(normalized: string, allowed: Set<string>): boolean {
+const GROUNDING_STOP_WORDS = new Set([
+  'the', 'and', 'with', 'for', 'from', 'that', 'this', 'into', 'over', 'using', 'used',
+  'a', 'an', 'of', 'to', 'in', 'on', 'by', 'as', 'or', 'at', 'via', 'per',
+]);
+const IDENTITY_HEADERS = new Set(['NAME', 'CONTACT', 'EDUCATION']);
+
+function significantTokens(normalized: string): string[] {
+  return normalized
+    .split(/[^a-z0-9+#]+/)
+    .filter((token) => token.length >= 3 && !GROUNDING_STOP_WORDS.has(token));
+}
+
+function extractNumericFacts(text: string): string[] {
+  const facts: string[] = [];
+  const matches = text.toLowerCase().match(/\d+(?:\.\d+)?(?:\s*[-/]\s*\d+(?:\.\d+)?)?(?:\+|x|%)?/g) || [];
+  for (const match of matches) facts.push(match.replace(/\s+/g, ''));
+  return facts;
+}
+
+function isParaphraseOf(normalized: string, allowed: Iterable<string>): boolean {
+  const outTokens = significantTokens(normalized);
+  if (!outTokens.length) return false;
+
+  let best = 0;
+  let bestShared = 0;
+  for (const candidate of allowed) {
+    const catalogTokens = significantTokens(candidate);
+    if (!catalogTokens.length) continue;
+    const catalogSet = new Set(catalogTokens);
+    const shared = outTokens.filter((token) => catalogSet.has(token)).length;
+    const score = Math.max(shared / outTokens.length, shared / catalogTokens.length);
+    if (score > best) {
+      best = score;
+      bestShared = shared;
+    }
+  }
+
+  if (best >= 0.5 && bestShared >= 3) return true;
+  if (best >= 0.65 && bestShared >= 2) return true;
+  if (outTokens.length <= 6 && best >= 0.5 && bestShared >= 1) return true;
+  return false;
+}
+
+function hasInventedNumericFact(normalized: string, sourceText: string): boolean {
+  const allowed = new Set(extractNumericFacts(sourceText));
+  return extractNumericFacts(normalized).some((fact) => !allowed.has(fact));
+}
+
+function isGroundedLine(
+  normalized: string,
+  allowed: Set<string>,
+  options?: { allowParaphrase?: boolean; sourceText?: string },
+): boolean {
   if (allowed.has(normalized)) return true;
 
-  // Role banks and ATS output may use a truncated copy of a long summary or bullet.
   for (const candidate of allowed) {
     if (candidate.length >= 60 && candidate.startsWith(normalized)) return true;
     if (normalized.length >= 40 && normalized.startsWith(candidate)) return true;
   }
 
-  return false;
+  if (!options?.allowParaphrase) return false;
+  if (options.sourceText && hasInventedNumericFact(normalized, options.sourceText)) return false;
+  return isParaphraseOf(normalized, allowed);
 }
 
-function validateGrounding(text: string, groundingSource: string): { ok: true } | { ok: false; reason: string } {
+function validateGrounding(
+  text: string,
+  groundingSource: string,
+  options?: { allowParaphrase?: boolean },
+): { ok: true } | { ok: false; reason: string } {
   const allowedLines = buildAllowedResumeLines(groundingSource);
   const emittedLines = new Set<string>();
+  let current: string | null = null;
 
   for (const line of text.split('\n')) {
+    const header = canonicalHeader(line);
+    if (header) {
+      current = header;
+      continue;
+    }
+    if (current && IDENTITY_HEADERS.has(current)) continue;
     if (shouldSkipGroundingLine(line)) continue;
     const normalized = normalizeResumeLine(line);
     if (!normalized) continue;
-    if (!isGroundedLine(normalized, allowedLines)) {
+    if (!isGroundedLine(normalized, allowedLines, {
+      allowParaphrase: options?.allowParaphrase,
+      sourceText: groundingSource,
+    })) {
       return { ok: false, reason: 'unsupported_source_line' };
     }
     if (emittedLines.has(normalized)) return { ok: false, reason: 'duplicate_source_line' };
@@ -246,20 +344,26 @@ export function validateResumeOutput(
     skillsSource?: string;
     educationSource?: string;
     skipGrounding?: boolean;
+    allowParaphrase?: boolean;
+    identity?: { name?: string; contact?: string; education?: string };
   },
 ): { ok: true; text: string } | { ok: false; reason: string } {
   let text = canonicalizeAtsResumeOutput(raw);
+  text = overlayIdentitySections(text, options?.identity);
   text = fillMandatorySections(text, {
     skillsSource: options?.skillsSource,
-    educationSource: options?.educationSource,
+    educationSource: options?.educationSource || options?.identity?.education,
   });
   if (!text || text.length < 40) {
     return { ok: false, reason: 'empty_or_too_short' };
   }
 
-  // Canonicalization drops headers whose body is empty, so distinguish "never supplied"
-  // from "supplied but empty" — otherwise an empty section reports as a missing one.
   const rawHeaderCounts = countRequiredHeaders(stripModelFences(raw));
+  if (options?.identity?.name) rawHeaderCounts.NAME = Math.max(rawHeaderCounts.NAME, 1);
+  if (options?.identity?.contact) rawHeaderCounts.CONTACT = Math.max(rawHeaderCounts.CONTACT, 1);
+  if (options?.identity?.education || options?.educationSource) {
+    rawHeaderCounts.EDUCATION = Math.max(rawHeaderCounts.EDUCATION, 1);
+  }
   const headerCounts = countRequiredHeaders(text);
   for (const header of REQUIRED_HEADERS) {
     const headerCount = headerCounts[header];
@@ -274,9 +378,10 @@ export function validateResumeOutput(
     }
   }
 
-  // A generated resume must not introduce facts absent from the bullet catalog / master source.
   if (options?.groundingSource && !options?.skipGrounding) {
-    const grounding = validateGrounding(text, options.groundingSource);
+    const grounding = validateGrounding(text, options.groundingSource, {
+      allowParaphrase: options.allowParaphrase,
+    });
     if (!grounding.ok) return grounding;
   }
 

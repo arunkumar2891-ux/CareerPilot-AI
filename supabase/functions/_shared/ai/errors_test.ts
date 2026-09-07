@@ -85,6 +85,61 @@ B.S. Computer Science
   if (duplicateSummary.ok) throw new Error('expected duplicate section to fail');
 });
 
+Deno.test('validateResumeOutput allows JD-oriented paraphrase of catalog lines and overlays identity sections', () => {
+  const source = `Jane Doe
+Email: jane@example.com
+Distributed systems engineer specializing in platform APIs.
+Acme
+- Shipped APIs used by millions of users.
+B.S. Computer Science
+TypeScript, Python, REST APIs`;
+  const gemini = `NAME
+Wrong Name
+
+CONTACT
+unknown@example.com
+
+SUMMARY
+Distributed systems engineer focused on platform APIs for customer-facing integrations.
+
+SKILLS
+TypeScript, Python, REST APIs
+
+PROFESSIONAL EXPERIENCE
+Acme
+- Shipped production APIs used by millions of users to support customer integrations.
+
+EDUCATION
+MIT
+`;
+  const result = validateResumeOutput(gemini, {
+    groundingSource: source,
+    allowParaphrase: true,
+    identity: {
+      name: 'Jane Doe',
+      contact: 'jane@example.com',
+      education: 'B.S. Computer Science',
+    },
+  });
+  if (!result.ok) throw new Error(`expected paraphrased Gemini resume to validate: ${result.reason}`);
+  if (!result.text.includes('NAME\nJane Doe')) throw new Error(`NAME should come from catalog:\n${result.text}`);
+  if (!result.text.includes('jane@example.com')) throw new Error(`CONTACT should come from catalog:\n${result.text}`);
+  if (!result.text.includes('B.S. Computer Science')) throw new Error(`EDUCATION should come from catalog:\n${result.text}`);
+  if (result.text.includes('Wrong Name') || result.text.includes('MIT')) {
+    throw new Error(`identity overlay leaked Gemini values:\n${result.text}`);
+  }
+  if (!result.text.includes('customer-facing integrations')) {
+    throw new Error(`SUMMARY paraphrase should be kept:\n${result.text}`);
+  }
+
+  const inventedMetric = validateResumeOutput(gemini.replace('millions of users', '50 million users'), {
+    groundingSource: source,
+    allowParaphrase: true,
+    identity: { name: 'Jane Doe', contact: 'jane@example.com', education: 'B.S. Computer Science' },
+  });
+  if (inventedMetric.ok) throw new Error('expected invented metric to fail grounding');
+});
+
 Deno.test('normalizeResumeLine accepts middle-dot bullets and labeled contact values', () => {
   const allowed = buildAllowedResumeLines(`Email: jane@example.com
 ·     Shipped APIs used by millions of users.`);

@@ -6,19 +6,17 @@ export function trimForAts(text: string, maxChars: number, label: string): strin
 
 export const ATS_SYSTEM_PROMPT = `You write resumes that sound like a senior engineer wrote them after a careful edit — not like a language model.
 
-SOURCE-LOCKED BULLET CONTRACT:
-- The BULLET CATALOG is the only factual source. Every non-heading line in your output must be copied verbatim from a catalog entry.
+SOURCE CONTRACT:
+- The BULLET CATALOG is the only factual source. Do not invent companies, titles, tools, skills, metrics, dates, certifications, education, or contact details.
+- You MAY rewrite catalog sentences so they speak to the job description (emphasis, ordering, tighter wording). Keep the original facts.
+- Do not combine two bullets into a claim neither one supports. Do not add numbers, percentages, or employers that are not in the catalog.
 - RERANKED SELECTION lists bullet IDs in priority order for this job — prefer those bullets first when building PROFESSIONAL EXPERIENCE.
-- RETRIEVED EVIDENCE highlights JD-matched metric bullets (with catalog IDs). Include them when they appear in RERANKED SELECTION.
-- SEMANTIC ROLE BANK and LEXICALLY MATCHED EXCERPTS are retrieval views of the same catalog — use them for context, not new facts.
-- Copy complete catalog lines only. You may select, omit, and reorder, but never paraphrase, combine, split, or rewrite.
-- Do not invent companies, titles, tools, skills, metrics, dates, certifications, education, or contact details.
-- Use the existing professional summary line from the catalog verbatim once under SUMMARY.
-- Use 4-6 catalog bullets per included project. Preserve every selected bullet exactly.
-- Use the 2-page template only as a length target. It is not a factual source.
+- RETRIEVED EVIDENCE highlights JD-matched metric bullets. Include them when they appear in RERANKED SELECTION.
+- NAME, CONTACT, and EDUCATION are filled from the candidate catalog later. You may omit them or include stubs; do not invent replacements.
+- SUMMARY, SKILLS, and PROFESSIONAL EXPERIENCE must come from you, tailored to the JD, using catalog facts only.
 - Never print bullet IDs (e.g. B001) in the final resume.
 - Never write that the resume was tailored, optimized, generated, or customized.
-- NEVER include ATS keyword reference lines (e.g. "AI/ML Keywords:", "Forward Deployment Keywords:", "Leadership Keywords:") or tailoring-guide content. Those are internal metadata, not resume content.
+- NEVER include ATS keyword reference lines (e.g. "AI/ML Keywords:") or tailoring-guide content.
 
 Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
@@ -26,27 +24,26 @@ Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, S
 For bullets use: - (hyphen + space)
 Each section header may appear exactly once. SKILLS and EDUCATION must never be empty.
 Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, or CORE COMPETENCIES as headers.
-Under every section, copy complete catalog lines only. Do not add labels such as "Name:" or "Title:" unless the exact label is present in the catalog.
 
 OUTPUT SKELETON (use exactly these headers once each, in this order):
 NAME
 <full name from catalog>
 
 CONTACT
-<title line from catalog>
-<email, phone, location, linkedin, github lines from catalog>
+<email, phone, location, linkedin, github from catalog>
 
 SUMMARY
-<one verbatim summary line from catalog>
+<one JD-focused rewrite of the catalog professional summary>
 
 SKILLS
-<skill lines copied from REQUIRED SKILLS SOURCE — select/reorder only, never empty>
+<skill lines from REQUIRED SKILLS SOURCE, selected and ordered for the JD>
 
 PROFESSIONAL EXPERIENCE
-<company/project headers and bullets from catalog>
+<company/project headers from catalog>
+<catalog bullets rewritten to the JD — keep metrics and employers unchanged>
 
 EDUCATION
-<education lines copied from REQUIRED EDUCATION SOURCE — never empty>`;
+<education from REQUIRED EDUCATION SOURCE>`;
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;
@@ -77,14 +74,14 @@ export function buildResumeUserPrompt(input: {
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
-    `Retrieval: hybrid (playbook role bank + lexical match + evidence tags) with LLM reranking. Select catalog lines only.`,
+    `Retrieval: hybrid (playbook role bank + lexical match + evidence tags). Rewrite catalog facts for this JD; do not invent.`,
     `MATCHED PLAYBOOK: ${input.playbookTitle || 'none — infer from JD'}`,
     input.playbookInstructions ? `PLAYBOOK INSTRUCTIONS:\n${input.playbookInstructions}` : '',
     `JOB DESCRIPTION:\n${jobDescription}`,
     input.contactBlock ? `CONTACT VALUES (only use values that also appear in the bullet catalog):\n${input.contactBlock}` : '',
     input.googleHeader ? `GOOGLE DOC HEADER OVERRIDE (do not add facts unless present in catalog):\n${input.googleHeader}` : '',
-    skillsSource ? `REQUIRED SKILLS SOURCE (copy verbatim into SKILLS section — select/reorder lines for the JD, but SKILLS must not be empty):\n${skillsSource}` : '',
-    educationSource ? `REQUIRED EDUCATION SOURCE (copy verbatim into EDUCATION section — never leave EDUCATION empty):\n${educationSource}` : '',
+    skillsSource ? `REQUIRED SKILLS SOURCE (select and order for the JD; you may rephrase labels but not invent skills):\n${skillsSource}` : '',
+    educationSource ? `REQUIRED EDUCATION SOURCE (copied into EDUCATION later — include it or omit; do not replace):\n${educationSource}` : '',
     input.rerankedSelection,
     input.retrievedEvidence,
     bulletCatalog,
@@ -118,7 +115,7 @@ export function buildGroqResumeUserPrompt(input: {
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
     `JOB DESCRIPTION (excerpt):\n${jobDescription}`,
     input.contactBlock ? `CONTACT VALUES:\n${input.contactBlock}` : '',
-    summarySource ? `SUMMARY SOURCE (copy verbatim once under SUMMARY):\n${summarySource}` : '',
+    summarySource ? `SUMMARY SOURCE (rewrite once under SUMMARY to match the JD; keep the facts):\n${summarySource}` : '',
     skillsSource ? `REQUIRED SKILLS SOURCE:\n${skillsSource}` : '',
     educationSource ? `REQUIRED EDUCATION SOURCE:\n${educationSource}` : '',
     input.rerankedSelection,

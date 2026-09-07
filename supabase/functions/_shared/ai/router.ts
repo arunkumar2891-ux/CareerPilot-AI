@@ -4,7 +4,7 @@ import { assembleSourceLockedResume } from '../career-corpus/assemble-source-loc
 import { geminiAdapter, geminiFallbackAdapter } from './gemini.ts';
 import { groqAdapter } from './groq.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
-import { validateResumeOutput } from './validate-resume.ts';
+import { validateResumeOutput, extractAtsSection } from './validate-resume.ts';
 import { recordAiUsage } from './usage.ts';
 
 const defaultAdapters: Record<string, ProviderAdapter> = {
@@ -64,6 +64,24 @@ function resolveValidationGrounding(provider: string, request: GenerateRequest):
   return request.groundingSource;
 }
 
+function identityFromRequest(request: GenerateRequest): {
+  name?: string;
+  contact?: string;
+  education?: string;
+} | undefined {
+  if (request.operation !== 'resume_tailoring') return undefined;
+  if (request.deterministicResume) {
+    const assembled = assembleSourceLockedResume(request.deterministicResume);
+    return {
+      name: extractAtsSection(assembled, 'NAME') || undefined,
+      contact: extractAtsSection(assembled, 'CONTACT') || undefined,
+      education: extractAtsSection(assembled, 'EDUCATION') || request.educationSource || undefined,
+    };
+  }
+  if (request.educationSource) return { education: request.educationSource };
+  return undefined;
+}
+
 function applyResumeValidation(
   provider: string,
   text: string,
@@ -74,6 +92,8 @@ function applyResumeValidation(
     groundingSource: resolveValidationGrounding(provider, request),
     skillsSource: request.skillsSource,
     educationSource: request.educationSource,
+    allowParaphrase: true,
+    identity: identityFromRequest(request),
   });
   if (!checked.ok) {
     const providerName = provider === 'groq' ? 'groq' : provider === 'gemini_fallback' ? 'gemini_fallback' : 'gemini';
@@ -111,11 +131,12 @@ async function callAdapter(
     return text;
   } catch (err) {
     const kind = err instanceof ProviderError ? err.kind : 'unknown';
+    const detail = err instanceof ProviderError ? ` ${err.message}` : '';
     if (kind === 'timeout') {
       log(`[AI] provider=${label} operation=${req.operation} timeout duration_ms=${Date.now() - started}`);
     } else {
       log(
-        `[AI] provider=${label} operation=${req.operation} failed kind=${kind} duration_ms=${Date.now() - started}`,
+        `[AI] provider=${label} operation=${req.operation} failed kind=${kind} duration_ms=${Date.now() - started}${kind === 'invalid_output' ? detail : ''}`,
       );
     }
     throw err;
