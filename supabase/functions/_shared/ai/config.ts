@@ -22,6 +22,14 @@ export function getAiMaxRetries(): number {
   return parsePositiveInt(Deno.env.get('AI_MAX_RETRIES'), 1, 2);
 }
 
+/** Gemini: one attempt per key by default (fail fast → next key in chain). Set AI_GEMINI_RETRY_ENABLED=true to allow AI_MAX_RETRIES on Gemini. */
+export function getGeminiMaxRetries(): number {
+  if (Deno.env.get('AI_GEMINI_RETRY_ENABLED')?.trim().toLowerCase() === 'true') {
+    return getAiMaxRetries();
+  }
+  return 1;
+}
+
 export function getPrimaryProvider(): string {
   return (Deno.env.get('AI_PRIMARY_PROVIDER') || 'gemini').trim().toLowerCase();
 }
@@ -42,6 +50,20 @@ export function getGeminiApiKey(): string {
   return Deno.env.get('GEMINI_API_KEY')?.trim() || '';
 }
 
+/** Second Gemini account — used after primary Gemini quota/errors, before Groq. */
+export function getGeminiFallbackApiKey(): string {
+  return Deno.env.get('GEMINI_API_KEY_FALLBACK')?.trim() || '';
+}
+
 export function getGroqApiKey(): string {
   return Deno.env.get('GROQ_API_KEY')?.trim() || '';
+}
+
+/** Provider order: primary Gemini → fallback Gemini key → Groq. */
+export function getProviderChain(): string[] {
+  const chain: string[] = [];
+  if (getGeminiApiKey()) chain.push('gemini');
+  if (getGeminiFallbackApiKey()) chain.push('gemini_fallback');
+  if (getGroqApiKey()) chain.push('groq');
+  return chain;
 }

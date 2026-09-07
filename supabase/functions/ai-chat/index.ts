@@ -120,6 +120,14 @@ Deno.serve(async (req) => {
           skillsSource: corpus.skillsSource,
           educationSource: corpus.educationSource,
           groqUserPrompt,
+          deterministicResume: {
+            contactBlock: corpus.contactBlock,
+            summarySource: corpus.summarySource,
+            skillsSource: corpus.skillsSource,
+            educationSource: corpus.educationSource,
+            rerankedBulletIds: corpus.rerankedBulletIds,
+            catalog: corpus.catalog,
+          },
         },
       );
       return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });

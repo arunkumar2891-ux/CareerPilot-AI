@@ -20,6 +20,7 @@ import {
   matchEvidenceToCatalog,
   scoreRetrievalCandidates,
   selectCatalogLines,
+  type CatalogLine,
 } from './resume-bullets.ts';
 import { rerankBulletsWithLlm } from './rerank-bullets.ts';
 
@@ -44,6 +45,7 @@ export interface CareerCorpusBundle {
   skillsSource: string;
   educationSource: string;
   summarySource: string;
+  catalog: CatalogLine[];
 }
 
 export async function loadCareerCorpus(
@@ -160,5 +162,6 @@ export async function loadCareerCorpus(
     skillsSource: mandatorySections.skills,
     educationSource: mandatorySections.education,
     summarySource: mandatorySections.summary,
+    catalog,
   };
 }

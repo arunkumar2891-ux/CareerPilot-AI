@@ -92,6 +92,31 @@ Deno.test('normalizeResumeLine accepts middle-dot bullets and labeled contact va
   if (!allowed.has(normalizeResumeLine('- Shipped APIs used by millions of users.'))) throw new Error('bullet mismatch');
 });
 
+Deno.test('assembleSourceLockedResume builds a valid grounded resume', async () => {
+  const catalog = [
+    { id: 'B001', text: 'Jane Doe', isBullet: false, normalized: 'jane doe' },
+    { id: 'B002', text: 'Principal Engineer', isBullet: false, normalized: 'principal engineer' },
+    { id: 'B003', text: 'jane@example.com', isBullet: false, normalized: 'jane@example.com' },
+    { id: 'B004', text: 'Distributed systems engineer.', isBullet: false, normalized: 'distributed systems engineer.' },
+    { id: 'B005', text: 'Acme Corp', isBullet: false, normalized: 'acme corp' },
+    { id: 'B006', text: 'Shipped APIs used by millions of users.', isBullet: true, normalized: 'shipped apis used by millions of users.' },
+    { id: 'B007', text: 'TypeScript, Python', isBullet: false, normalized: 'typescript, python' },
+    { id: 'B008', text: 'B.S. Computer Science', isBullet: false, normalized: 'b.s. computer science' },
+  ];
+  const groundingSource = catalog.map((line) => line.isBullet ? `- ${line.text}` : line.text).join('\n');
+  const { assembleSourceLockedResume } = await import('../career-corpus/assemble-source-locked-resume.ts');
+  const output = assembleSourceLockedResume({
+    contactBlock: 'Name: Jane Doe\nTitle: Principal Engineer\nEmail: jane@example.com',
+    summarySource: 'Distributed systems engineer.',
+    skillsSource: 'TypeScript, Python',
+    educationSource: 'B.S. Computer Science',
+    rerankedBulletIds: ['B006'],
+    catalog,
+  });
+  const ok = validateResumeOutput(output, { groundingSource, skillsSource: 'TypeScript, Python', educationSource: 'B.S. Computer Science' });
+  if (!ok.ok) throw new Error(`expected deterministic resume to validate: ${ok.reason}`);
+});
+
 Deno.test('validateResumeOutput accepts truncated summary prefix from role bank', () => {
   const longSummary = 'Results-driven Integration Architect with 10+ years of experience in enterprise software engineering and cloud solutions across multiple domains and teams.';
   const source = `ARUN KUMAR

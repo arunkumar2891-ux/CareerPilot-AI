@@ -79,12 +79,11 @@ supabase link --project-ref YOUR_PROJECT_REF
 
 supabase secrets set \
   APIFY_TOKEN=your_apify_token \
-  GEMINI_API_KEY=your_gemini_key \
+  GEMINI_API_KEY=your_primary_gemini_key \
+  GEMINI_API_KEY_FALLBACK=your_second_account_gemini_key \
   GEMINI_MODEL=gemini-3.6-flash \
   GROQ_API_KEY=your_groq_key \
   GROQ_MODEL=openai/gpt-oss-120b \
-  AI_PRIMARY_PROVIDER=gemini \
-  AI_FALLBACK_PROVIDER=groq \
   AI_TIMEOUT_MS=30000 \
   AI_ATS_TIMEOUT_MS=75000 \
   AI_MAX_RETRIES=1 \

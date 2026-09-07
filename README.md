@@ -172,7 +172,9 @@ Optional configuration includes:
 | --- | --- |
 | `GEMINI_MODEL` | Overrides the primary Gemini model (default: `gemini-3.6-flash`) |
 | `GROQ_API_KEY`, `GROQ_MODEL` | Enables the Groq fallback (default model: `openai/gpt-oss-120b`) |
-| `AI_PRIMARY_PROVIDER`, `AI_FALLBACK_PROVIDER` | Selects provider order; defaults to Gemini then Groq |
+| `GEMINI_API_KEY` | Primary Gemini account |
+| `GEMINI_API_KEY_FALLBACK` | Second Gemini account (used when primary is rate-limited) |
+| `GROQ_API_KEY` | Third fallback after both Gemini keys |
 | `AI_TIMEOUT_MS`, `AI_ATS_TIMEOUT_MS`, `AI_MAX_RETRIES` | Adjusts AI timeouts and retries |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | Google Docs/Drive OAuth |
 | `DEPLOY_SYNC_SECRET` | Authenticates the deploy-triggered CareerPilot Google Doc sync |

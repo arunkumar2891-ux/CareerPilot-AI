@@ -1,6 +1,15 @@
-export type AiProviderName = 'gemini' | 'groq';
+export type AiProviderName = 'gemini' | 'gemini_fallback' | 'groq';
 
 export type AiOperation = 'chat' | 'resume_tailoring' | 'resume_rerank' | 'ats_score';
+
+export interface DeterministicResumeInput {
+  contactBlock: string;
+  summarySource: string;
+  skillsSource: string;
+  educationSource: string;
+  rerankedBulletIds: string[];
+  catalog: Array<{ id: string; text: string; isBullet: boolean }>;
+}
 
 export interface GenerateRequest {
   systemPrompt: string;
@@ -13,6 +22,8 @@ export interface GenerateRequest {
   educationSource?: string;
   /** Smaller user prompt for Groq TPM limits on resume fallback. */
   groqUserPrompt?: string;
+  /** Catalog-backed assembly when LLM providers fail. */
+  deterministicResume?: DeterministicResumeInput;
 }
 
 export class ProviderError extends Error {

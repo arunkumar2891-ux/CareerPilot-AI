@@ -208,6 +208,7 @@ function isGroundedLine(normalized: string, allowed: Set<string>): boolean {
   // Role banks and ATS output may use a truncated copy of a long summary or bullet.
   for (const candidate of allowed) {
     if (candidate.length >= 60 && candidate.startsWith(normalized)) return true;
+    if (normalized.length >= 40 && normalized.startsWith(candidate)) return true;
   }
 
   return false;

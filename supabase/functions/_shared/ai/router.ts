@@ -1,6 +1,7 @@
-import { getAiMaxRetries, getAiTimeoutMs, getAtsTimeoutMs, getFallbackProvider, getPrimaryProvider } from './config.ts';
+import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiMaxRetries, getProviderChain } from './config.ts';
 import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
-import { geminiAdapter } from './gemini.ts';
+import { assembleSourceLockedResume } from '../career-corpus/assemble-source-locked-resume.ts';
+import { geminiAdapter, geminiFallbackAdapter } from './gemini.ts';
 import { fitGroqPrompt } from './groq-limits.ts';
 import { groqAdapter } from './groq.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
@@ -9,18 +10,29 @@ import { recordAiUsage } from './usage.ts';
 
 const defaultAdapters: Record<string, ProviderAdapter> = {
   gemini: geminiAdapter,
+  gemini_fallback: geminiFallbackAdapter,
   groq: groqAdapter,
 };
 
 export type GenerateDeps = {
   adapters?: Record<string, ProviderAdapter>;
-  primary?: string;
-  fallback?: string;
+  providerChain?: string[];
   timeoutMs?: number;
   maxAttempts?: number;
   userId?: string;
   log?: (message: string) => void;
 };
+
+function maxAttemptsForProvider(providerName: string): number {
+  if (providerName === 'gemini' || providerName === 'gemini_fallback') {
+    return getGeminiMaxRetries();
+  }
+  return 1;
+}
+
+function providerLabel(name: string): string {
+  return name === 'gemini_fallback' ? 'gemini-fallback' : name;
+}
 
 function resolveValidationGrounding(provider: string, request: GenerateRequest): string | undefined {
   if (request.operation !== 'resume_tailoring') return request.groundingSource;
@@ -42,8 +54,9 @@ function applyResumeValidation(
     educationSource: request.educationSource,
   });
   if (!checked.ok) {
+    const providerName = provider === 'groq' ? 'groq' : provider === 'gemini_fallback' ? 'gemini_fallback' : 'gemini';
     throw new ProviderError({
-      provider: provider === 'groq' ? 'groq' : 'gemini',
+      provider: providerName,
       message: `Resume output failed validation (${checked.reason})`,
       retryable: true,
       kind: 'invalid_output',
@@ -60,8 +73,9 @@ async function callAdapter(
   userId?: string,
 ): Promise<string> {
   const started = Date.now();
+  const label = providerLabel(adapter.name);
   const prefix = role === 'fallback' ? '[AI] fallback ' : '[AI] ';
-  log(`${prefix}provider=${adapter.name} operation=${req.operation} started`);
+  log(`${prefix}provider=${label} operation=${req.operation} started`);
   try {
     const result = await adapter.generate(req);
     const text = applyResumeValidation(adapter.name, result.text, req);
@@ -71,15 +85,15 @@ async function callAdapter(
       tokensInput: result.tokensInput,
       tokensOutput: result.tokensOutput,
     });
-    log(`[AI] provider=${adapter.name} operation=${req.operation} success duration_ms=${Date.now() - started} tokens=${result.tokensInput + result.tokensOutput}`);
+    log(`[AI] provider=${label} operation=${req.operation} success duration_ms=${Date.now() - started} tokens=${result.tokensInput + result.tokensOutput}`);
     return text;
   } catch (err) {
     const kind = err instanceof ProviderError ? err.kind : 'unknown';
     if (kind === 'timeout') {
-      log(`[AI] provider=${adapter.name} operation=${req.operation} timeout duration_ms=${Date.now() - started}`);
+      log(`[AI] provider=${label} operation=${req.operation} timeout duration_ms=${Date.now() - started}`);
     } else {
       log(
-        `[AI] provider=${adapter.name} operation=${req.operation} failed kind=${kind} duration_ms=${Date.now() - started}`,
+        `[AI] provider=${label} operation=${req.operation} failed kind=${kind} duration_ms=${Date.now() - started}`,
       );
     }
     throw err;
@@ -108,17 +122,46 @@ async function tryProvider(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
+function tryDeterministicResume(
+  request: GenerateRequest,
+  log: (message: string) => void,
+): string | null {
+  if (request.operation !== 'resume_tailoring' || !request.deterministicResume) return null;
+
+  const assembled = assembleSourceLockedResume(request.deterministicResume);
+  const checked = validateResumeOutput(assembled, {
+    groundingSource: request.groundingSource,
+    skillsSource: request.skillsSource,
+    educationSource: request.educationSource,
+  });
+  if (!checked.ok) {
+    log(`[AI] deterministic resume assembly failed validation (${checked.reason})`);
+    return null;
+  }
+
+  log('[AI] deterministic resume assembly fallback success');
+  return checked.text;
+}
+
 function formatAllProvidersFailed(errors: string[]): string {
   const joined = errors.join(' | ');
-  if (/quota exceeded|rate.?limit|free_tier/i.test(joined)) {
-    return `Gemini API quota reached (free tier is ~20 requests/min for gemini-3.6-flash). Wait 30–60 seconds and retry, or upgrade Gemini billing. Groq fallback: ${errors.find((e) => e.startsWith('groq:'))?.replace(/^groq:\s*/, '') || 'also failed'}`;
+  if (/quota exceeded|rate.?limit|free_tier|429/i.test(joined)) {
+    const groqError = errors.find((e) => e.startsWith('groq:'))?.replace(/^groq:\s*/, '');
+    const geminiFallbackError = errors.find((e) => e.startsWith('gemini-fallback:'))?.replace(/^gemini-fallback:\s*/, '');
+    if (groqError) {
+      return `All Gemini keys exhausted or rate-limited. Groq fallback: ${groqError}`;
+    }
+    if (geminiFallbackError) {
+      return `Primary Gemini rate-limited. Fallback Gemini: ${geminiFallbackError}`;
+    }
+    return `Gemini API quota reached (free tier is ~20 requests/min for gemini-3.6-flash). Wait 30–60 seconds and retry, or upgrade Gemini billing.`;
   }
   return `All AI providers failed. ${joined}`;
 }
 
 /**
- * Gemini primary, Groq fallback. Default is one attempt on primary, then fallback on
- * retryable errors or a missing Gemini key. HTTP 4xx (except 429) does not fall back.
+ * Default chain: GEMINI_API_KEY → GEMINI_API_KEY_FALLBACK → GROQ_API_KEY.
+ * One attempt per Gemini key by default (no sleep-retry on 429); deterministic resume assembly is last resort.
  */
 export async function generateWithProviders(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
@@ -129,50 +172,49 @@ export async function generateWithProviders(
   const timeoutMs = req.timeoutMs ?? deps.timeoutMs ?? defaultTimeout;
   const request: GenerateRequest = { ...req, timeoutMs };
   const adapters = deps.adapters ?? defaultAdapters;
-  const primaryName = (deps.primary ?? getPrimaryProvider()).toLowerCase();
-  const fallbackName = (deps.fallback ?? getFallbackProvider()).toLowerCase();
-  const primary = adapters[primaryName];
-  const fallback = fallbackName !== primaryName ? adapters[fallbackName] : undefined;
-  // Primary: one shot by default (AI_MAX_RETRIES=1). Extra retries stay on the same provider only if raised.
-  const maxAttempts = deps.maxAttempts ?? getAiMaxRetries();
-
+  const chain = deps.providerChain ?? getProviderChain();
   const errors: string[] = [];
 
-  if (primary?.isConfigured()) {
-    try {
-      return await tryProvider(primary, request, 'primary', maxAttempts, log, deps.userId);
-    } catch (err) {
-      const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
-      errors.push(`${primary.name}: ${message}`);
-      if (!shouldFallback(err) || !fallback?.isConfigured()) {
-        throw err instanceof Error ? err : new Error(message);
-      }
-    }
-  } else if (fallback?.isConfigured()) {
-    log(`[AI] provider=${primaryName || 'gemini'} skipped kind=missing_key`);
-  } else {
+  if (!chain.length) {
     throw new ProviderError({
-      provider: (primary?.name ?? 'gemini') as 'gemini' | 'groq',
-      message: 'No AI provider is configured (set GEMINI_API_KEY and/or GROQ_API_KEY)',
+      provider: 'gemini',
+      message: 'No AI provider is configured (set GEMINI_API_KEY, GEMINI_API_KEY_FALLBACK, and/or GROQ_API_KEY)',
       retryable: false,
       kind: 'missing_key',
     });
   }
 
-  if (fallback?.isConfigured()) {
+  for (let index = 0; index < chain.length; index++) {
+    const providerName = chain[index];
+    const adapter = adapters[providerName];
+    if (!adapter?.isConfigured()) {
+      log(`[AI] provider=${providerLabel(providerName)} skipped kind=missing_key`);
+      continue;
+    }
+
+    const role = index === 0 ? 'primary' : 'fallback';
+    const attempts = deps.maxAttempts ?? maxAttemptsForProvider(providerName);
+    const providerTimeout = providerName === 'groq' && req.operation === 'resume_tailoring'
+      ? getAtsTimeoutMs()
+      : timeoutMs;
+
     try {
-      return await tryProvider(fallback, { ...request, timeoutMs: getAtsTimeoutMs() }, 'fallback', 1, log, deps.userId);
+      return await tryProvider(adapter, { ...request, timeoutMs: providerTimeout }, role, attempts, log, deps.userId);
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
-      errors.push(`${fallback.name}: ${message}`);
-      throw new Error(formatAllProvidersFailed(errors));
+      errors.push(`${providerLabel(providerName)}: ${message}`);
+      const hasNext = chain.slice(index + 1).some((name) => adapters[name]?.isConfigured());
+      if (!shouldFallback(err) || !hasNext) break;
     }
   }
+
+  const deterministic = tryDeterministicResume(request, log);
+  if (deterministic) return deterministic;
 
   throw new Error(
     errors.length
       ? formatAllProvidersFailed(errors)
-      : 'No AI provider is configured (set GEMINI_API_KEY and/or GROQ_API_KEY)',
+      : 'No AI provider is configured (set GEMINI_API_KEY, GEMINI_API_KEY_FALLBACK, and/or GROQ_API_KEY)',
   );
 }
 
@@ -183,6 +225,6 @@ export async function generateText(
   return generateWithProviders(req, deps);
 }
 
-export function providerNames(): { primary: string; fallback: string } {
-  return { primary: getPrimaryProvider(), fallback: getFallbackProvider() };
+export function providerNames(): { chain: string[] } {
+  return { chain: getProviderChain() };
 }

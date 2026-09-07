@@ -34,7 +34,19 @@ async function callGemini(
   userPrompt: string,
   forAts = false,
   groundingSource?: string,
-  mandatorySections?: { skillsSource?: string; educationSource?: string; groqUserPrompt?: string },
+  mandatorySections?: {
+    skillsSource?: string;
+    educationSource?: string;
+    groqUserPrompt?: string;
+    deterministicResume?: {
+      contactBlock: string;
+      summarySource: string;
+      skillsSource: string;
+      educationSource: string;
+      rerankedBulletIds: string[];
+      catalog: Array<{ id: string; text: string; isBullet: boolean }>;
+    };
+  },
 ): Promise<string> {
   if (forAts) {
     return await callGeminiAtsGenerateContent(
@@ -496,6 +508,14 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         skillsSource: corpus.skillsSource,
         educationSource: corpus.educationSource,
         groqUserPrompt,
+        deterministicResume: {
+          contactBlock: corpus.contactBlock,
+          summarySource: corpus.summarySource,
+          skillsSource: corpus.skillsSource,
+          educationSource: corpus.educationSource,
+          rerankedBulletIds: corpus.rerankedBulletIds,
+          catalog: corpus.catalog,
+        },
       });
       ctx.variables.lastAgentOutput = output;
       ctx.variables.playbook = corpus.playbookTitle;

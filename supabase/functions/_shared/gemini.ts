@@ -1,6 +1,6 @@
 import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiApiKey, getGeminiModel as configuredGeminiModel } from './ai/config.ts';
 import { generateText } from './ai/router.ts';
-import type { AiOperation } from './ai/types.ts';
+import type { AiOperation, DeterministicResumeInput } from './ai/types.ts';
 
 export function getGeminiModel(): string {
   return configuredGeminiModel();
@@ -43,6 +43,7 @@ export async function callGeminiAtsGenerateContent(
     skillsSource?: string;
     educationSource?: string;
     groqUserPrompt?: string;
+    deterministicResume?: DeterministicResumeInput;
   },
 ): Promise<string> {
   return await generateText({
@@ -54,5 +55,6 @@ export async function callGeminiAtsGenerateContent(
     groundingSource,
     skillsSource: mandatorySections?.skillsSource,
     educationSource: mandatorySections?.educationSource,
+    deterministicResume: mandatorySections?.deterministicResume,
   }, { userId });
 }
