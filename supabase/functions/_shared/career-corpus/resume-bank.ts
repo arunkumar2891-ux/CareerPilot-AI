@@ -27,16 +27,57 @@ function extractHeader(master: string): string {
   return idx > 0 ? master.slice(0, idx).trim() : master.slice(0, 600).trim();
 }
 
+const MAJOR_SECTION_TITLES = [
+  'PROFESSIONAL SUMMARY',
+  'CORE COMPETENCIES',
+  'PROFESSIONAL EXPERIENCE',
+  'TECHNICAL SKILLS',
+  'EDUCATION',
+  'CERTIFICATIONS',
+  'GENAI-AUGMENTED DEVELOPMENT METHODOLOGY & PROJECTS',
+  'FORWARD DEPLOYMENT ENGINEERING',
+  'EARLIER EXPERIENCE',
+] as const;
+
+function isMajorSectionTitle(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.endsWith(':')) return false;
+  return (MAJOR_SECTION_TITLES as readonly string[]).includes(trimmed.toUpperCase());
+}
+
 export function extractSectionByTitle(master: string, title: string): string | null {
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`={10,}\\s*${escaped}\\s*={10,}`, 'i');
-  const match = pattern.exec(master);
-  if (!match) return null;
-  const start = match.index + match[0].length;
-  const rest = master.slice(start);
-  const nextMajor = rest.search(/\n={10,}\s*[A-Z0-9]/);
-  const body = nextMajor >= 0 ? rest.slice(0, nextMajor) : rest;
-  return `${title}\n${body.trim()}`;
+  const banner = new RegExp(`={10,}\\s*${escaped}\\s*={10,}`, 'i');
+  const bannerMatch = banner.exec(master);
+  if (bannerMatch) {
+    const start = bannerMatch.index + bannerMatch[0].length;
+    const rest = master.slice(start);
+    const nextMajor = rest.search(/\n={10,}\s*[A-Z0-9]/);
+    const body = nextMajor >= 0 ? rest.slice(0, nextMajor) : rest;
+    return `${title}\n${body.trim()}`;
+  }
+
+  const lines = master.split('\n');
+  const needle = title.trim().toUpperCase();
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim().toUpperCase() === needle) {
+      start = i + 1;
+      break;
+    }
+  }
+  if (start < 0) return null;
+
+  const body: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (/^={10,}$/.test(trimmed)) continue;
+    if (trimmed && isMajorSectionTitle(trimmed) && trimmed.toUpperCase() !== needle) break;
+    body.push(lines[i]);
+  }
+  const text = body.join('\n').trim();
+  if (!text) return null;
+  return `${title}\n${text}`;
 }
 
 function extractProjectBlock(master: string, projectNeedle: string): string | null {

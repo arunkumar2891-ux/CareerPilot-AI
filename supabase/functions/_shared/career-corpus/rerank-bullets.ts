@@ -73,31 +73,34 @@ export async function rerankBulletsWithLlm(
 ): Promise<string[]> {
   const pool = candidates.slice(0, 50);
   if (!pool.length) return [];
-  if (pool.length <= limit) return pool.map((c) => c.id);
 
-  const scoredFallback = pool.slice(0, limit).map((c) => c.id);
-  if (!isLlmRerankEnabled()) return scoredFallback;
+  const bulletPool = pool.filter((c) => c.isBullet);
+  const rankedPool = bulletPool.length ? bulletPool : pool;
+  if (rankedPool.length <= limit) return rankedPool.map((c) => c.id);
+
+  const fallbackIds = rankedPool.slice(0, limit).map((c) => c.id);
+  if (!isLlmRerankEnabled()) return fallbackIds;
 
   const rerankChain = getRerankProviderChain();
-  if (!rerankChain.length) return scoredFallback;
+  if (!rerankChain.length) return fallbackIds;
 
   try {
     const raw = await generateText({
       systemPrompt: RERANK_SYSTEM_PROMPT,
-      userPrompt: buildRerankUserPrompt(pool, context),
+      userPrompt: buildRerankUserPrompt(rankedPool, context),
       operation: 'resume_rerank',
       timeoutMs: 25000,
     }, { userId, maxAttempts: 1, providerChain: rerankChain });
 
-    const reranked = parseRerankIds(raw, pool.map((c) => c.id));
+    const reranked = parseRerankIds(raw, rankedPool.map((c) => c.id));
     if (reranked.length >= 8) return reranked.slice(0, limit);
 
-    const fallback = [...scoredFallback];
+    const fallback = [...fallbackIds];
     for (const id of reranked) {
       if (!fallback.includes(id)) fallback.push(id);
     }
     return fallback.slice(0, limit);
   } catch {
-    return scoredFallback;
+    return fallbackIds;
   }
 }

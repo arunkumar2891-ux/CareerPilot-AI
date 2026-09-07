@@ -1,5 +1,5 @@
 import type { CatalogLine } from './resume-bullets.ts';
-import { buildCatalogGroundingSource, catalogById, selectCatalogLines } from './resume-bullets.ts';
+import { buildCatalogGroundingSource, catalogById } from './resume-bullets.ts';
 import { isAtsSectionHeaderLine } from '../ai/validate-resume.ts';
 
 export interface SourceLockedResumeInput {
@@ -20,6 +20,8 @@ const REQUIRED_SECTIONS = [
   'EDUCATION',
 ] as const;
 
+const CONTACT_FIELD_KEYS = new Set(['email', 'phone', 'location', 'linkedin', 'github']);
+
 function parseContactBlock(contactBlock: string): { name: string; contactLines: string[] } {
   let name = '';
   const contactLines: string[] = [];
@@ -31,40 +33,110 @@ function parseContactBlock(contactBlock: string): { name: string; contactLines: 
     const value = match[2].trim();
     if (!value) continue;
     if (key === 'name') name = value;
-    else contactLines.push(value);
+    else if (CONTACT_FIELD_KEYS.has(key)) contactLines.push(value);
   }
 
   return { name, contactLines };
 }
 
+function isJunkResumeLine(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (isAtsSectionHeaderLine(trimmed)) return true;
+  if (/^={5,}$/.test(trimmed)) return true;
+  if (/\[careerpilot\]/i.test(trimmed) || /last synced/i.test(trimmed)) return true;
+  if (/^example\s*\(/i.test(trimmed)) return true;
+  if (/^key achievements/i.test(trimmed)) return true;
+  if (/^(duration|role|technologies|role focus)\s*:/i.test(trimmed)) return true;
+  if (/^(location|phone|email|linkedin|github|panw start|name|title)\s*:/i.test(trimmed)) return true;
+  return false;
+}
+
+function looksLikeJobTitleLine(text: string): boolean {
+  return / \| /.test(text)
+    && /\b(architect|engineer|developer|manager)\b/i.test(text)
+    && !/\b(typescript|python|javascript|react|api|gcp|aws|snaplogic|kubernetes|rag)\b/i.test(text);
+}
+
 /** Section content must never be an ATS header line (e.g. the master resume's own `EDUCATION`). */
 function isUsableContent(text: string): boolean {
   const trimmed = text.trim();
-  return trimmed.length > 0 && !isAtsSectionHeaderLine(trimmed);
+  return trimmed.length > 0 && !isJunkResumeLine(trimmed) && !looksLikeJobTitleLine(trimmed);
 }
 
 function firstUsableLine(text: string): string {
   return text.split('\n').map((line) => line.trim()).find(isUsableContent) || '';
 }
 
-/** First catalog line matching `predicate` that is safe to use as section content. */
-function findCatalogContent(
-  catalog: CatalogLine[],
-  predicate: (line: CatalogLine) => boolean,
-): string {
-  return catalog.find((line) => isUsableContent(line.text) && predicate(line))?.text.trim() || '';
-}
-
 function stripHeaderLines(text: string): string {
   return text
     .split('\n')
-    .filter((line) => !line.trim() || !isAtsSectionHeaderLine(line))
+    .filter((line) => !line.trim() || (!isAtsSectionHeaderLine(line) && !isJunkResumeLine(line)))
     .join('\n')
     .trim();
 }
 
+function fallbackSummary(catalog: CatalogLine[], summarySource: string): string {
+  const fromSource = stripHeaderLines(summarySource)
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => isUsableContent(line) && line.length >= 80);
+  if (fromSource) return fromSource;
+  const sourced = firstUsableLine(summarySource);
+  if (sourced) return sourced;
+
+  const paragraphs = catalog
+    .filter((line) => !line.isBullet && isUsableContent(line.text) && line.text.length >= 80)
+    .sort((a, b) => b.text.length - a.text.length);
+  return paragraphs[0]?.text.trim() || 'Experienced software engineer.';
+}
+
+function looksLikeSkillLine(line: CatalogLine): boolean {
+  if (!isUsableContent(line.text)) return false;
+  if (line.isBullet && /[|,]/.test(line.text)) return true;
+  if (line.isBullet && /\b(typescript|python|javascript|react|api|gcp|snaplogic|kubernetes|rag|llm)\b/i.test(line.text)) {
+    return true;
+  }
+  if (!line.isBullet && line.text.trim().endsWith(':') && line.text.length < 60) return true;
+  if (!line.isBullet && /[|,]/.test(line.text) && /\b(typescript|python|javascript|react|api|gcp|snaplogic)\b/i.test(line.text)) {
+    return true;
+  }
+  return false;
+}
+
+function fallbackSkills(catalog: CatalogLine[], skillsSource: string): string {
+  const stripped = stripHeaderLines(skillsSource);
+  if (stripped && !/^location:/i.test(stripped)) return stripped;
+
+  const skillish = catalog.filter(looksLikeSkillLine).slice(0, 18);
+  return skillish
+    .map((line) => (line.isBullet ? `- ${line.text}` : line.text))
+    .join('\n');
+}
+
+function isExperienceHeader(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || isJunkResumeLine(trimmed) || looksLikeJobTitleLine(trimmed)) return false;
+  if (trimmed.length > 140) return false;
+  if (/^---\s*(project|ai development)/i.test(trimmed) || /^project:/i.test(trimmed)) return true;
+  if (trimmed === trimmed.toUpperCase() && /[A-Z]{3,}/.test(trimmed) && trimmed.length >= 6 && trimmed.length <= 60) {
+    return true;
+  }
+  if (
+    /\b(architect|engineer|developer|manager|lead)\b/i.test(trimmed)
+    && trimmed.length < 90
+    && !trimmed.includes('|')
+    && !trimmed.endsWith(':')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function resolveBulletIds(catalog: CatalogLine[], selectedIds: string[]): string[] {
-  if (selectedIds.length > 0) return selectedIds;
+  const byId = catalogById(catalog);
+  const selectedBullets = selectedIds.filter((id) => byId.get(id)?.isBullet);
+  if (selectedBullets.length > 0) return selectedBullets;
   return catalog.filter((line) => line.isBullet).slice(0, 16).map((line) => line.id);
 }
 
@@ -76,7 +148,7 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
 
   const pushLine = (text: string) => {
     const line = text.trim();
-    if (!line || seen.has(line) || isAtsSectionHeaderLine(line)) return;
+    if (!line || seen.has(line) || isJunkResumeLine(line)) return;
     seen.add(line);
     lines.push(line);
   };
@@ -84,16 +156,17 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
   for (const id of resolveBulletIds(catalog, selectedIds)) {
     const line = byId.get(id);
     const index = indexById.get(id);
-    if (!line || index === undefined) continue;
+    if (!line?.isBullet || index === undefined) continue;
 
-    if (!line.isBullet) {
-      pushLine(line.text);
-      continue;
+    for (let headerIndex = index - 1; headerIndex >= 0; headerIndex -= 1) {
+      const candidate = catalog[headerIndex];
+      if (candidate.isBullet) continue;
+      if (isExperienceHeader(candidate.text)) {
+        pushLine(candidate.text);
+        break;
+      }
+      if (!isJunkResumeLine(candidate.text) && candidate.text.length >= 80) continue;
     }
-
-    let headerIndex = index - 1;
-    while (headerIndex >= 0 && catalog[headerIndex].isBullet) headerIndex -= 1;
-    if (headerIndex >= 0) pushLine(catalog[headerIndex].text);
     pushLine(`- ${line.text}`);
   }
 
@@ -107,7 +180,18 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
 }
 
 function fallbackCatalogHeader(catalog: CatalogLine[]): string {
-  return findCatalogContent(catalog, (line) => !line.isBullet && line.text.length < 90) || 'Candidate';
+  return catalog.find((line) => !line.isBullet && isUsableContent(line.text) && line.text.length < 90)?.text.trim()
+    || 'Candidate';
+}
+
+function fallbackEducation(catalog: CatalogLine[], educationSource: string): string {
+  const stripped = stripHeaderLines(educationSource);
+  if (stripped) return stripped;
+  return catalog.find((line) => (
+    !line.isBullet
+    && isUsableContent(line.text)
+    && /b\.?tech|bachelor|university|degree/i.test(line.text)
+  ))?.text.trim() || '';
 }
 
 function fallbackContact(catalog: CatalogLine[], contactLines: string[]): string {
@@ -135,15 +219,10 @@ export function assembleSourceLockedResume(input: SourceLockedResumeInput): stri
   const bodies: Record<typeof REQUIRED_SECTIONS[number], string> = {
     NAME: name.trim() || fallbackCatalogHeader(input.catalog),
     CONTACT: fallbackContact(input.catalog, contactLines),
-    SUMMARY: firstUsableLine(input.summarySource)
-      || findCatalogContent(input.catalog, (line) => !line.isBullet && line.text.length >= 40)
-      || firstUsableLine(input.skillsSource)
-      || 'Experienced software engineer.',
-    SKILLS: stripHeaderLines(input.skillsSource)
-      || findCatalogContent(input.catalog, (line) => line.text.includes(',')),
+    SUMMARY: fallbackSummary(input.catalog, input.summarySource),
+    SKILLS: fallbackSkills(input.catalog, input.skillsSource),
     'PROFESSIONAL EXPERIENCE': buildExperienceSection(input.catalog, input.rerankedBulletIds),
-    EDUCATION: stripHeaderLines(input.educationSource)
-      || findCatalogContent(input.catalog, (line) => /b\.?tech|bachelor|university|degree/i.test(line.text)),
+    EDUCATION: fallbackEducation(input.catalog, input.educationSource),
   };
 
   return REQUIRED_SECTIONS

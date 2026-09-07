@@ -168,6 +168,150 @@ Deno.test('assembleSourceLockedResume ignores catalog lines that are ATS headers
   if (!ok.ok) throw new Error(`expected assembly to validate, got ${ok.reason}\n${output}`);
 });
 
+/**
+ * Production dump: empty mandatory sections + scored non-bullets (title, location,
+ * summary paragraph, sync stamp) produced SUMMARY=title, SKILLS=location, and
+ * EXPERIENCE filled with the master summary instead of job bullets.
+ */
+Deno.test('assembleSourceLockedResume maps catalog fallbacks into the correct ATS sections', async () => {
+  const summary = 'Results-driven Integration Architect and GenAI-native developer with 10+ years of experience in enterprise software engineering and customer-facing platform work.';
+  const catalog = [
+    { id: 'B001', text: 'ARUNKUMAR JS', isBullet: false, normalized: 'arunkumar js' },
+    { id: 'B002', text: 'Integration Architect | GenAI Developer | Forward Deployment Engineer', isBullet: false, normalized: 'integration architect | genai developer | forward deployment engineer' },
+    { id: 'B003', text: 'Location: Chennai, Tamil Nadu', isBullet: false, normalized: 'location: chennai, tamil nadu' },
+    { id: 'B004', text: 'arunkumar2891@gmail.com', isBullet: false, normalized: 'arunkumar2891@gmail.com' },
+    { id: 'B005', text: summary, isBullet: false, normalized: summary.toLowerCase() },
+    { id: 'B006', text: 'Forward Deployment Engineering:', isBullet: false, normalized: 'forward deployment engineering:' },
+    { id: 'B007', text: 'Customer-Facing Technical Work: Bridging business needs and engineering solutions', isBullet: true, normalized: 'customer-facing technical work: bridging business needs and engineering solutions' },
+    { id: 'B008', text: 'PALO ALTO NETWORKS', isBullet: false, normalized: 'palo alto networks' },
+    { id: 'B009', text: 'Built 2 conversational AI agents powered by Gemini 2.5 Pro with RAG corpus of 50+ pipeline metrics', isBullet: true, normalized: 'built 2 conversational ai agents powered by gemini 2.5 pro with rag corpus of 50+ pipeline metrics' },
+    { id: 'B010', text: '[CareerPilot] Last synced: Sep 7, 2026, 3:41 PM', isBullet: false, normalized: '[careerpilot] last synced: sep 7, 2026, 3:41 pm' },
+    { id: 'B011', text: 'TypeScript | JavaScript | Python | REST APIs | RAG | Pub/Sub', isBullet: true, normalized: 'typescript | javascript | python | rest apis | rag | pub/sub' },
+    { id: 'B012', text: 'B.Tech – Information Technology', isBullet: false, normalized: 'b.tech – information technology' },
+  ];
+
+  const { assembleSourceLockedResume } = await import('../career-corpus/assemble-source-locked-resume.ts');
+  const output = assembleSourceLockedResume({
+    contactBlock: [
+      'Name: ARUNKUMAR JS',
+      'Title: Integration Architect | GenAI Developer | Forward Deployment Engineer',
+      'Email: arunkumar2891@gmail.com',
+      'Phone: +91 6380069156',
+      'Location: Chennai, Tamil Nadu',
+      'LinkedIn: https://www.linkedin.com/in/arunkumar-j-s-05164393/',
+      'GitHub: https://github.com/arunkumar2891-ux/',
+      'PANW start: Jul 2024',
+    ].join('\n'),
+    summarySource: '',
+    skillsSource: '',
+    educationSource: '',
+    rerankedBulletIds: ['B002', 'B003', 'B005', 'B010', 'B009', 'B007', 'B011'],
+    catalog,
+  });
+
+  const section = (name: string) => {
+    const headers = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'EDUCATION'];
+    const lines = output.split('\n');
+    const start = lines.findIndex((line) => line.trim() === name);
+    if (start < 0) return '';
+    const body: string[] = [];
+    for (let i = start + 1; i < lines.length; i++) {
+      if (headers.includes(lines[i].trim())) break;
+      body.push(lines[i]);
+    }
+    return body.join('\n').trim();
+  };
+
+  const summaryBody = section('SUMMARY');
+  const skillsBody = section('SKILLS');
+  const contactBody = section('CONTACT');
+  const experienceBody = section('PROFESSIONAL EXPERIENCE');
+
+  if (!summaryBody.includes('Results-driven Integration Architect')) {
+    throw new Error(`SUMMARY should be the professional paragraph, got:\n${summaryBody}`);
+  }
+  if (summaryBody.includes('Integration Architect |')) {
+    throw new Error(`SUMMARY should not be the title line:\n${summaryBody}`);
+  }
+  if (/location:/i.test(skillsBody)) {
+    throw new Error(`SKILLS should not be the location line:\n${skillsBody}`);
+  }
+  if (!/typescript/i.test(skillsBody) && !/python/i.test(skillsBody)) {
+    throw new Error(`SKILLS should contain skill tokens, got:\n${skillsBody}`);
+  }
+  if (/jul 2024/i.test(contactBody) || /architect \|/i.test(contactBody)) {
+    throw new Error(`CONTACT should omit title and start date:\n${contactBody}`);
+  }
+  if (!experienceBody.includes('- Built 2 conversational AI agents')) {
+    throw new Error(`EXPERIENCE should include the selected bullet:\n${experienceBody}`);
+  }
+  if (experienceBody.includes('Results-driven')) {
+    throw new Error(`EXPERIENCE should not dump the summary paragraph:\n${experienceBody}`);
+  }
+  if (/last synced/i.test(experienceBody)) {
+    throw new Error(`EXPERIENCE should omit corpus sync stamps:\n${experienceBody}`);
+  }
+  if (!experienceBody.includes('PALO ALTO NETWORKS')) {
+    throw new Error(`EXPERIENCE should keep the company header above the bullet:\n${experienceBody}`);
+  }
+
+  const ok = validateResumeOutput(output, { skipGrounding: true });
+  if (!ok.ok) throw new Error(`expected assembly to validate, got ${ok.reason}\n${output}`);
+});
+
+Deno.test('extractMandatoryResumeSections works without equals banners', async () => {
+  const { extractMandatoryResumeSections } = await import('../career-corpus/resume-bank.ts');
+  const master = `ARUN KUMAR
+
+PROFESSIONAL SUMMARY
+Results-driven Integration Architect with 10+ years of experience.
+
+CORE COMPETENCIES
+Forward Deployment Engineering:
+- Customer-Facing Technical Work | APIs | TypeScript
+
+PROFESSIONAL EXPERIENCE
+PALO ALTO NETWORKS
+- Shipped integrations.
+
+EDUCATION
+B.Tech in Information Technology
+`;
+  const sections = extractMandatoryResumeSections(master);
+  if (!sections.summary.includes('Results-driven Integration Architect')) {
+    throw new Error(`expected summary body, got ${JSON.stringify(sections.summary)}`);
+  }
+  if (!sections.skills.includes('TypeScript')) {
+    throw new Error(`expected skills body, got ${JSON.stringify(sections.skills)}`);
+  }
+  if (!sections.education.includes('B.Tech')) {
+    throw new Error(`expected education body, got ${JSON.stringify(sections.education)}`);
+  }
+
+  const bannered = extractMandatoryResumeSections(`
+================================================================================
+PROFESSIONAL SUMMARY
+================================================================================
+Results-driven Integration Architect with 10+ years of experience.
+
+================================================================================
+CORE COMPETENCIES
+================================================================================
+- TypeScript | Python
+
+================================================================================
+EDUCATION
+================================================================================
+B.Tech in Information Technology
+`);
+  if (!bannered.summary.includes('Results-driven')) {
+    throw new Error(`banner extractor lost summary: ${JSON.stringify(bannered.summary)}`);
+  }
+  if (!bannered.skills.includes('TypeScript')) {
+    throw new Error(`banner extractor lost skills: ${JSON.stringify(bannered.skills)}`);
+  }
+});
+
 Deno.test('validateResumeOutput reports an empty supplied section as empty, not missing', () => {
   const withEmptyEducation = [
     'NAME', 'Jane Doe', '',
