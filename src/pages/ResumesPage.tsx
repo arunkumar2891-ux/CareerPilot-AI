@@ -89,9 +89,11 @@ export function ResumesPage() {
     setDeleting(true);
     try {
       const count = await services.resume.deleteAllJobResumes();
-      await qc.invalidateQueries({ queryKey: ['resumes', 'jobs', 'metrics'] });
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
       toast.success(`Deleted ${count} job resume${count === 1 ? '' : 's'}`);
       setShowDeleteAll(false);
+      setSelectedIds(new Set());
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete resumes');
     } finally {

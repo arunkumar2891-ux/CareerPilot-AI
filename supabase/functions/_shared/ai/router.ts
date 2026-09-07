@@ -1,6 +1,7 @@
 import { getAiMaxRetries, getAiTimeoutMs, getAtsTimeoutMs, getFallbackProvider, getPrimaryProvider } from './config.ts';
 import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
 import { geminiAdapter } from './gemini.ts';
+import { fitGroqPrompt } from './groq-limits.ts';
 import { groqAdapter } from './groq.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
 import { validateResumeOutput } from './validate-resume.ts';
@@ -21,6 +22,14 @@ export type GenerateDeps = {
   log?: (message: string) => void;
 };
 
+function resolveValidationGrounding(provider: string, request: GenerateRequest): string | undefined {
+  if (request.operation !== 'resume_tailoring') return request.groundingSource;
+  if (provider === 'groq' && request.groqUserPrompt) {
+    return fitGroqPrompt(request.systemPrompt, request.groqUserPrompt).userPrompt;
+  }
+  return request.groundingSource;
+}
+
 function applyResumeValidation(
   provider: string,
   text: string,
@@ -28,7 +37,7 @@ function applyResumeValidation(
 ): string {
   if (request.operation !== 'resume_tailoring') return text;
   const checked = validateResumeOutput(text, {
-    groundingSource: request.groundingSource,
+    groundingSource: resolveValidationGrounding(provider, request),
     skillsSource: request.skillsSource,
     educationSource: request.educationSource,
   });

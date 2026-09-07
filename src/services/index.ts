@@ -76,6 +76,12 @@ function payloadErrorMessage(data: unknown): string | null {
   return message ? String(message) : null;
 }
 
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) batches.push(items.slice(i, i + size));
+  return batches;
+}
+
 async function invokeAiChat(body: Record<string, unknown>) {
   const result = await supabase.functions.invoke('ai-chat', { body });
   const serverMessage = payloadErrorMessage(result.data)
@@ -623,39 +629,54 @@ export class ResumeService {
   }
   async deleteAllJobResumes(): Promise<number> {
     const userId = await requireUserId();
-    const { data: resumes, error: listError } = await supabase
-      .from('resumes')
-      .select('id, job_id')
-      .eq('user_id', userId)
-      .eq('is_corpus', false);
-    if (listError) throw listError;
-    const rows = (resumes || []) as Array<{ id: string; job_id: string | null }>;
-    if (rows.length === 0) return 0;
+    const jobResumes = await this.list({ kind: 'job' });
+    if (jobResumes.length === 0) return 0;
 
-    const ids = rows.map((r) => r.id);
-    const jobIds = [...new Set(rows.map((r) => r.job_id).filter((id): id is string => !!id))];
+    const ids = jobResumes.map((resume) => resume.id);
+    const jobIds = [...new Set(jobResumes.map((resume) => resume.jobId).filter((id): id is string => !!id))];
 
-    const { error: versionsError } = await supabase
+    const { data: versions, error: versionListError } = await supabase
       .from('resume_versions')
-      .delete()
+      .select('id')
       .in('resume_id', ids)
       .eq('user_id', userId);
-    if (versionsError) throw versionsError;
+    if (versionListError) throw versionListError;
 
-    const { error: resumeError } = await supabase
-      .from('resumes')
-      .delete()
-      .in('id', ids)
-      .eq('user_id', userId);
-    if (resumeError) throw resumeError;
+    const versionIds = (versions || []).map((row) => String(row.id));
+    for (const batch of chunkArray(versionIds, 50)) {
+      const { error } = await supabase
+        .from('applications')
+        .update({ resume_version_id: null })
+        .eq('user_id', userId)
+        .in('resume_version_id', batch);
+      if (error) throw error;
+    }
 
-    if (jobIds.length > 0) {
+    for (const batch of chunkArray(ids, 50)) {
+      const { error } = await supabase
+        .from('resume_versions')
+        .delete()
+        .in('resume_id', batch)
+        .eq('user_id', userId);
+      if (error) throw error;
+
+      const { error: resumeError } = await supabase
+        .from('resumes')
+        .delete()
+        .in('id', batch)
+        .eq('user_id', userId);
+      if (resumeError) throw resumeError;
+    }
+
+    for (const batch of chunkArray(jobIds, 50)) {
       const { error: jobError } = await supabase
         .from('jobs')
-        .update({ resume_status: 'none' })
+        .update({ resume_status: 'none', status: 'discovered', pdf_url: null })
         .eq('user_id', userId)
-        .in('id', jobIds);
-      if (jobError) throw jobError;
+        .in('id', batch);
+      if (jobError) {
+        console.warn('deleteAllJobResumes: job status reset failed', jobError);
+      }
     }
 
     return ids.length;
