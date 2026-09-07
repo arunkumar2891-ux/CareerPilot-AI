@@ -1,5 +1,6 @@
 import type { CatalogLine } from './resume-bullets.ts';
 import { buildCatalogGroundingSource, catalogById, selectCatalogLines } from './resume-bullets.ts';
+import { isAtsSectionHeaderLine } from '../ai/validate-resume.ts';
 
 export interface SourceLockedResumeInput {
   contactBlock: string;
@@ -36,8 +37,30 @@ function parseContactBlock(contactBlock: string): { name: string; contactLines: 
   return { name, contactLines };
 }
 
-function firstNonEmptyLine(text: string): string {
-  return text.split('\n').map((line) => line.trim()).find(Boolean) || '';
+/** Section content must never be an ATS header line (e.g. the master resume's own `EDUCATION`). */
+function isUsableContent(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.length > 0 && !isAtsSectionHeaderLine(trimmed);
+}
+
+function firstUsableLine(text: string): string {
+  return text.split('\n').map((line) => line.trim()).find(isUsableContent) || '';
+}
+
+/** First catalog line matching `predicate` that is safe to use as section content. */
+function findCatalogContent(
+  catalog: CatalogLine[],
+  predicate: (line: CatalogLine) => boolean,
+): string {
+  return catalog.find((line) => isUsableContent(line.text) && predicate(line))?.text.trim() || '';
+}
+
+function stripHeaderLines(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !line.trim() || !isAtsSectionHeaderLine(line))
+    .join('\n')
+    .trim();
 }
 
 function resolveBulletIds(catalog: CatalogLine[], selectedIds: string[]): string[] {
@@ -53,7 +76,7 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
 
   const pushLine = (text: string) => {
     const line = text.trim();
-    if (!line || seen.has(line)) return;
+    if (!line || seen.has(line) || isAtsSectionHeaderLine(line)) return;
     seen.add(line);
     lines.push(line);
   };
@@ -84,13 +107,13 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
 }
 
 function fallbackCatalogHeader(catalog: CatalogLine[]): string {
-  return catalog.find((line) => !line.isBullet && line.text.length > 0 && line.text.length < 90)?.text || 'Candidate';
+  return findCatalogContent(catalog, (line) => !line.isBullet && line.text.length < 90) || 'Candidate';
 }
 
 function fallbackContact(catalog: CatalogLine[], contactLines: string[]): string {
   if (contactLines.length > 0) return contactLines.join('\n');
   return catalog
-    .filter((line) => !line.isBullet)
+    .filter((line) => !line.isBullet && isUsableContent(line.text))
     .slice(1, 5)
     .map((line) => line.text)
     .join('\n');
@@ -112,19 +135,19 @@ export function assembleSourceLockedResume(input: SourceLockedResumeInput): stri
   const bodies: Record<typeof REQUIRED_SECTIONS[number], string> = {
     NAME: name.trim() || fallbackCatalogHeader(input.catalog),
     CONTACT: fallbackContact(input.catalog, contactLines),
-    SUMMARY: firstNonEmptyLine(input.summarySource)
-      || input.catalog.find((line) => !line.isBullet && line.text.length >= 40)?.text
-      || firstNonEmptyLine(input.skillsSource)
+    SUMMARY: firstUsableLine(input.summarySource)
+      || findCatalogContent(input.catalog, (line) => !line.isBullet && line.text.length >= 40)
+      || firstUsableLine(input.skillsSource)
       || 'Experienced software engineer.',
-    SKILLS: input.skillsSource.trim() || firstNonEmptyLine(input.catalog.find((line) => line.text.includes(','))?.text || ''),
+    SKILLS: stripHeaderLines(input.skillsSource)
+      || findCatalogContent(input.catalog, (line) => line.text.includes(',')),
     'PROFESSIONAL EXPERIENCE': buildExperienceSection(input.catalog, input.rerankedBulletIds),
-    EDUCATION: input.educationSource.trim() || firstNonEmptyLine(
-      input.catalog.find((line) => /b\.?tech|bachelor|university|education/i.test(line.text))?.text || '',
-    ),
+    EDUCATION: stripHeaderLines(input.educationSource)
+      || findCatalogContent(input.catalog, (line) => /b\.?tech|bachelor|university|degree/i.test(line.text)),
   };
 
   return REQUIRED_SECTIONS
-    .map((header) => `${header}\n${bodies[header].trim() || bodies[header]}`)
+    .map((header) => `${header}\n${bodies[header].trim()}`)
     .join('\n\n')
     .trim();
 }

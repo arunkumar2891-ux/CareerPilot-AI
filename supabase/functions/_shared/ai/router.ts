@@ -170,12 +170,10 @@ function formatAllProvidersFailed(errors: string[], deterministicReason?: string
   const deterministicNote = deterministicReason
     ? ` Catalog assembly also failed (${deterministicReason}).`
     : '';
+  // Always name each provider that ran and why it failed — a bare "check GEMINI_API_KEY"
+  // hides whether the fallback key was even reached.
   if (/quota exceeded|rate.?limit|free_tier|429/i.test(joined)) {
-    const groqError = errors.find((e) => e.startsWith('groq:'))?.replace(/^groq:\s*/, '');
-    if (groqError) {
-      return `All Gemini keys exhausted or rate-limited. Groq fallback: ${groqError}${deterministicNote}`;
-    }
-    return `Gemini API quota reached. Check GEMINI_API_KEY is set on the primary account.${deterministicNote}`;
+    return `All AI providers exhausted or rate-limited — ${joined}.${deterministicNote}`;
   }
   return `All AI providers failed. ${joined}${deterministicNote}`;
 }
@@ -218,6 +216,10 @@ export async function generateWithProviders(
     log('[AI] provider=groq skipped (catalog assembly available; set AI_FORCE_GROQ=true to enable)');
   }
 
+  // A non-retryable failure (e.g. HTTP 400) means the request itself is bad — retrying it
+  // on another provider only burns quota, so stop the chain instead of cascading.
+  let requestIsUnservable = false;
+
   for (let index = 0; index < geminiChain.length; index++) {
     const providerName = geminiChain[index];
     const adapter = adapters[providerName];
@@ -236,8 +238,12 @@ export async function generateWithProviders(
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${providerLabel(providerName)}: ${message}`);
+      if (!shouldFallback(err)) {
+        requestIsUnservable = true;
+        break;
+      }
       const hasNext = geminiChain.slice(index + 1).some((name) => adapters[name]?.isConfigured());
-      if (!shouldFallback(err) || !hasNext) break;
+      if (!hasNext) break;
     }
   }
 
@@ -246,7 +252,7 @@ export async function generateWithProviders(
     if (deterministic) return deterministic;
   }
 
-  for (let index = 0; index < tailChain.length; index++) {
+  for (let index = 0; index < tailChain.length && !requestIsUnservable; index++) {
     const providerName = tailChain[index];
     const adapter = adapters[providerName];
     if (!adapter?.isConfigured()) {

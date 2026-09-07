@@ -41,6 +41,15 @@ function isRequiredHeader(line: string): boolean {
   return canonicalHeader(line) !== null;
 }
 
+/**
+ * True when a line is itself an ATS section header (including aliases like
+ * `TECHNICAL SKILLS`). Such lines exist in the master resume and must never be
+ * reused as section *content*, or they create duplicate headers.
+ */
+export function isAtsSectionHeaderLine(line: string): boolean {
+  return isRequiredHeader(line);
+}
+
 function countRequiredHeaders(text: string): Record<string, number> {
   const counts = Object.fromEntries(REQUIRED_HEADERS.map((header) => [header, 0])) as Record<string, number>;
   for (const line of text.split('\n')) {
@@ -102,13 +111,17 @@ export function canonicalizeAtsResumeOutput(raw: string): string {
     if (!sections.has('CONTACT') && contact.length) sections.set('CONTACT', contact);
   }
 
+  return joinSections(sections);
+}
+
+/** `HEADER\nbody`, blank line between sections — same shape the deterministic assembler emits. */
+function joinSections(sections: Map<string, string[]>): string {
   const parts: string[] = [];
   for (const header of REQUIRED_HEADERS) {
     const body = sections.get(header)?.join('\n').trim();
     if (!body) continue;
-    parts.push(header, body);
+    parts.push(`${header}\n${body}`);
   }
-
   return parts.join('\n\n').trim();
 }
 
@@ -148,13 +161,7 @@ function fillMandatorySections(
   ensureSection('SKILLS', mandatory?.skillsSource);
   ensureSection('EDUCATION', mandatory?.educationSource);
 
-  const parts: string[] = [];
-  for (const header of REQUIRED_HEADERS) {
-    const body = sections.get(header)?.join('\n').trim();
-    if (!body) continue;
-    parts.push(header, body);
-  }
-  return parts.join('\n\n').trim();
+  return joinSections(sections);
 }
 
 function shouldSkipGroundingLine(line: string): boolean {
@@ -250,11 +257,15 @@ export function validateResumeOutput(
     return { ok: false, reason: 'empty_or_too_short' };
   }
 
+  // Canonicalization drops headers whose body is empty, so distinguish "never supplied"
+  // from "supplied but empty" — otherwise an empty section reports as a missing one.
+  const rawHeaderCounts = countRequiredHeaders(stripModelFences(raw));
+  const headerCounts = countRequiredHeaders(text);
   for (const header of REQUIRED_HEADERS) {
-    const headerCount = countRequiredHeaders(text)[header];
-    if (headerCount !== 1) {
-      return { ok: false, reason: headerCount ? 'duplicate_ats_section' : 'missing_ats_section' };
-    }
+    const headerCount = headerCounts[header];
+    if (headerCount === 1) continue;
+    if (headerCount > 1) return { ok: false, reason: 'duplicate_ats_section' };
+    return { ok: false, reason: rawHeaderCounts[header] ? 'empty_section' : 'missing_ats_section' };
   }
 
   for (const header of ['SKILLS', 'EDUCATION', 'SUMMARY', 'PROFESSIONAL EXPERIENCE'] as const) {

@@ -123,6 +123,68 @@ Deno.test('assembleSourceLockedResume builds a valid grounded resume', async () 
   if (!ok.ok) throw new Error(`expected deterministic resume to validate: ${ok.reason}`);
 });
 
+/**
+ * The master resume carries its own section headers (`EDUCATION`, `TECHNICAL SKILLS`, ...),
+ * so they land in the bullet catalog. Reusing one as section *content* emitted a second
+ * `EDUCATION` line, which canonicalization then dropped as an empty duplicate — surfacing
+ * as `missing_ats_section` and taking down the deterministic fallback.
+ */
+Deno.test('assembleSourceLockedResume ignores catalog lines that are ATS headers', async () => {
+  const catalog = [
+    { id: 'B001', text: 'Jane Doe', isBullet: false, normalized: 'jane doe' },
+    { id: 'B002', text: 'PROFESSIONAL SUMMARY', isBullet: false, normalized: 'professional summary' },
+    { id: 'B003', text: 'Distributed systems engineer with a decade of platform experience.', isBullet: false, normalized: 'distributed systems engineer with a decade of platform experience.' },
+    { id: 'B004', text: 'TECHNICAL SKILLS', isBullet: false, normalized: 'technical skills' },
+    { id: 'B005', text: 'TypeScript, Python, Go', isBullet: false, normalized: 'typescript, python, go' },
+    { id: 'B006', text: 'PROFESSIONAL EXPERIENCE', isBullet: false, normalized: 'professional experience' },
+    { id: 'B007', text: 'Acme Corp', isBullet: false, normalized: 'acme corp' },
+    { id: 'B008', text: 'Shipped APIs used by millions of users.', isBullet: true, normalized: 'shipped apis used by millions of users.' },
+    { id: 'B009', text: 'EDUCATION', isBullet: false, normalized: 'education' },
+    { id: 'B010', text: 'B.Tech in Information Technology', isBullet: false, normalized: 'b.tech in information technology' },
+  ];
+
+  const { assembleSourceLockedResume } = await import('../career-corpus/assemble-source-locked-resume.ts');
+
+  // Mandatory sections come back empty when the stored master resume lacks the
+  // `==== TITLE ====` separators the extractor keys off, forcing catalog fallbacks.
+  const output = assembleSourceLockedResume({
+    contactBlock: 'Name: Jane Doe\nEmail: jane@example.com',
+    summarySource: '',
+    skillsSource: '',
+    educationSource: '',
+    rerankedBulletIds: ['B008'],
+    catalog,
+  });
+
+  for (const header of ['EDUCATION', 'TECHNICAL SKILLS', 'PROFESSIONAL SUMMARY', 'PROFESSIONAL EXPERIENCE']) {
+    const occurrences = output.split('\n').filter((line) => line.trim() === header).length;
+    const allowed = header === 'PROFESSIONAL EXPERIENCE' || header === 'EDUCATION' ? 1 : 0;
+    if (occurrences !== allowed) {
+      throw new Error(`expected ${allowed} "${header}" line(s), got ${occurrences}\n${output}`);
+    }
+  }
+
+  const ok = validateResumeOutput(output, { skipGrounding: true });
+  if (!ok.ok) throw new Error(`expected assembly to validate, got ${ok.reason}\n${output}`);
+});
+
+Deno.test('validateResumeOutput reports an empty supplied section as empty, not missing', () => {
+  const withEmptyEducation = [
+    'NAME', 'Jane Doe', '',
+    'CONTACT', 'jane@example.com', '',
+    'SUMMARY', 'Distributed systems engineer.', '',
+    'SKILLS', 'TypeScript, Python', '',
+    'PROFESSIONAL EXPERIENCE', '- Shipped APIs used by millions of users.', '',
+    'EDUCATION', '',
+  ].join('\n');
+
+  const result = validateResumeOutput(withEmptyEducation, { skipGrounding: true });
+  if (result.ok) throw new Error('expected validation to fail');
+  if (result.reason !== 'empty_section') {
+    throw new Error(`expected empty_section, got ${result.reason}`);
+  }
+});
+
 Deno.test('validateResumeOutput accepts truncated summary prefix from role bank', () => {
   const longSummary = 'Results-driven Integration Architect with 10+ years of experience in enterprise software engineering and cloud solutions across multiple domains and teams.';
   const source = `ARUN KUMAR
