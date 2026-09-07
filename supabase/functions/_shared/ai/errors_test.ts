@@ -104,16 +104,21 @@ Deno.test('assembleSourceLockedResume builds a valid grounded resume', async () 
     { id: 'B008', text: 'B.S. Computer Science', isBullet: false, normalized: 'b.s. computer science' },
   ];
   const groundingSource = catalog.map((line) => line.isBullet ? `- ${line.text}` : line.text).join('\n');
-  const { assembleSourceLockedResume } = await import('../career-corpus/assemble-source-locked-resume.ts');
-  const output = assembleSourceLockedResume({
+  const { assembleSourceLockedResume, buildDeterministicGroundingSource } = await import('../career-corpus/assemble-source-locked-resume.ts');
+  const input = {
     contactBlock: 'Name: Jane Doe\nTitle: Principal Engineer\nEmail: jane@example.com',
     summarySource: 'Distributed systems engineer.',
     skillsSource: 'TypeScript, Python',
     educationSource: 'B.S. Computer Science',
     rerankedBulletIds: ['B006'],
     catalog,
+  };
+  const output = assembleSourceLockedResume(input);
+  const ok = validateResumeOutput(output, {
+    groundingSource: buildDeterministicGroundingSource(input),
+    skillsSource: 'TypeScript, Python',
+    educationSource: 'B.S. Computer Science',
   });
-  const ok = validateResumeOutput(output, { groundingSource, skillsSource: 'TypeScript, Python', educationSource: 'B.S. Computer Science' });
   if (!ok.ok) throw new Error(`expected deterministic resume to validate: ${ok.reason}`);
 });
 

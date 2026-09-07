@@ -1,5 +1,6 @@
 import type { CatalogLine } from './resume-bullets.ts';
-import { catalogById, selectCatalogLines } from './resume-bullets.ts';
+import { buildCatalogGroundingSource, catalogById, selectCatalogLines } from './resume-bullets.ts';
+import { normalizeResumeLine } from '../ai/validate-resume.ts';
 
 export interface SourceLockedResumeInput {
   contactBlock: string;
@@ -31,20 +32,39 @@ function firstNonEmptyLine(text: string): string {
   return text.split('\n').map((line) => line.trim()).find(Boolean) || '';
 }
 
-function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): string {
+function resolveBulletIds(catalog: CatalogLine[], selectedIds: string[]): string[] {
+  if (selectedIds.length > 0) return selectedIds;
+  return catalog.filter((line) => line.isBullet).slice(0, 16).map((line) => line.id);
+}
+
+function reserveLines(text: string, usedLines: Set<string>): string {
+  const kept: string[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const normalized = normalizeResumeLine(line);
+    if (!normalized || usedLines.has(normalized)) continue;
+    usedLines.add(normalized);
+    kept.push(line);
+  }
+  return kept.join('\n');
+}
+
+function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[], usedLines: Set<string>): string {
   const byId = catalogById(catalog);
   const indexById = new Map(catalog.map((line, index) => [line.id, index]));
-  const emitted = new Set<string>();
   const lines: string[] = [];
 
   const pushLine = (text: string) => {
-    const key = text.trim();
-    if (!key || emitted.has(key)) return;
-    emitted.add(key);
-    lines.push(key);
+    const line = text.trim();
+    if (!line) return;
+    const normalized = normalizeResumeLine(line);
+    if (!normalized || usedLines.has(normalized)) return;
+    usedLines.add(normalized);
+    lines.push(line);
   };
 
-  for (const id of selectedIds) {
+  for (const id of resolveBulletIds(catalog, selectedIds)) {
     const line = byId.get(id);
     const index = indexById.get(id);
     if (!line || index === undefined) continue;
@@ -61,7 +81,7 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
   }
 
   if (!lines.length) {
-    for (const line of selectCatalogLines(catalog, selectedIds)) {
+    for (const line of selectCatalogLines(catalog, resolveBulletIds(catalog, selectedIds))) {
       pushLine(line.isBullet ? `- ${line.text}` : line.text);
     }
   }
@@ -69,17 +89,33 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
   return lines.join('\n');
 }
 
+export function buildDeterministicGroundingSource(input: SourceLockedResumeInput): string {
+  return buildCatalogGroundingSource(input.catalog, [
+    input.contactBlock,
+    input.summarySource,
+    input.skillsSource,
+    input.educationSource,
+  ]);
+}
+
 /** Build a source-locked ATS resume without an LLM — used when providers fail validation or quota. */
 export function assembleSourceLockedResume(input: SourceLockedResumeInput): string {
+  const usedLines = new Set<string>();
   const { name, contactLines } = parseContactBlock(input.contactBlock);
-  const summary = firstNonEmptyLine(input.summarySource);
-  const skills = input.skillsSource.trim();
-  const education = input.educationSource.trim();
-  const experience = buildExperienceSection(input.catalog, input.rerankedBulletIds);
+  let resolvedName = reserveLines(name, usedLines);
+  if (!resolvedName) {
+    const header = input.catalog.find((line) => !line.isBullet && line.text.length > 0 && line.text.length < 90);
+    if (header) resolvedName = reserveLines(header.text, usedLines);
+  }
+  const contact = reserveLines(contactLines.join('\n'), usedLines);
+  const summary = reserveLines(firstNonEmptyLine(input.summarySource), usedLines);
+  const skills = reserveLines(input.skillsSource.trim(), usedLines);
+  const education = reserveLines(input.educationSource.trim(), usedLines);
+  const experience = buildExperienceSection(input.catalog, input.rerankedBulletIds, usedLines);
 
   const sections = [
-    ['NAME', name],
-    ['CONTACT', contactLines.join('\n')],
+    ['NAME', resolvedName],
+    ['CONTACT', contact],
     ['SUMMARY', summary],
     ['SKILLS', skills],
     ['PROFESSIONAL EXPERIENCE', experience],

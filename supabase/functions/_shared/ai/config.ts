@@ -67,3 +67,16 @@ export function getProviderChain(): string[] {
   if (getGroqApiKey()) chain.push('groq');
   return chain;
 }
+
+/** LLM bullet rerank burns extra Gemini quota; off by default on free tier. */
+export function isLlmRerankEnabled(): boolean {
+  return Deno.env.get('AI_LLM_RERANK_ENABLED')?.trim().toLowerCase() === 'true';
+}
+
+/** Rerank uses only the primary Gemini key (one attempt) to preserve fallback quota. */
+export function getRerankProviderChain(): string[] {
+  if (getGeminiApiKey()) return ['gemini'];
+  if (getGeminiFallbackApiKey()) return ['gemini_fallback'];
+  if (getGroqApiKey()) return ['groq'];
+  return [];
+}

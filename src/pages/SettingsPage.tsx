@@ -302,6 +302,7 @@ export function SettingsPage() {
                 <li><code>AI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 75000</li>
                 <li><code>AI_MAX_RETRIES</code> — optional; only used when <code>AI_GEMINI_RETRY_ENABLED=true</code></li>
                 <li><code>AI_GEMINI_RETRY_ENABLED</code> — optional; default off — one Gemini attempt per key, then next provider</li>
+                <li><code>AI_LLM_RERANK_ENABLED</code> — optional; default off — saves Gemini quota by using scored bullet order instead of LLM rerank</li>
                 <li><code>RESEND_API_KEY</code> — Resend email API key</li>
                 <li><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> — Google OAuth</li>
                 <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — Service role key</li>

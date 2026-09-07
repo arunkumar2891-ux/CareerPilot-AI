@@ -1,4 +1,5 @@
 import { generateText } from '../ai/router.ts';
+import { getRerankProviderChain, isLlmRerankEnabled } from '../ai/config.ts';
 import type { ScoredBullet } from './resume-bullets.ts';
 
 const RERANK_SYSTEM_PROMPT = `You rerank resume bullet IDs for a target job description.
@@ -74,23 +75,29 @@ export async function rerankBulletsWithLlm(
   if (!pool.length) return [];
   if (pool.length <= limit) return pool.map((c) => c.id);
 
+  const scoredFallback = pool.slice(0, limit).map((c) => c.id);
+  if (!isLlmRerankEnabled()) return scoredFallback;
+
+  const rerankChain = getRerankProviderChain();
+  if (!rerankChain.length) return scoredFallback;
+
   try {
     const raw = await generateText({
       systemPrompt: RERANK_SYSTEM_PROMPT,
       userPrompt: buildRerankUserPrompt(pool, context),
       operation: 'resume_rerank',
       timeoutMs: 25000,
-    }, { userId });
+    }, { userId, maxAttempts: 1, providerChain: rerankChain });
 
     const reranked = parseRerankIds(raw, pool.map((c) => c.id));
     if (reranked.length >= 8) return reranked.slice(0, limit);
 
-    const fallback = pool.slice(0, limit).map((c) => c.id);
+    const fallback = [...scoredFallback];
     for (const id of reranked) {
       if (!fallback.includes(id)) fallback.push(id);
     }
     return fallback.slice(0, limit);
   } catch {
-    return pool.slice(0, limit).map((c) => c.id);
+    return scoredFallback;
   }
 }

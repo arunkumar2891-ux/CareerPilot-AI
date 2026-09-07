@@ -1,8 +1,7 @@
 import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiMaxRetries, getProviderChain } from './config.ts';
 import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
-import { assembleSourceLockedResume } from '../career-corpus/assemble-source-locked-resume.ts';
+import { assembleSourceLockedResume, buildDeterministicGroundingSource } from '../career-corpus/assemble-source-locked-resume.ts';
 import { geminiAdapter, geminiFallbackAdapter } from './gemini.ts';
-import { fitGroqPrompt } from './groq-limits.ts';
 import { groqAdapter } from './groq.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
 import { validateResumeOutput } from './validate-resume.ts';
@@ -36,9 +35,8 @@ function providerLabel(name: string): string {
 
 function resolveValidationGrounding(provider: string, request: GenerateRequest): string | undefined {
   if (request.operation !== 'resume_tailoring') return request.groundingSource;
-  if (provider === 'groq' && request.groqUserPrompt) {
-    return fitGroqPrompt(request.systemPrompt, request.groqUserPrompt).userPrompt;
-  }
+  // Validate Groq output against the full catalog — not the TPM-truncated prompt.
+  if (provider === 'groq') return request.groundingSource;
   return request.groundingSource;
 }
 
@@ -129,8 +127,9 @@ function tryDeterministicResume(
   if (request.operation !== 'resume_tailoring' || !request.deterministicResume) return null;
 
   const assembled = assembleSourceLockedResume(request.deterministicResume);
+  const groundingSource = buildDeterministicGroundingSource(request.deterministicResume);
   const checked = validateResumeOutput(assembled, {
-    groundingSource: request.groundingSource,
+    groundingSource,
     skillsSource: request.skillsSource,
     educationSource: request.educationSource,
   });
@@ -143,20 +142,25 @@ function tryDeterministicResume(
   return checked.text;
 }
 
-function formatAllProvidersFailed(errors: string[]): string {
+function formatAllProvidersFailed(errors: string[], deterministicReason?: string): string {
   const joined = errors.join(' | ');
+  const deterministicNote = deterministicReason
+    ? ` Catalog assembly also failed (${deterministicReason}).`
+    : '';
   if (/quota exceeded|rate.?limit|free_tier|429/i.test(joined)) {
     const groqError = errors.find((e) => e.startsWith('groq:'))?.replace(/^groq:\s*/, '');
-    const geminiFallbackError = errors.find((e) => e.startsWith('gemini-fallback:'))?.replace(/^gemini-fallback:\s*/, '');
     if (groqError) {
-      return `All Gemini keys exhausted or rate-limited. Groq fallback: ${groqError}`;
+      return `All Gemini keys exhausted or rate-limited. Groq fallback: ${groqError}${deterministicNote}`;
     }
-    if (geminiFallbackError) {
-      return `Primary Gemini rate-limited. Fallback Gemini: ${geminiFallbackError}`;
-    }
-    return `Gemini API quota reached (free tier is ~20 requests/min for gemini-3.6-flash). Wait 30–60 seconds and retry, or upgrade Gemini billing.`;
+    return `Gemini API quota reached. Check GEMINI_API_KEY is set on the primary account.${deterministicNote}`;
   }
-  return `All AI providers failed. ${joined}`;
+  return `All AI providers failed. ${joined}${deterministicNote}`;
+}
+
+function splitProviderChain(chain: string[]): { geminiChain: string[]; tailChain: string[] } {
+  const geminiChain = chain.filter((name) => name === 'gemini' || name === 'gemini_fallback');
+  const tailChain = chain.filter((name) => name !== 'gemini' && name !== 'gemini_fallback');
+  return { geminiChain, tailChain };
 }
 
 /**
@@ -174,6 +178,7 @@ export async function generateWithProviders(
   const adapters = deps.adapters ?? defaultAdapters;
   const chain = deps.providerChain ?? getProviderChain();
   const errors: string[] = [];
+  log(`[AI] provider chain: ${chain.map(providerLabel).join(' → ') || '(none)'}`);
 
   if (!chain.length) {
     throw new ProviderError({
@@ -184,8 +189,10 @@ export async function generateWithProviders(
     });
   }
 
-  for (let index = 0; index < chain.length; index++) {
-    const providerName = chain[index];
+  const { geminiChain, tailChain } = splitProviderChain(chain);
+
+  for (let index = 0; index < geminiChain.length; index++) {
+    const providerName = geminiChain[index];
     const adapter = adapters[providerName];
     if (!adapter?.isConfigured()) {
       log(`[AI] provider=${providerLabel(providerName)} skipped kind=missing_key`);
@@ -194,26 +201,59 @@ export async function generateWithProviders(
 
     const role = index === 0 ? 'primary' : 'fallback';
     const attempts = deps.maxAttempts ?? maxAttemptsForProvider(providerName);
+
+    try {
+      return await tryProvider(adapter, { ...request, timeoutMs }, role, attempts, log, deps.userId);
+    } catch (err) {
+      const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
+      errors.push(`${providerLabel(providerName)}: ${message}`);
+      const hasNext = geminiChain.slice(index + 1).some((name) => adapters[name]?.isConfigured());
+      if (!shouldFallback(err) || !hasNext) break;
+    }
+  }
+
+  if (request.operation === 'resume_tailoring') {
+    const deterministic = tryDeterministicResume(request, log);
+    if (deterministic) return deterministic;
+  }
+
+  for (let index = 0; index < tailChain.length; index++) {
+    const providerName = tailChain[index];
+    const adapter = adapters[providerName];
+    if (!adapter?.isConfigured()) {
+      log(`[AI] provider=${providerLabel(providerName)} skipped kind=missing_key`);
+      continue;
+    }
+
     const providerTimeout = providerName === 'groq' && req.operation === 'resume_tailoring'
       ? getAtsTimeoutMs()
       : timeoutMs;
 
     try {
-      return await tryProvider(adapter, { ...request, timeoutMs: providerTimeout }, role, attempts, log, deps.userId);
+      return await tryProvider(adapter, { ...request, timeoutMs: providerTimeout }, 'fallback', 1, log, deps.userId);
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${providerLabel(providerName)}: ${message}`);
-      const hasNext = chain.slice(index + 1).some((name) => adapters[name]?.isConfigured());
+      const hasNext = tailChain.slice(index + 1).some((name) => adapters[name]?.isConfigured());
       if (!shouldFallback(err) || !hasNext) break;
     }
   }
 
-  const deterministic = tryDeterministicResume(request, log);
-  if (deterministic) return deterministic;
+  let deterministicReason: string | undefined;
+  if (request.operation === 'resume_tailoring' && request.deterministicResume) {
+    const assembled = assembleSourceLockedResume(request.deterministicResume);
+    const groundingSource = buildDeterministicGroundingSource(request.deterministicResume);
+    const checked = validateResumeOutput(assembled, {
+      groundingSource,
+      skillsSource: request.skillsSource,
+      educationSource: request.educationSource,
+    });
+    if (!checked.ok) deterministicReason = checked.reason;
+  }
 
   throw new Error(
     errors.length
-      ? formatAllProvidersFailed(errors)
+      ? formatAllProvidersFailed(errors, deterministicReason)
       : 'No AI provider is configured (set GEMINI_API_KEY, GEMINI_API_KEY_FALLBACK, and/or GROQ_API_KEY)',
   );
 }
