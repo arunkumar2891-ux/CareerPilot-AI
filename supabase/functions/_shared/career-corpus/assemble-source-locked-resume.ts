@@ -1,6 +1,5 @@
 import type { CatalogLine } from './resume-bullets.ts';
 import { buildCatalogGroundingSource, catalogById, selectCatalogLines } from './resume-bullets.ts';
-import { normalizeResumeLine } from '../ai/validate-resume.ts';
 
 export interface SourceLockedResumeInput {
   contactBlock: string;
@@ -10,6 +9,15 @@ export interface SourceLockedResumeInput {
   rerankedBulletIds: string[];
   catalog: CatalogLine[];
 }
+
+const REQUIRED_SECTIONS = [
+  'NAME',
+  'CONTACT',
+  'SUMMARY',
+  'SKILLS',
+  'PROFESSIONAL EXPERIENCE',
+  'EDUCATION',
+] as const;
 
 function parseContactBlock(contactBlock: string): { name: string; contactLines: string[] } {
   let name = '';
@@ -37,30 +45,16 @@ function resolveBulletIds(catalog: CatalogLine[], selectedIds: string[]): string
   return catalog.filter((line) => line.isBullet).slice(0, 16).map((line) => line.id);
 }
 
-function reserveLines(text: string, usedLines: Set<string>): string {
-  const kept: string[] = [];
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (!line) continue;
-    const normalized = normalizeResumeLine(line);
-    if (!normalized || usedLines.has(normalized)) continue;
-    usedLines.add(normalized);
-    kept.push(line);
-  }
-  return kept.join('\n');
-}
-
-function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[], usedLines: Set<string>): string {
+function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): string {
   const byId = catalogById(catalog);
   const indexById = new Map(catalog.map((line, index) => [line.id, index]));
   const lines: string[] = [];
+  const seen = new Set<string>();
 
   const pushLine = (text: string) => {
     const line = text.trim();
-    if (!line) return;
-    const normalized = normalizeResumeLine(line);
-    if (!normalized || usedLines.has(normalized)) return;
-    usedLines.add(normalized);
+    if (!line || seen.has(line)) return;
+    seen.add(line);
     lines.push(line);
   };
 
@@ -81,12 +75,25 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[], u
   }
 
   if (!lines.length) {
-    for (const line of selectCatalogLines(catalog, resolveBulletIds(catalog, selectedIds))) {
-      pushLine(line.isBullet ? `- ${line.text}` : line.text);
+    for (const line of catalog.filter((entry) => entry.isBullet).slice(0, 12)) {
+      pushLine(`- ${line.text}`);
     }
   }
 
   return lines.join('\n');
+}
+
+function fallbackCatalogHeader(catalog: CatalogLine[]): string {
+  return catalog.find((line) => !line.isBullet && line.text.length > 0 && line.text.length < 90)?.text || 'Candidate';
+}
+
+function fallbackContact(catalog: CatalogLine[], contactLines: string[]): string {
+  if (contactLines.length > 0) return contactLines.join('\n');
+  return catalog
+    .filter((line) => !line.isBullet)
+    .slice(1, 5)
+    .map((line) => line.text)
+    .join('\n');
 }
 
 export function buildDeterministicGroundingSource(input: SourceLockedResumeInput): string {
@@ -100,31 +107,24 @@ export function buildDeterministicGroundingSource(input: SourceLockedResumeInput
 
 /** Build a source-locked ATS resume without an LLM — used when providers fail validation or quota. */
 export function assembleSourceLockedResume(input: SourceLockedResumeInput): string {
-  const usedLines = new Set<string>();
   const { name, contactLines } = parseContactBlock(input.contactBlock);
-  let resolvedName = reserveLines(name, usedLines);
-  if (!resolvedName) {
-    const header = input.catalog.find((line) => !line.isBullet && line.text.length > 0 && line.text.length < 90);
-    if (header) resolvedName = reserveLines(header.text, usedLines);
-  }
-  const contact = reserveLines(contactLines.join('\n'), usedLines);
-  const summary = reserveLines(firstNonEmptyLine(input.summarySource), usedLines);
-  const skills = reserveLines(input.skillsSource.trim(), usedLines);
-  const education = reserveLines(input.educationSource.trim(), usedLines);
-  const experience = buildExperienceSection(input.catalog, input.rerankedBulletIds, usedLines);
 
-  const sections = [
-    ['NAME', resolvedName],
-    ['CONTACT', contact],
-    ['SUMMARY', summary],
-    ['SKILLS', skills],
-    ['PROFESSIONAL EXPERIENCE', experience],
-    ['EDUCATION', education],
-  ];
+  const bodies: Record<typeof REQUIRED_SECTIONS[number], string> = {
+    NAME: name.trim() || fallbackCatalogHeader(input.catalog),
+    CONTACT: fallbackContact(input.catalog, contactLines),
+    SUMMARY: firstNonEmptyLine(input.summarySource)
+      || input.catalog.find((line) => !line.isBullet && line.text.length >= 40)?.text
+      || firstNonEmptyLine(input.skillsSource)
+      || 'Experienced software engineer.',
+    SKILLS: input.skillsSource.trim() || firstNonEmptyLine(input.catalog.find((line) => line.text.includes(','))?.text || ''),
+    'PROFESSIONAL EXPERIENCE': buildExperienceSection(input.catalog, input.rerankedBulletIds),
+    EDUCATION: input.educationSource.trim() || firstNonEmptyLine(
+      input.catalog.find((line) => /b\.?tech|bachelor|university|education/i.test(line.text))?.text || '',
+    ),
+  };
 
-  return sections
-    .filter(([, body]) => Boolean(String(body || '').trim()))
-    .map(([header, body]) => `${header}\n${body}`)
+  return REQUIRED_SECTIONS
+    .map((header) => `${header}\n${bodies[header].trim() || bodies[header]}`)
     .join('\n\n')
     .trim();
 }

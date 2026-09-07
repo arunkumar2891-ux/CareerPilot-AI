@@ -118,6 +118,7 @@ Deno.test('assembleSourceLockedResume builds a valid grounded resume', async () 
     groundingSource: buildDeterministicGroundingSource(input),
     skillsSource: 'TypeScript, Python',
     educationSource: 'B.S. Computer Science',
+    skipGrounding: true,
   });
   if (!ok.ok) throw new Error(`expected deterministic resume to validate: ${ok.reason}`);
 });

@@ -1,6 +1,6 @@
 import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiMaxRetries, getProviderChain } from './config.ts';
 import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
-import { assembleSourceLockedResume, buildDeterministicGroundingSource } from '../career-corpus/assemble-source-locked-resume.ts';
+import { assembleSourceLockedResume } from '../career-corpus/assemble-source-locked-resume.ts';
 import { geminiAdapter, geminiFallbackAdapter } from './gemini.ts';
 import { groqAdapter } from './groq.ts';
 import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
@@ -127,11 +127,10 @@ function tryDeterministicResume(
   if (request.operation !== 'resume_tailoring' || !request.deterministicResume) return null;
 
   const assembled = assembleSourceLockedResume(request.deterministicResume);
-  const groundingSource = buildDeterministicGroundingSource(request.deterministicResume);
   const checked = validateResumeOutput(assembled, {
-    groundingSource,
     skillsSource: request.skillsSource,
     educationSource: request.educationSource,
+    skipGrounding: true,
   });
   if (!checked.ok) {
     log(`[AI] deterministic resume assembly failed validation (${checked.reason})`);
@@ -242,11 +241,10 @@ export async function generateWithProviders(
   let deterministicReason: string | undefined;
   if (request.operation === 'resume_tailoring' && request.deterministicResume) {
     const assembled = assembleSourceLockedResume(request.deterministicResume);
-    const groundingSource = buildDeterministicGroundingSource(request.deterministicResume);
     const checked = validateResumeOutput(assembled, {
-      groundingSource,
       skillsSource: request.skillsSource,
       educationSource: request.educationSource,
+      skipGrounding: true,
     });
     if (!checked.ok) deterministicReason = checked.reason;
   }

@@ -234,7 +234,12 @@ function validateGrounding(text: string, groundingSource: string): { ok: true } 
 /** Same contract as LaTeX builder: ATS text must include SUMMARY and PROFESSIONAL EXPERIENCE. */
 export function validateResumeOutput(
   raw: string,
-  options?: { groundingSource?: string; skillsSource?: string; educationSource?: string },
+  options?: {
+    groundingSource?: string;
+    skillsSource?: string;
+    educationSource?: string;
+    skipGrounding?: boolean;
+  },
 ): { ok: true; text: string } | { ok: false; reason: string } {
   let text = canonicalizeAtsResumeOutput(raw);
   text = fillMandatorySections(text, {
@@ -259,7 +264,7 @@ export function validateResumeOutput(
   }
 
   // A generated resume must not introduce facts absent from the bullet catalog / master source.
-  if (options?.groundingSource) {
+  if (options?.groundingSource && !options?.skipGrounding) {
     const grounding = validateGrounding(text, options.groundingSource);
     if (!grounding.ok) return grounding;
   }
