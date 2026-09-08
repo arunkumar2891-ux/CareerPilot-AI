@@ -303,7 +303,7 @@ Deno.test('assembleSourceLockedResume maps catalog fallbacks into the correct AT
   });
 
   const section = (name: string) => {
-    const headers = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'EDUCATION'];
+    const headers = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'CERTIFICATION', 'EDUCATION'];
     const lines = output.split('\n');
     const start = lines.findIndex((line) => line.trim() === name);
     if (start < 0) return '';
@@ -458,3 +458,46 @@ B.Tech in Information Technology
   const ok = validateResumeOutput(output, { groundingSource: source });
   if (!ok.ok) throw new Error(`expected truncated summary to pass: ${ok.ok ? '' : ok.reason}`);
 });
+
+Deno.test('validateResumeOutput treats CERTIFICATION as optional and keeps 7-header order when present', () => {
+  const withoutCert = `NAME
+Jane Doe
+
+CONTACT
+jane@example.com
+
+SUMMARY
+Distributed systems engineer.
+
+SKILLS
+TypeScript, Python
+
+PROFESSIONAL EXPERIENCE
+Acme
+- Shipped APIs used by millions of users.
+
+EDUCATION
+B.S. Computer Science
+`;
+  const missing = validateResumeOutput(withoutCert, { skipGrounding: true });
+  if (!missing.ok) throw new Error(`CERTIFICATION should be optional: ${missing.reason}`);
+
+  const withCert = `${withoutCert.trim()}
+
+CERTIFICATION
+Google Cloud Professional Architect
+`;
+  const present = validateResumeOutput(withCert, {
+    skipGrounding: true,
+    certificationSource: 'Google Cloud Professional Architect',
+  });
+  if (!present.ok) throw new Error(`expected certification resume to validate: ${present.reason}`);
+  const skillsAt = present.text.indexOf('SKILLS');
+  const experienceAt = present.text.indexOf('PROFESSIONAL EXPERIENCE');
+  const certAt = present.text.indexOf('CERTIFICATION');
+  const educationAt = present.text.indexOf('EDUCATION');
+  if (!(skillsAt < experienceAt && experienceAt < certAt && certAt < educationAt)) {
+    throw new Error(`wrong 7-header order\n${present.text}`);
+  }
+});
+

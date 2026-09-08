@@ -113,6 +113,8 @@ function applyResumeValidation(
     groundingSource: resolveValidationGrounding(provider, request),
     skillsSource: request.skillsSource,
     educationSource: request.educationSource,
+    certificationSource: request.certificationSource,
+    skipTwoPageShape: request.skipTwoPageShape,
     allowParaphrase: true,
     identity: identityFromRequest(request),
   });
@@ -205,6 +207,8 @@ function tryDeterministicResume(
   const checked = validateResumeOutput(assembled, {
     skillsSource: request.skillsSource,
     educationSource: request.educationSource,
+    certificationSource: request.certificationSource,
+    skipTwoPageShape: request.skipTwoPageShape,
     skipGrounding: true,
   });
   if (!checked.ok) {
@@ -329,6 +333,8 @@ export async function generateWithProviders(
     const checked = validateResumeOutput(assembled, {
       skillsSource: request.skillsSource,
       educationSource: request.educationSource,
+      certificationSource: request.certificationSource,
+      skipTwoPageShape: request.skipTwoPageShape,
       skipGrounding: true,
     });
     if (!checked.ok) deterministicReason = checked.reason;

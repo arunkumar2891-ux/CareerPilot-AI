@@ -1,5 +1,225 @@
 export const ROLE_PLAYBOOKS = [
   {
+    "id": "engineering_manager",
+    "title": "Engineering Manager / Technical Lead",
+    "matchKeywords": [
+      "engineering manager",
+      "engineering lead",
+      "technical lead",
+      "tech lead",
+      "team lead",
+      "people manager",
+      "mentoring",
+      "stakeholder"
+    ],
+    "leadWith": [
+      "Leadership & Mentoring",
+      "major initiatives as delivery proof"
+    ],
+    "emphasize": [
+      "team mentoring",
+      "cross-functional collaboration",
+      "stakeholder management",
+      "documentation",
+      "standards"
+    ],
+    "highlight": [
+      "5+ mentees",
+      "30+ trained",
+      "3 major initiatives",
+      "3348 lines of documentation"
+    ],
+    "deemphasize": [
+      "low-level snap/SQL implementation detail"
+    ]
+  },
+  {
+    "id": "cloud_architect",
+    "title": "Cloud Architect / Platform Engineer",
+    "matchKeywords": [
+      "cloud architect",
+      "platform engineer",
+      "gcp",
+      "google cloud",
+      "kubernetes",
+      "gke",
+      "bigquery",
+      "pub/sub",
+      "terraform",
+      "helm",
+      "cloud native"
+    ],
+    "leadWith": [
+      "PC to CC Migration - Datadog to BigQuery State Management",
+      "SnapLogic Automations Portal"
+    ],
+    "emphasize": [
+      "GCP",
+      "BigQuery",
+      "Pub/Sub",
+      "Kubernetes",
+      "Vertex AI",
+      "zero-data-loss",
+      "auto-scaling"
+    ],
+    "highlight": [
+      "4-10x query latency",
+      "10-80x cost reduction",
+      "GKE HPA 3-10 pods",
+      "99.95% uptime"
+    ],
+    "deemphasize": [
+      "personal side projects unless cloud/DevOps is mentioned"
+    ]
+  },
+  {
+    "id": "forward_deployment",
+    "title": "Forward Deployment Engineer",
+    "matchKeywords": [
+      "forward deployment",
+      "fde",
+      "field engineer",
+      "customer-facing",
+      "rapid prototyping",
+      "production debugging"
+    ],
+    "leadWith": [
+      "CareerPilot AI \u2014 Autonomous Job Search Platform",
+      "Forward Deployment Engineering",
+      "SnapLogic Automations Portal"
+    ],
+    "emphasize": [
+      "problem identification",
+      "rapid solution delivery",
+      "production debugging",
+      "customer engagement",
+      "dogfooding",
+      "Kubernetes",
+      "CI/CD"
+    ],
+    "highlight": [
+      "CareerPilot AI dogfooded in production",
+      "real-world problem to working app",
+      "user adoption 100+",
+      "distributed systems debugging",
+      "OAuth/sync repair"
+    ],
+    "deemphasize": [
+      "deep SnapLogic snap-count tables unless relevant"
+    ]
+  },
+  {
+    "id": "solutions_engineer",
+    "title": "Solutions Engineer",
+    "matchKeywords": [
+      "solutions engineer",
+      "sales engineer",
+      "pre-sales",
+      "customer engineer",
+      "demo",
+      "proof of concept",
+      "poc",
+      "discovery"
+    ],
+    "leadWith": [
+      "CareerPilot AI \u2014 Autonomous Job Search Platform",
+      "SnapLogic Automations Portal",
+      "Forward Deployment Engineering"
+    ],
+    "emphasize": [
+      "customer engagement",
+      "solution delivery",
+      "integrations",
+      "demos",
+      "stakeholder management",
+      "rapid prototyping"
+    ],
+    "highlight": [
+      "user adoption 100+",
+      "CareerPilot AI dogfooded in production",
+      "real-world problem to working app"
+    ],
+    "deemphasize": [
+      "deep pipeline internals unless the JD also asks for iPaaS"
+    ]
+  },
+  {
+    "id": "genai_developer",
+    "title": "GenAI Developer",
+    "matchKeywords": [
+      "genai",
+      "generative ai",
+      "prompt engineering",
+      "cursor",
+      "chatgpt",
+      "llm developer",
+      "ai-augmented",
+      "ai native",
+      "copilot"
+    ],
+    "leadWith": [
+      "CareerPilot AI \u2014 Autonomous Job Search Platform",
+      "GenAI-Augmented Development Methodology",
+      "SnapLogic Automations Portal"
+    ],
+    "emphasize": [
+      "AI pair programming",
+      "prompt engineering",
+      "RAG optimization",
+      "rapid prototyping",
+      "multi-provider LLM routing",
+      "workflow automation"
+    ],
+    "highlight": [
+      "CareerPilot AI (Gemini 3.6 Flash + Groq)",
+      "4+ production apps using AI",
+      "10x development speed",
+      "RAG inconsistency 40% to <5%",
+      "Pic-Reel",
+      "IPL 2026",
+      "PlanItX"
+    ],
+    "deemphasize": [
+      "pure SnapLogic pipeline internals unless the JD also asks for iPaaS"
+    ]
+  },
+  {
+    "id": "ai_engineer",
+    "title": "AI Engineer",
+    "matchKeywords": [
+      "ai engineer",
+      "ml engineer",
+      "machine learning",
+      "vertex ai",
+      "rag",
+      "gemini",
+      "ai agent",
+      "nlp",
+      "embeddings"
+    ],
+    "leadWith": [
+      "SnapLogic Automations Portal AI features",
+      "GenAI-Augmented Development Methodology"
+    ],
+    "emphasize": [
+      "Gemini",
+      "RAG",
+      "prompt engineering",
+      "AI agents",
+      "Vertex AI",
+      "multi-turn conversations"
+    ],
+    "highlight": [
+      "2 AI agents",
+      "multi-turn conversations",
+      "<2s latency",
+      "50+ pipeline metrics RAG corpus"
+    ],
+    "deemphasize": [
+      "FW_Flex snap reduction details unless architecture is also required"
+    ]
+  },
+  {
     "id": "integration_architect",
     "title": "Integration Architect",
     "matchKeywords": [
@@ -35,191 +255,6 @@ export const ROLE_PLAYBOOKS = [
     ],
     "deemphasize": [
       "personal projects unless the JD mentions full-stack or GenAI"
-    ]
-  },
-  {
-    "id": "genai_developer",
-    "title": "GenAI Developer",
-    "matchKeywords": [
-      "genai",
-      "generative ai",
-      "prompt engineering",
-      "cursor",
-      "chatgpt",
-      "llm developer",
-      "ai-augmented",
-      "ai native",
-      "copilot"
-    ],
-    "leadWith": [
-      "CareerPilot AI — Autonomous Job Search Platform",
-      "GenAI-Augmented Development Methodology",
-      "SnapLogic Automations Portal"
-    ],
-    "emphasize": [
-      "AI pair programming",
-      "prompt engineering",
-      "RAG optimization",
-      "rapid prototyping",
-      "multi-provider LLM routing",
-      "workflow automation"
-    ],
-    "highlight": [
-      "CareerPilot AI (Gemini 3.6 Flash + Groq)",
-      "4+ production apps using AI",
-      "10x development speed",
-      "RAG inconsistency 40% to <5%",
-      "Pic-Reel",
-      "IPL 2026",
-      "PlanItX"
-    ],
-    "deemphasize": [
-      "pure SnapLogic pipeline internals unless the JD also asks for iPaaS"
-    ]
-  },
-  {
-    "id": "forward_deployment",
-    "title": "Forward Deployment Engineer",
-    "matchKeywords": [
-      "forward deployment",
-      "fde",
-      "solutions engineer",
-      "customer engineer",
-      "field engineer",
-      "customer-facing",
-      "rapid prototyping",
-      "production debugging"
-    ],
-    "leadWith": [
-      "CareerPilot AI — Autonomous Job Search Platform",
-      "Forward Deployment Engineering",
-      "SnapLogic Automations Portal"
-    ],
-    "emphasize": [
-      "problem identification",
-      "rapid solution delivery",
-      "production debugging",
-      "customer engagement",
-      "dogfooding",
-      "Kubernetes",
-      "CI/CD"
-    ],
-    "highlight": [
-      "CareerPilot AI dogfooded in production",
-      "real-world problem to working app",
-      "user adoption 100+",
-      "distributed systems debugging",
-      "OAuth/sync repair"
-    ],
-    "deemphasize": [
-      "deep SnapLogic snap-count tables unless relevant"
-    ]
-  },
-  {
-    "id": "cloud_architect",
-    "title": "Cloud Architect",
-    "matchKeywords": [
-      "cloud architect",
-      "gcp",
-      "google cloud",
-      "kubernetes",
-      "gke",
-      "bigquery",
-      "pub/sub",
-      "terraform",
-      "helm",
-      "cloud native"
-    ],
-    "leadWith": [
-      "PC to CC Migration - Datadog to BigQuery State Management",
-      "SnapLogic Automations Portal"
-    ],
-    "emphasize": [
-      "GCP",
-      "BigQuery",
-      "Pub/Sub",
-      "Kubernetes",
-      "Vertex AI",
-      "zero-data-loss",
-      "auto-scaling"
-    ],
-    "highlight": [
-      "4-10x query latency",
-      "10-80x cost reduction",
-      "GKE HPA 3-10 pods",
-      "99.95% uptime"
-    ],
-    "deemphasize": [
-      "personal side projects unless cloud/DevOps is mentioned"
-    ]
-  },
-  {
-    "id": "ai_ml_engineer",
-    "title": "AI/ML Engineer",
-    "matchKeywords": [
-      "ai engineer",
-      "ml engineer",
-      "machine learning",
-      "vertex ai",
-      "rag",
-      "gemini",
-      "ai agent",
-      "nlp",
-      "embeddings"
-    ],
-    "leadWith": [
-      "SnapLogic Automations Portal AI features",
-      "GenAI-Augmented Development Methodology"
-    ],
-    "emphasize": [
-      "Gemini",
-      "RAG",
-      "prompt engineering",
-      "AI agents",
-      "Vertex AI",
-      "multi-turn conversations"
-    ],
-    "highlight": [
-      "2 AI agents",
-      "multi-turn conversations",
-      "<2s latency",
-      "50+ pipeline metrics RAG corpus"
-    ],
-    "deemphasize": [
-      "FW_Flex snap reduction details unless architecture is also required"
-    ]
-  },
-  {
-    "id": "engineering_manager",
-    "title": "Engineering Manager / Lead",
-    "matchKeywords": [
-      "engineering manager",
-      "engineering lead",
-      "tech lead",
-      "team lead",
-      "people manager",
-      "mentoring",
-      "stakeholder"
-    ],
-    "leadWith": [
-      "Leadership & Mentoring",
-      "major initiatives as delivery proof"
-    ],
-    "emphasize": [
-      "team mentoring",
-      "cross-functional collaboration",
-      "stakeholder management",
-      "documentation",
-      "standards"
-    ],
-    "highlight": [
-      "5+ mentees",
-      "30+ trained",
-      "3 major initiatives",
-      "3348 lines of documentation"
-    ],
-    "deemphasize": [
-      "low-level snap/SQL implementation detail"
     ]
   }
 ] as const;

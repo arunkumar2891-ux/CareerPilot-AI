@@ -5,13 +5,15 @@ export function stripModelFences(text: string): string {
     .trim();
 }
 
-const REQUIRED_HEADERS = ['NAME', 'CONTACT', 'SUMMARY', 'PROFESSIONAL EXPERIENCE', 'SKILLS', 'EDUCATION'];
+const REQUIRED_HEADERS = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'CERTIFICATION', 'EDUCATION'];
+const OPTIONAL_HEADERS = new Set(['CERTIFICATION']);
 const HEADER_ALIASES: Record<string, string> = {
   'PROFESSIONAL SUMMARY': 'SUMMARY',
   'EXECUTIVE SUMMARY': 'SUMMARY',
   'TECHNICAL SKILLS': 'SKILLS',
   'CORE COMPETENCIES': 'SKILLS',
   'WORK EXPERIENCE': 'PROFESSIONAL EXPERIENCE',
+  CERTIFICATIONS: 'CERTIFICATION',
 };
 const KEYWORD_REFERENCE_RE = /(?:^|\s)[\w\s/&.-]+\s+Keywords:/i;
 const CONTACT_LINE_RE = /^(?:location|phone|email|linkedin|github|title|panw start)\s*:/i;
@@ -127,9 +129,11 @@ function joinSections(sections: Map<string, string[]>): string {
 
 function fillMandatorySections(
   text: string,
-  mandatory?: { skillsSource?: string; educationSource?: string },
+  mandatory?: { skillsSource?: string; educationSource?: string; certificationSource?: string },
 ): string {
-  if (!mandatory?.skillsSource?.trim() && !mandatory?.educationSource?.trim()) return text;
+  if (!mandatory?.skillsSource?.trim() && !mandatory?.educationSource?.trim() && !mandatory?.certificationSource?.trim()) {
+    return text;
+  }
 
   const sections = new Map<string, string[]>();
   const preamble: string[] = [];
@@ -159,6 +163,7 @@ function fillMandatorySections(
   };
 
   ensureSection('SKILLS', mandatory?.skillsSource);
+  ensureSection('CERTIFICATION', mandatory?.certificationSource);
   ensureSection('EDUCATION', mandatory?.educationSource);
 
   return joinSections(sections);
@@ -340,6 +345,7 @@ function validateGrounding(
       allowParaphrase: options?.allowParaphrase,
       allowAggregate: current === 'SUMMARY'
         || current === 'SKILLS'
+        || current === 'CERTIFICATION'
         || (current === 'PROFESSIONAL EXPERIENCE' && !/^\s*[-•]\s+/.test(line)),
       sourceText: groundingSource,
     })) {
@@ -378,7 +384,9 @@ export function validateResumeOutput(
     groundingSource?: string;
     skillsSource?: string;
     educationSource?: string;
+    certificationSource?: string;
     skipGrounding?: boolean;
+    skipTwoPageShape?: boolean;
     allowParaphrase?: boolean;
     identity?: { name?: string; contact?: string; education?: string };
   },
@@ -388,6 +396,7 @@ export function validateResumeOutput(
   text = fillMandatorySections(text, {
     skillsSource: options?.skillsSource,
     educationSource: options?.educationSource || options?.identity?.education,
+    certificationSource: options?.certificationSource,
   });
   if (!text || text.length < 40) {
     return { ok: false, reason: 'empty_or_too_short' };
@@ -399,11 +408,15 @@ export function validateResumeOutput(
   if (options?.identity?.education || options?.educationSource) {
     rawHeaderCounts.EDUCATION = Math.max(rawHeaderCounts.EDUCATION, 1);
   }
+  if (options?.certificationSource?.trim()) {
+    rawHeaderCounts.CERTIFICATION = Math.max(rawHeaderCounts.CERTIFICATION, 1);
+  }
   const headerCounts = countRequiredHeaders(text);
   for (const header of REQUIRED_HEADERS) {
     const headerCount = headerCounts[header];
     if (headerCount === 1) continue;
     if (headerCount > 1) return { ok: false, reason: 'duplicate_ats_section' };
+    if (OPTIONAL_HEADERS.has(header) && !options?.certificationSource?.trim()) continue;
     return { ok: false, reason: rawHeaderCounts[header] ? 'empty_section' : 'missing_ats_section' };
   }
 
@@ -413,8 +426,10 @@ export function validateResumeOutput(
     }
   }
 
-  const shape = validateTwoPageShape(text);
-  if (!shape.ok) return shape;
+  if (!options?.skipTwoPageShape) {
+    const shape = validateTwoPageShape(text);
+    if (!shape.ok) return shape;
+  }
 
   if (options?.groundingSource && !options?.skipGrounding) {
     const grounding = validateGrounding(text, options.groundingSource, {

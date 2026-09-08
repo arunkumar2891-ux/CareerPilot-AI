@@ -17,7 +17,6 @@ import {
   applyContactOverlay,
   replaceEducationPlaceholders,
 } from '@/content/career-corpus';
-import { buildFocusedMasterResume, resumeBankName } from '@/content/career-corpus/resume-bank';
 import { isCorpusResume, isJobResume } from '@/utils/resume-classification';
 import { buildTailoredResumeName } from '@/utils/resume-name';
 import { PROVIDER_FREE_TIER_MONTHLY_TOKENS } from '@/constants/ai-usage';
@@ -514,6 +513,11 @@ export class ResumeService {
   }
   async generateTailored(jobId: string, resumeId?: string, _style?: 'technical' | 'executive' | 'general'): Promise<Resume> {
     const userId = await requireUserId();
+    const settings = await new SettingsService().get();
+    const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
+    if (!resumeFileId) {
+      throw new Error('Add a Google Doc Resume ID in Settings before generating a tailored resume.');
+    }
     const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
     if (!job) throw new Error('Job not found');
 
@@ -1109,6 +1113,11 @@ export class ExecutionService {
     };
   }
   async runWorkflow(id: string): Promise<Workflow['runs'][number]> {
+    const settings = await new SettingsService().get();
+    const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
+    if (!resumeFileId) {
+      throw new Error('Add a Google Doc Resume ID in Settings before running a job search workflow.');
+    }
     const { data, error } = await supabase.functions.invoke('workflow-run', { body: { workflowId: id } });
     if (error) throw error;
     const runs = await this.listRuns();
@@ -1944,34 +1953,8 @@ export class BootstrapService {
       }
     };
 
-    const masterExisting = byName.get(MASTER_RESUME_NAME);
-    const masterWasPlaceholder = masterExisting
-      && String(masterExisting.content || '').includes(BootstrapService.CORPUS_PLACEHOLDER);
-
     await upsertResume(MASTER_RESUME_NAME, 'technical', CAREER_CORPUS.masterResume);
     await upsertResume(TWO_PAGE_RESUME_NAME, 'general', CAREER_CORPUS.twoPageTemplate);
-
-    for (const playbook of CAREER_CORPUS.rolePlaybooks) {
-      const bankName = resumeBankName(playbook);
-      const focused = buildFocusedMasterResume(CAREER_CORPUS.masterResume, playbook);
-      const overlayed = applyContactOverlay(focused, overlay);
-      const existingBank = byName.get(bankName);
-      if (!existingBank) {
-        await supabase.from('resumes').insert({
-          user_id: userId,
-          name: bankName,
-          type: 'technical',
-          content: overlayed,
-          ats_score: 0,
-          is_corpus: true,
-        });
-      } else if (masterWasPlaceholder) {
-        await supabase
-          .from('resumes')
-          .update({ content: overlayed, updated_at: new Date().toISOString() })
-          .eq('id', existingBank.id);
-      }
-    }
 
     const { count } = await supabase
       .from('knowledge_chunks')

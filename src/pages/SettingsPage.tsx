@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield,
 } from 'lucide-react';
@@ -15,7 +16,8 @@ import { useUIStore, useAuthStore } from '@/store';
 import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
 import { JOB_POSTED_WITHIN_OPTIONS, DEFAULT_JOB_POSTED_WITHIN } from '@/constants';
-import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '@/utils/google';
+import { parseGoogleDocFileId, parseGoogleDriveFolderId, googleDocResumeFileId } from '@/utils/google';
+import { RoleBanksStatusBanner } from '@/components/RoleBanksStatusBanner';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -38,6 +40,9 @@ export function SettingsPage() {
   const [github, setGithub] = useState('');
   const [startDate, setStartDate] = useState('');
   const [syncingCareerPilot, setSyncingCareerPilot] = useState(false);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const settingsTab = searchParams.get('tab') || 'profile';
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
 
@@ -90,8 +95,12 @@ export function SettingsPage() {
     const parsedFolderId = parseGoogleDriveFolderId(driveFolderId);
     setResumeFileId(parsedResumeId);
     setDriveFolderId(parsedFolderId);
+    const previousJobSearch = (settings?.jobSearch as Record<string, unknown> | undefined) || {};
+    const previousId = googleDocResumeFileId(settings);
+    const fileIdChanged = Boolean(parsedResumeId) && parsedResumeId !== previousId;
     await services.settings.update({
       jobSearch: {
+        ...previousJobSearch,
         query: jobQuery,
         location: jobLocation,
         maxJobs,
@@ -106,12 +115,17 @@ export function SettingsPage() {
     if (fileId) {
       try {
         const res = await supabase.functions.invoke('ai-chat', {
-          body: { mode: 'sync_google_doc_chunks', fileId },
+          body: { mode: 'sync_google_doc_chunks', fileId, generateRoleBanks: fileIdChanged },
         });
         if (res.error) throw new Error(res.error.message);
         qc.invalidateQueries({ queryKey: ['resumes'] });
         qc.invalidateQueries({ queryKey: ['knowledge-collections'] });
-        toast.success('Job search saved — Google Doc synced to Master ATS');
+        qc.invalidateQueries({ queryKey: ['settings'] });
+        toast.success(
+          fileIdChanged
+            ? 'Job search saved — Google Doc synced and role banks are generating'
+            : 'Job search saved — Google Doc synced to Master ATS',
+        );
         return;
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Google Doc sync failed — check Integrations');
@@ -157,7 +171,13 @@ export function SettingsPage() {
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader title="Settings" description="Manage your account, preferences, and configuration" />
 
-      <Tabs defaultValue="profile">
+      <Tabs
+        value={settingsTab}
+        onValueChange={(value) => {
+          if (value === 'profile') setSearchParams({});
+          else setSearchParams({ tab: value });
+        }}
+      >
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
           <TabsList className="inline-flex w-max min-w-full sm:min-w-0">
           <TabsTrigger value="profile" className="gap-1.5"><User className="h-3.5 w-3.5" /> Profile</TabsTrigger>
@@ -225,7 +245,8 @@ export function SettingsPage() {
               <div className="space-y-1.5">
                 <Label>Google Doc Resume ID</Label>
                 <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="docs.google.com/document/d/FILE_ID/edit" />
-                <p className="text-xs text-muted-foreground">Paste a Google Doc link or the file ID. Synced before each pipeline run.</p>
+                <p className="text-xs text-muted-foreground">Paste a Google Doc link or the file ID. Required before job search or resume tailoring. Synced before each pipeline run; changing the ID regenerates role banks.</p>
+                <RoleBanksStatusBanner />
               </div>
               <div className="space-y-1.5">
                 <Label>Google Drive folder for PDFs</Label>

@@ -17,7 +17,9 @@ const CROSS_SECTIONS_BY_PLAYBOOK: Record<string, string[]> = {
   integration_architect: ['Security & Compliance', 'Operational Excellence'],
   genai_developer: ['AI Development Methodology'],
   forward_deployment: ['Forward Deployment Skills Demonstrated'],
+  solutions_engineer: ['Forward Deployment Skills Demonstrated'],
   cloud_architect: ['Operational Excellence'],
+  ai_engineer: ['AI Development Methodology'],
   ai_ml_engineer: ['AI Development Methodology'],
   engineering_manager: ['Leadership & Mentoring', 'Security & Compliance', 'Operational Excellence'],
 };
@@ -171,12 +173,12 @@ export function buildFocusedMasterResume(
     if (block) parts.push(block);
   }
 
-  if (playbook.id === 'genai_developer' || playbook.id === 'ai_ml_engineer') {
+  if (playbook.id === 'genai_developer' || playbook.id === 'ai_engineer' || playbook.id === 'ai_ml_engineer') {
     const genai = extractSectionByTitle(fullMaster, 'GENAI-AUGMENTED DEVELOPMENT METHODOLOGY & PROJECTS');
     if (genai) parts.push(genai.slice(0, 12000));
   }
 
-  if (playbook.id === 'forward_deployment') {
+  if (playbook.id === 'forward_deployment' || playbook.id === 'solutions_engineer') {
     const fde = extractSectionByTitle(fullMaster, 'FORWARD DEPLOYMENT ENGINEERING');
     if (fde) parts.push(fde.slice(0, 6000));
   }

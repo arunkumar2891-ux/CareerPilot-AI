@@ -23,10 +23,13 @@ import { JOB_BOARDS, EXPERIENCE_LEVELS } from '@/constants';
 import { formatCurrency, formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { hasGoogleDocResumeId } from '@/utils/google';
 import type { Job } from '@/types';
 
 export function JobsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [view, setView] = useState<'kanban' | 'table'>('kanban');
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -47,6 +50,7 @@ export function JobsPage() {
   });
 
   const { data: jobs, isLoading, error: jobsError } = useQuery({ queryKey: ['jobs'], queryFn: () => services.jobSearch.list() });
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
 
   const filtered = (jobs || []).filter((j) => {
     if (search && !j.role.toLowerCase().includes(search.toLowerCase()) && !j.company.toLowerCase().includes(search.toLowerCase())) return false;
@@ -58,6 +62,11 @@ export function JobsPage() {
   });
 
   const runSearch = async () => {
+    if (!hasGoogleDocResumeId(settings)) {
+      toast.error('Add a Google Doc Resume ID in Settings before running job search');
+      navigate('/settings?tab=jobsearch');
+      return;
+    }
     try {
       toast.success('Starting job search pipeline...');
       const wf = await services.workflow.ensureDefaultPipeline();

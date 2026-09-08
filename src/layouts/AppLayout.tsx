@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, MobileNav } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { CommandPalette } from '@/components/layout/CommandPalette';
+import { RequireGoogleDocGate } from '@/components/RequireGoogleDocGate';
 import { useUIStore } from '@/store';
 import { services } from '@/services';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -74,6 +75,7 @@ export function AppLayout() {
         </main>
       </div>
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} onNavigate={navigate} />
+      <RequireGoogleDocGate />
     </div>
   );
 }

@@ -7,8 +7,10 @@ export interface DeterministicResumeInput {
   summarySource: string;
   skillsSource: string;
   educationSource: string;
+  certificationSource?: string;
   rerankedBulletIds: string[];
   catalog: Array<{ id: string; text: string; isBullet: boolean }>;
+  maxExperienceBullets?: number;
 }
 
 export interface GenerateRequest {
@@ -20,6 +22,9 @@ export interface GenerateRequest {
   groundingSource?: string;
   skillsSource?: string;
   educationSource?: string;
+  certificationSource?: string;
+  /** Skip the compact 2-page length checks (role-bank corpus generation). */
+  skipTwoPageShape?: boolean;
   /** Smaller user prompt for Groq TPM limits on resume fallback. */
   groqUserPrompt?: string;
   /** Catalog-backed assembly when LLM providers fail. */

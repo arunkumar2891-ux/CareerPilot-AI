@@ -377,7 +377,11 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(ctx, node) {
       const fileId = parseGoogleDocFileId(resolveTemplate(String(node.config.fileId || ''), ctx));
       if (!fileId || fileId.includes('{{') || fileId.includes('YOUR_GOOGLE')) {
-        return { output: { skipped: true, reason: 'no_google_doc' }, status: 'success' };
+        return {
+          output: { skipped: true, reason: 'no_google_doc' },
+          status: 'failed',
+          error: 'Google Doc Resume ID is required before job search can run.',
+        };
       }
       try {
         const sync = await syncGoogleDocToCorpus(ctx.userId, fileId);

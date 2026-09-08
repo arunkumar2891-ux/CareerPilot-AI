@@ -1,9 +1,6 @@
 import { createAdminClient } from './supabase-admin.ts';
-import { refreshGoogleToken, getUserSettings } from './credentials.ts';
+import { refreshGoogleToken } from './credentials.ts';
 import { fetchWithTimeout } from './fetch-timeout.ts';
-import { ROLE_PLAYBOOKS } from './career-corpus/data.ts';
-import { applyContactOverlay } from './career-corpus/prompt.ts';
-import { buildFocusedMasterResume, resumeBankName } from './career-corpus/resume-bank.ts';
 
 const MASTER_RESUME_NAME = 'Master ATS (bullet bank)';
 
@@ -95,61 +92,16 @@ export async function fetchGoogleDocText(userId: string, fileId: string): Promis
   return await res.text();
 }
 
-async function syncRoleResumeBanks(userId: string, masterContent: string): Promise<number> {
-  const admin = createAdminClient();
-  const settings = await getUserSettings(userId);
-  const { data: profile } = await admin.from('profiles').select('full_name, title, email').eq('user_id', userId).maybeSingle();
-  const stored = (settings.contact as Record<string, string> | undefined) || {};
-  const contact: Record<string, string | undefined> = {
-    fullName: profile?.full_name || stored.fullName,
-    title: profile?.title || stored.title,
-    email: stored.email || profile?.email,
-    phone: stored.phone,
-    location: stored.location,
-    linkedin: stored.linkedin,
-    github: stored.github,
-    startDate: stored.startDate,
-  };
-  const fullMaster = applyContactOverlay(masterContent, contact);
-  let count = 0;
-
-  for (const playbook of ROLE_PLAYBOOKS) {
-    const name = resumeBankName(playbook);
-    const focused = applyContactOverlay(buildFocusedMasterResume(fullMaster, playbook), contact);
-    const { data: existing } = await admin
-      .from('resumes')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('name', name)
-      .maybeSingle();
-
-    if (existing?.id) {
-      await admin.from('resumes').update({
-        content: focused,
-        updated_at: new Date().toISOString(),
-      }).eq('id', existing.id);
-    } else {
-      await admin.from('resumes').insert({
-        user_id: userId,
-        name,
-        type: 'technical',
-        content: focused,
-        ats_score: 0,
-      });
-    }
-    count++;
-  }
-
-  return count;
-}
-
-export async function syncGoogleDocToCorpus(userId: string, fileId: string): Promise<{
+export async function syncGoogleDocToCorpus(userId: string, fileId: string, options?: {
+  generateRoleBanks?: boolean;
+}): Promise<{
   docContent: string;
   resumeContent: string;
   chunksExtracted: number;
   newChunksAdded: number;
   totalExisting: number;
   resumeUpdated: boolean;
+  roleBanksScheduled: boolean;
 }> {
   const docContent = await fetchGoogleDocText(userId, fileId);
   const resumeContent = parseGoogleDocResume(docContent);
@@ -208,8 +160,12 @@ export async function syncGoogleDocToCorpus(userId: string, fileId: string): Pro
     resumeUpdated = Boolean(inserted?.length);
   }
 
-  if (resumeUpdated || resumeContent.length > 500) {
-    await syncRoleResumeBanks(userId, resumeContent);
+  let roleBanksScheduled = false;
+  if (options?.generateRoleBanks && (resumeUpdated || resumeContent.length > 500)) {
+    const { setRoleBanksStatus, scheduleRoleBankGeneration } = await import('./career-corpus/generate-role-banks.ts');
+    await setRoleBanksStatus(userId, 'generating', { roleBanksError: '' });
+    scheduleRoleBankGeneration(userId);
+    roleBanksScheduled = true;
   }
 
   return {
@@ -219,5 +175,6 @@ export async function syncGoogleDocToCorpus(userId: string, fileId: string): Pro
     newChunksAdded: toInsert.length,
     totalExisting: (existing || []).length + toInsert.length,
     resumeUpdated: Boolean(updated?.length),
+    roleBanksScheduled,
   };
 }

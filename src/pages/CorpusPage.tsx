@@ -14,6 +14,7 @@ import { timeAgo } from '@/utils';
 import { corpusGroup } from '@/utils/resume-classification';
 import { MASTER_RESUME_NAME, TWO_PAGE_RESUME_NAME } from '@/content/career-corpus';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { RoleBanksStatusBanner } from '@/components/RoleBanksStatusBanner';
 import type { Resume } from '@/types';
 
 const GROUP_LABELS = {
@@ -42,9 +43,12 @@ export function CorpusPage() {
         title="Career Corpus"
         description="Master ATS bullet bank, 2-page template, and role-focused banks used for job tailoring"
         actions={
-          <Button variant="outline" asChild>
-            <Link to="/knowledge">Sync from Google Doc</Link>
-          </Button>
+          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+            <RoleBanksStatusBanner />
+            <Button variant="outline" asChild>
+              <Link to="/knowledge">Sync from Google Doc</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -64,7 +68,7 @@ export function CorpusPage() {
             <EmptyState
               icon={BookOpen}
               title="Corpus seeding"
-              description="Master ATS, the 2-page template, and role banks are created automatically on login. Refresh in a moment."
+              description="Master ATS and the 2-page template seed on login. Role banks are generated after you sync a Google Doc Resume ID."
             />
           </CardContent>
         </Card>
@@ -100,7 +104,7 @@ export function CorpusPage() {
                         <p className="text-xs text-muted-foreground">
                           {r.name === MASTER_RESUME_NAME && 'Full bullet bank for RAG tailoring'}
                           {r.name === TWO_PAGE_RESUME_NAME && 'Length and layout target for PDFs'}
-                          {r.name.startsWith('ATS Bank:') && 'Focused excerpt for this role family'}
+                          {r.name.startsWith('ATS Bank:') && 'Comprehensive role corpus for JD tailoring'}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">Updated {timeAgo(r.updatedAt)}</p>
                         <div className="mt-3 flex items-center gap-2">

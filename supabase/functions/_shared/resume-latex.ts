@@ -19,8 +19,8 @@ function esc(s: string): string {
 function extractSection(raw: string, header: string): string {
   const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const patterns = [
-    new RegExp(`(?:^|\\n)${escaped}\\s*\\n([\\s\\S]*?)(?=\\n(?:NAME|CONTACT|SUMMARY|PROFESSIONAL EXPERIENCE|EDUCATION|SKILLS|TECHNICAL SKILLS)\\s*\\n|$)`, 'i'),
-    new RegExp(`(?:^|\\n)${escaped}\\s*:?\\s*\\n([\\s\\S]*?)(?=\\n(?:NAME|CONTACT|SUMMARY|PROFESSIONAL EXPERIENCE|EDUCATION|SKILLS|TECHNICAL SKILLS)\\s*:?\\s*\\n|$)`, 'i'),
+    new RegExp(`(?:^|\\n)${escaped}\\s*\\n([\\s\\S]*?)(?=\\n(?:NAME|CONTACT|SUMMARY|SKILLS|PROFESSIONAL EXPERIENCE|CERTIFICATION|CERTIFICATIONS|EDUCATION|TECHNICAL SKILLS)\\s*\\n|$)`, 'i'),
+    new RegExp(`(?:^|\\n)${escaped}\\s*:?\\s*\\n([\\s\\S]*?)(?=\\n(?:NAME|CONTACT|SUMMARY|SKILLS|PROFESSIONAL EXPERIENCE|CERTIFICATION|CERTIFICATIONS|EDUCATION|TECHNICAL SKILLS)\\s*:?\\s*\\n|$)`, 'i'),
   ];
   for (const re of patterns) {
     const m = raw.match(re);
@@ -153,10 +153,12 @@ export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): 
   const contactSection = extractSection(text, 'CONTACT');
   const summarySection = extractSection(text, 'SUMMARY')
     || extractSection(text, 'PROFESSIONAL SUMMARY');
-  const experienceSection = extractSection(text, 'PROFESSIONAL EXPERIENCE');
-  const educationSection = extractSection(text, 'EDUCATION');
   const skillsSection = extractSection(text, 'SKILLS')
     || extractSection(text, 'TECHNICAL SKILLS');
+  const experienceSection = extractSection(text, 'PROFESSIONAL EXPERIENCE');
+  const certificationSection = extractSection(text, 'CERTIFICATION')
+    || extractSection(text, 'CERTIFICATIONS');
+  const educationSection = extractSection(text, 'EDUCATION');
 
   const contactFields = parseContactFields(contactSection);
   let fullName = nameSection.split('\n').find((l) => l.trim())?.trim() || '';
@@ -190,13 +192,17 @@ export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): 
     body.push(`\\section{Summary}`);
     body.push(`\\cvitem{}{${esc(summarySection.replace(/\n+/g, ' ').trim())}}`);
   }
+  if (skillsSection) {
+    body.push(`\\section{Skills}`);
+    body.push(formatSkillsLatex(skillsSection));
+  }
   if (experienceSection) {
     body.push(`\\section{Professional Experience}`);
     body.push(formatExperienceLatex(experienceSection));
   }
-  if (skillsSection) {
-    body.push(`\\section{Skills}`);
-    body.push(formatSkillsLatex(skillsSection));
+  if (certificationSection) {
+    body.push(`\\section{Certification}`);
+    body.push(formatSkillsLatex(certificationSection));
   }
   if (educationSection) {
     body.push(`\\section{Education}`);

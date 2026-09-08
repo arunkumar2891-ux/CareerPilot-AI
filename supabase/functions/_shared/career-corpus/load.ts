@@ -44,6 +44,7 @@ export interface CareerCorpusBundle {
   rerankedBulletIds: string[];
   skillsSource: string;
   educationSource: string;
+  certificationSource: string;
   summarySource: string;
   catalog: CatalogLine[];
 }
@@ -115,6 +116,8 @@ export async function loadCareerCorpus(
     content: r.content as string | null,
   }));
   const selectedResume = selectMasterResumeForJob(fullMaster, playbook, resumeRows);
+  // Prefer the stored comprehensive role bank (ATS Bank: {title}) when present;
+  // otherwise fall back to a focused excerpt of the Master ATS.
   const masterResume = applyContactOverlay(selectedResume.content, contact);
   const lexicalMatches = selectLexicalMasterMatches(fullMaster, jobDescription);
   const contactBlock = formatContact(contact);
@@ -149,6 +152,7 @@ export async function loadCareerCorpus(
     contactBlock,
     mandatorySections.skills,
     mandatorySections.education,
+    mandatorySections.certification,
     selectedPlaybookInstructions,
   ]);
 
@@ -169,6 +173,7 @@ export async function loadCareerCorpus(
     rerankedBulletIds,
     skillsSource: mandatorySections.skills,
     educationSource: mandatorySections.education,
+    certificationSource: mandatorySections.certification,
     summarySource: mandatorySections.summary,
     catalog,
   };

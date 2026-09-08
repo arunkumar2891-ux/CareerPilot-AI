@@ -42,7 +42,9 @@ export async function callGeminiAtsGenerateContent(
   mandatorySections?: {
     skillsSource?: string;
     educationSource?: string;
+    certificationSource?: string;
     groqUserPrompt?: string;
+    skipTwoPageShape?: boolean;
     deterministicResume?: DeterministicResumeInput;
   },
 ): Promise<{ text: string; tokensTotal: number }> {
@@ -55,6 +57,8 @@ export async function callGeminiAtsGenerateContent(
     groundingSource,
     skillsSource: mandatorySections?.skillsSource,
     educationSource: mandatorySections?.educationSource,
+    certificationSource: mandatorySections?.certificationSource,
+    skipTwoPageShape: mandatorySections?.skipTwoPageShape,
     deterministicResume: mandatorySections?.deterministicResume,
   }, { userId });
   return { text: result.text, tokensTotal: totalTokens(result) };

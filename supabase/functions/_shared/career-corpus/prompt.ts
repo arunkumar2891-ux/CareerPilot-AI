@@ -28,9 +28,9 @@ CONTENT CONTRACT:
 
 Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
-Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, SKILLS, EDUCATION
+Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION
 For bullets use: - (hyphen + space)
-Each section header may appear exactly once. SKILLS and EDUCATION must never be empty.
+Each section header may appear exactly once. SKILLS and EDUCATION must never be empty. Include CERTIFICATION when the source lists certifications; omit the section when none exist.
 Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, or CORE COMPETENCIES as headers.
 
 OUTPUT SKELETON (use exactly these headers once each, in this order):
@@ -43,15 +43,45 @@ CONTACT
 SUMMARY
 <3-5 concise sentences grounded in the supplied source>
 
+SKILLS
+<compact skill lines from TEMPLATE SKILLS, selected and ordered for the JD>
+
 PROFESSIONAL EXPERIENCE
 <company/project headers from source>
 <selected source bullets with light edits — keep metrics and employers unchanged>
 
-SKILLS
-<compact skill lines from TEMPLATE SKILLS, selected and ordered for the JD>
+CERTIFICATION
+<certifications from TEMPLATE CERTIFICATION, or omit this section if none exist>
 
 EDUCATION
 <education from TEMPLATE EDUCATION>`;
+
+export const ROLE_BANK_SYSTEM_PROMPT = `You write a comprehensive, role-focused resume from a Master ATS bullet bank.
+
+VOICE (must read as human):
+- Prefer copying bullets from the source bank with small edits: cut fluff, drop a clause, or change order. Do not rewrite every sentence into a new generic template.
+- Vary sentence length. Mix short facts with one longer technical sentence. Avoid starting several bullets the same way.
+- Do not use these phrases: results-driven, proven track record, passionate, leveraged, spearheaded, demonstrated ability, highly skilled, cutting-edge, seamless, robust ecosystem, utilizing, furthermore, additionally, in order to, played a key role.
+- Do not use em dashes or en dashes as separators.
+
+CONTENT CONTRACT:
+- The MASTER ATS is the only factual source. Do not invent companies, titles, tools, skills, metrics, dates, certifications, education, or contact details.
+- Include ALL relevant achievements and bullets from the Master ATS for this role family. This is a corpus document, not a two-page tailored resume — prefer completeness over brevity.
+- Every number must appear in the supplied source.
+- Lead with projects that match the role. Keep company and project structure from the source.
+- Reorder skills for this role. Do not invent skills.
+- Fill NAME and CONTACT from the supplied contact block. Keep contact labels.
+- Write a 3-5 sentence SUMMARY using source facts, oriented to this role.
+- Include CERTIFICATION when the source lists certifications; omit the section when none exist.
+- Never write that the resume was tailored, optimized, generated, or customized.
+- Never include ATS keyword reference lines, tailoring-guide text, RECTIFICATION & ITERATION, or section instructions.
+
+Final Output (STRICT):
+Return ONLY plain text. No Markdown. No preamble.
+Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION
+For bullets use: - (hyphen + space)
+Each section header may appear exactly once. SKILLS and EDUCATION must never be empty.
+Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, or CORE COMPETENCIES as headers.`;
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;
@@ -69,6 +99,7 @@ export function buildResumeUserPrompt(input: {
   googleHeader?: string;
   skillsSource?: string;
   educationSource?: string;
+  certificationSource?: string;
   summarySource?: string;
 }): string {
   const jobDescription = trimForAts(input.jobDescription, 8000, 'Job description');
@@ -79,6 +110,7 @@ export function buildResumeUserPrompt(input: {
   const retrievedEvidence = trimForAts(input.retrievedEvidence, 4000, 'Retrieved evidence');
   const skillsSource = trimForAts(input.skillsSource || '', 4000, 'Required skills source');
   const educationSource = trimForAts(input.educationSource || '', 1200, 'Required education source');
+  const certificationSource = trimForAts(input.certificationSource || '', 1200, 'Required certification source');
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
@@ -91,6 +123,7 @@ export function buildResumeUserPrompt(input: {
     `2-PAGE TEMPLATE (required structure and length budget):\n${twoPageTemplate}`,
     skillsSource ? `TEMPLATE SKILLS (select and order compact lines for the JD):\n${skillsSource}` : '',
     educationSource ? `TEMPLATE EDUCATION (copy into EDUCATION; do not replace):\n${educationSource}` : '',
+    certificationSource ? `TEMPLATE CERTIFICATION (copy into CERTIFICATION; omit the section if empty):\n${certificationSource}` : '',
     input.rerankedSelection,
     input.retrievedEvidence,
     bulletCatalog,
@@ -110,26 +143,58 @@ export function buildGroqResumeUserPrompt(input: {
   contactBlock?: string;
   skillsSource?: string;
   educationSource?: string;
+  certificationSource?: string;
   summarySource?: string;
 }): string {
   const jobDescription = trimForAts(input.jobDescription, 2500, 'Job description');
   const bulletCatalog = trimForAts(input.bulletCatalog, 8000, 'Bullet catalog');
   const skillsSource = trimForAts(input.skillsSource || '', 2500, 'Required skills source');
   const educationSource = trimForAts(input.educationSource || '', 800, 'Required education source');
+  const certificationSource = trimForAts(input.certificationSource || '', 800, 'Required certification source');
   const retrievedEvidence = trimForAts(input.retrievedEvidence || '', 1500, 'Retrieved evidence');
   const summarySource = trimForAts(input.summarySource || '', 800, 'Summary source');
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
-    `Keep the September 4 contract: two-page resume, source bullets with light edits, compact skills, and section order NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, SKILLS, EDUCATION.`,
+    `Keep the 7-header contract: two-page resume, source bullets with light edits, compact skills, and section order NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION.`,
     `JOB DESCRIPTION (excerpt):\n${jobDescription}`,
     input.contactBlock ? `CONTACT (copy labeled values):\n${input.contactBlock}` : '',
     summarySource ? `SUMMARY SOURCE (rewrite once under SUMMARY to match the JD; keep the facts):\n${summarySource}` : '',
     skillsSource ? `TEMPLATE SKILLS (select compact relevant lines; do not expand):\n${skillsSource}` : '',
     educationSource ? `TEMPLATE EDUCATION (copy; do not replace):\n${educationSource}` : '',
+    certificationSource ? `TEMPLATE CERTIFICATION (copy; omit if empty):\n${certificationSource}` : '',
     input.rerankedSelection,
     retrievedEvidence,
     bulletCatalog,
+  ].filter(Boolean).join('\n\n');
+}
+
+export function buildRoleBankUserPrompt(input: {
+  playbookTitle: string;
+  playbookInstructions: string;
+  masterResume: string;
+  contactBlock: string;
+  skillsSource?: string;
+  educationSource?: string;
+  certificationSource?: string;
+  summarySource?: string;
+}): string {
+  const masterResume = trimForAts(input.masterResume, 40000, 'Master ATS resume');
+  const skillsSource = trimForAts(input.skillsSource || '', 4000, 'Skills source');
+  const educationSource = trimForAts(input.educationSource || '', 1200, 'Education source');
+  const certificationSource = trimForAts(input.certificationSource || '', 1200, 'Certification source');
+  const summarySource = trimForAts(input.summarySource || '', 1400, 'Summary source');
+
+  return [
+    `TARGET ROLE FAMILY: ${input.playbookTitle}`,
+    `The MASTER ATS is the source of truth for every fact. Produce a comprehensive role-focused resume — include all relevant achievements and bullets, not a two-page trim.`,
+    input.playbookInstructions ? `PLAYBOOK INSTRUCTIONS:\n${input.playbookInstructions}` : '',
+    input.contactBlock ? `CONTACT (copy these labeled values into NAME and CONTACT):\n${input.contactBlock}` : '',
+    summarySource ? `SUMMARY SOURCE (rewrite once under SUMMARY for this role; keep the facts):\n${summarySource}` : '',
+    skillsSource ? `SKILLS SOURCE (select and order for this role; do not invent):\n${skillsSource}` : '',
+    certificationSource ? `CERTIFICATION SOURCE (copy into CERTIFICATION; omit the section if empty):\n${certificationSource}` : '',
+    educationSource ? `EDUCATION SOURCE (copy into EDUCATION; do not replace):\n${educationSource}` : '',
+    `MASTER ATS (source of truth):\n${masterResume}`,
   ].filter(Boolean).join('\n\n');
 }
 

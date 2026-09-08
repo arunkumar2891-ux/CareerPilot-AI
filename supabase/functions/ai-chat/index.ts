@@ -51,13 +51,15 @@ Deno.serve(async (req) => {
       const fileId = String(body.fileId || '').trim();
       if (!fileId) return jsonResponse({ error: 'fileId is required' }, 400);
 
-      const sync = await syncGoogleDocToCorpus(user.id, fileId);
+      const generateRoleBanks = Boolean(body.generateRoleBanks);
+      const sync = await syncGoogleDocToCorpus(user.id, fileId, { generateRoleBanks });
 
       return jsonResponse({
         chunksExtracted: sync.chunksExtracted,
         newChunksAdded: sync.newChunksAdded,
         totalExisting: sync.totalExisting,
         resumeUpdated: sync.resumeUpdated,
+        roleBanksScheduled: sync.roleBanksScheduled,
       });
     }
 

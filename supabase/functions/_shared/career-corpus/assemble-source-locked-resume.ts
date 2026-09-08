@@ -7,16 +7,20 @@ export interface SourceLockedResumeInput {
   summarySource: string;
   skillsSource: string;
   educationSource: string;
+  certificationSource?: string;
   rerankedBulletIds: string[];
   catalog: CatalogLine[];
+  /** Tailored 2-page resumes stay compact; role-bank assembly may raise this. */
+  maxExperienceBullets?: number;
 }
 
 const REQUIRED_SECTIONS = [
   'NAME',
   'CONTACT',
   'SUMMARY',
-  'PROFESSIONAL EXPERIENCE',
   'SKILLS',
+  'PROFESSIONAL EXPERIENCE',
+  'CERTIFICATION',
   'EDUCATION',
 ] as const;
 
@@ -141,14 +145,18 @@ function isExperienceHeader(text: string): boolean {
   return false;
 }
 
-function resolveBulletIds(catalog: CatalogLine[], selectedIds: string[]): string[] {
+function resolveBulletIds(catalog: CatalogLine[], selectedIds: string[], maxBullets = 18): string[] {
   const byId = catalogById(catalog);
-  const selectedBullets = selectedIds.filter((id) => byId.get(id)?.isBullet).slice(0, 18);
+  const selectedBullets = selectedIds.filter((id) => byId.get(id)?.isBullet).slice(0, maxBullets);
   if (selectedBullets.length > 0) return selectedBullets;
-  return catalog.filter((line) => line.isBullet).slice(0, 16).map((line) => line.id);
+  return catalog.filter((line) => line.isBullet).slice(0, Math.min(16, maxBullets)).map((line) => line.id);
 }
 
-function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): string {
+function buildExperienceSection(
+  catalog: CatalogLine[],
+  selectedIds: string[],
+  maxBullets = 18,
+): string {
   const byId = catalogById(catalog);
   const indexById = new Map(catalog.map((line, index) => [line.id, index]));
   const lines: string[] = [];
@@ -161,7 +169,7 @@ function buildExperienceSection(catalog: CatalogLine[], selectedIds: string[]): 
     lines.push(line);
   };
 
-  for (const id of resolveBulletIds(catalog, selectedIds)) {
+  for (const id of resolveBulletIds(catalog, selectedIds, maxBullets)) {
     const line = byId.get(id);
     const index = indexById.get(id);
     if (!line?.isBullet || index === undefined) continue;
@@ -202,6 +210,24 @@ function fallbackEducation(catalog: CatalogLine[], educationSource: string): str
   ))?.text.trim() || '';
 }
 
+function isPlaceholderLine(text: string): boolean {
+  return /^\s*-?\s*\[[^\]]+\]\s*$/.test(text);
+}
+
+function fallbackCertification(catalog: CatalogLine[], certificationSource?: string): string {
+  const stripped = stripHeaderLines(certificationSource || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !isPlaceholderLine(line))
+    .join('\n');
+  if (stripped) return stripped;
+  return catalog
+    .filter((line) => isUsableContent(line.text) && /certif/i.test(line.text) && !isPlaceholderLine(line.text))
+    .slice(0, 8)
+    .map((line) => (line.isBullet ? `- ${line.text}` : line.text))
+    .join('\n');
+}
+
 function fallbackContact(catalog: CatalogLine[], contactLines: string[]): string {
   if (contactLines.length > 0) return contactLines.join('\n');
   return catalog
@@ -217,6 +243,7 @@ export function buildDeterministicGroundingSource(input: SourceLockedResumeInput
     input.summarySource,
     input.skillsSource,
     input.educationSource,
+    input.certificationSource || '',
   ]);
 }
 
@@ -229,11 +256,17 @@ export function assembleSourceLockedResume(input: SourceLockedResumeInput): stri
     CONTACT: fallbackContact(input.catalog, contactLines),
     SUMMARY: fallbackSummary(input.catalog, input.summarySource),
     SKILLS: fallbackSkills(input.catalog, input.skillsSource),
-    'PROFESSIONAL EXPERIENCE': buildExperienceSection(input.catalog, input.rerankedBulletIds),
+    'PROFESSIONAL EXPERIENCE': buildExperienceSection(
+      input.catalog,
+      input.rerankedBulletIds,
+      input.maxExperienceBullets ?? 18,
+    ),
+    CERTIFICATION: fallbackCertification(input.catalog, input.certificationSource),
     EDUCATION: fallbackEducation(input.catalog, input.educationSource),
   };
 
   return REQUIRED_SECTIONS
+    .filter((header) => header !== 'CERTIFICATION' || bodies[header].trim())
     .map((header) => `${header}\n${bodies[header].trim()}`)
     .join('\n\n')
     .trim();

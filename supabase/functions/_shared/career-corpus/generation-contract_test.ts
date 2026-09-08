@@ -8,8 +8,8 @@ Deno.test('resume prompt preserves the September 4 two-page selection contract',
   if (!ATS_SYSTEM_PROMPT.includes('Prefer copying bullets')) {
     throw new Error('prompt must prefer selecting and lightly editing source bullets');
   }
-  if (!ATS_SYSTEM_PROMPT.includes('Target TWO PAGES')) {
-    throw new Error('prompt must enforce the two-page target');
+  if (!ATS_SYSTEM_PROMPT.includes('NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION')) {
+    throw new Error('prompt must use the unified 7-header contract');
   }
 
   const prompt = buildResumeUserPrompt({
@@ -53,9 +53,10 @@ CERTIFICATIONS
   if (sections.skills.includes('PROFESSIONAL EXPERIENCE')) throw new Error(sections.skills);
   if (!sections.education.includes('SASTRA University')) throw new Error(sections.education);
   if (sections.education.includes('CERTIFICATIONS')) throw new Error(sections.education);
+  if (!sections.certification.includes('Example')) throw new Error(sections.certification);
 });
 
-Deno.test('deterministic resume keeps labeled contact fields and September 4 section order', () => {
+Deno.test('deterministic resume keeps labeled contact fields and 7-header section order', () => {
   const resume = assembleSourceLockedResume({
     contactBlock: `Name: Jane Doe
 Title: Forward Deployed Engineer
@@ -66,6 +67,7 @@ LinkedIn: https://linkedin.com/in/jane`,
     summarySource: 'Senior engineer with more than ten years of customer-facing delivery experience.',
     skillsSource: 'Languages: TypeScript, Python',
     educationSource: 'B.Tech in Information Technology',
+    certificationSource: 'Google Cloud Professional Architect',
     rerankedBulletIds: ['B003'],
     catalog: [
       { id: 'B001', text: 'Jane Doe', isBullet: false, normalized: 'jane doe' },
@@ -77,10 +79,12 @@ LinkedIn: https://linkedin.com/in/jane`,
   for (const field of ['Title:', 'Email:', 'Phone:', 'Location:', 'LinkedIn:']) {
     if (!resume.includes(field)) throw new Error(`missing labeled contact field ${field}\n${resume}`);
   }
-  const experienceAt = resume.indexOf('PROFESSIONAL EXPERIENCE');
+  const summaryAt = resume.indexOf('SUMMARY');
   const skillsAt = resume.indexOf('SKILLS');
+  const experienceAt = resume.indexOf('PROFESSIONAL EXPERIENCE');
+  const certificationAt = resume.indexOf('CERTIFICATION');
   const educationAt = resume.indexOf('EDUCATION');
-  if (!(experienceAt < skillsAt && skillsAt < educationAt)) {
+  if (!(summaryAt < skillsAt && skillsAt < experienceAt && experienceAt < certificationAt && certificationAt < educationAt)) {
     throw new Error(`wrong section order\n${resume}`);
   }
 
@@ -88,8 +92,11 @@ LinkedIn: https://linkedin.com/in/jane`,
   if (!latex.includes('\\email{jane@example.com}') || !latex.includes('\\phone[mobile]{+1 555 0100}')) {
     throw new Error(`labeled contact fields did not reach PDF renderer\n${latex}`);
   }
-  if (!(latex.indexOf('\\section{Professional Experience}') < latex.indexOf('\\section{Skills}'))) {
-    throw new Error(`PDF renderer changed September 4 section order\n${latex}`);
+  if (!(latex.indexOf('\\section{Skills}') < latex.indexOf('\\section{Professional Experience}'))) {
+    throw new Error(`PDF renderer changed Skills-before-Experience order\n${latex}`);
+  }
+  if (!(latex.indexOf('\\section{Certification}') < latex.indexOf('\\section{Education}'))) {
+    throw new Error(`PDF renderer missing Certification before Education\n${latex}`);
   }
 });
 

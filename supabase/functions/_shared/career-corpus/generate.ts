@@ -10,6 +10,7 @@ export interface PreparedResumeGeneration {
   mandatorySections: {
     skillsSource: string;
     educationSource: string;
+    certificationSource: string;
     groqUserPrompt: string;
     deterministicResume: DeterministicResumeInput;
   };
@@ -40,6 +41,7 @@ export async function prepareResumeGeneration(
     contactBlock: corpus.contactBlock,
     skillsSource: corpus.skillsSource,
     educationSource: corpus.educationSource,
+    certificationSource: corpus.certificationSource,
     summarySource: corpus.summarySource,
   };
 
@@ -62,12 +64,14 @@ export async function prepareResumeGeneration(
     mandatorySections: {
       skillsSource: corpus.skillsSource,
       educationSource: corpus.educationSource,
+      certificationSource: corpus.certificationSource,
       groqUserPrompt,
       deterministicResume: {
         contactBlock: corpus.contactBlock,
         summarySource: corpus.summarySource,
         skillsSource: corpus.skillsSource,
         educationSource: corpus.educationSource,
+        certificationSource: corpus.certificationSource,
         rerankedBulletIds: corpus.rerankedBulletIds,
         catalog: corpus.catalog,
       },

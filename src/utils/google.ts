@@ -19,3 +19,12 @@ export function parseGoogleDocFileId(raw: string): string {
   if (/^[a-zA-Z0-9_-]{20,}$/.test(trimmed)) return trimmed;
   return trimmed;
 }
+
+export function googleDocResumeFileId(settings?: Record<string, unknown> | null): string {
+  const jobSearch = settings?.jobSearch as Record<string, unknown> | undefined;
+  return String(jobSearch?.resumeFileId ?? '').trim();
+}
+
+export function hasGoogleDocResumeId(settings?: Record<string, unknown> | null): boolean {
+  return Boolean(googleDocResumeFileId(settings));
+}

@@ -17,7 +17,9 @@ const CROSS_SECTIONS_BY_PLAYBOOK: Record<string, string[]> = {
   integration_architect: ['Security & Compliance', 'Operational Excellence'],
   genai_developer: ['AI Development Methodology'],
   forward_deployment: ['Forward Deployment Skills Demonstrated'],
+  solutions_engineer: ['Forward Deployment Skills Demonstrated'],
   cloud_architect: ['Operational Excellence'],
+  ai_engineer: ['AI Development Methodology'],
   ai_ml_engineer: ['AI Development Methodology'],
   engineering_manager: ['Leadership & Mentoring', 'Security & Compliance', 'Operational Excellence'],
 };
@@ -34,6 +36,7 @@ const MAJOR_SECTION_TITLES = [
   'TECHNICAL SKILLS',
   'EDUCATION',
   'CERTIFICATIONS',
+  'CERTIFICATION',
   'GENAI-AUGMENTED DEVELOPMENT METHODOLOGY & PROJECTS',
   'FORWARD DEPLOYMENT ENGINEERING',
   'EARLIER EXPERIENCE',
@@ -215,12 +218,12 @@ export function buildFocusedMasterResume(
     if (block) parts.push(block);
   }
 
-  if (playbook.id === 'genai_developer' || playbook.id === 'ai_ml_engineer') {
+  if (playbook.id === 'genai_developer' || playbook.id === 'ai_engineer' || playbook.id === 'ai_ml_engineer') {
     const genai = extractSectionByTitle(fullMaster, 'GENAI-AUGMENTED DEVELOPMENT METHODOLOGY & PROJECTS');
     if (genai) parts.push(genai.slice(0, 12000));
   }
 
-  if (playbook.id === 'forward_deployment') {
+  if (playbook.id === 'forward_deployment' || playbook.id === 'solutions_engineer') {
     const fde = extractSectionByTitle(fullMaster, 'FORWARD DEPLOYMENT ENGINEERING');
     if (fde) parts.push(fde.slice(0, 6000));
   }
@@ -264,26 +267,41 @@ export function selectMasterResumeForJob(
   return { content: buildFocusedMasterResume(fullMaster, playbook), source: 'generated' };
 }
 
-/** Canonical SKILLS / EDUCATION / SUMMARY source blocks for the final resume template. */
+/** Canonical SKILLS / EDUCATION / SUMMARY / CERTIFICATION source blocks for the final resume template. */
 export function extractMandatoryResumeSections(
   fullMaster: string,
   emphasize: readonly string[] = [],
-): { summary: string; skills: string; education: string } {
-  const summaryBlock = extractSectionByTitle(fullMaster, 'PROFESSIONAL SUMMARY');
+): { summary: string; skills: string; education: string; certification: string } {
+  const summaryBlock = extractSectionByTitle(fullMaster, 'PROFESSIONAL SUMMARY')
+    || extractSectionByTitle(fullMaster, 'SUMMARY');
   const skillsBlock = extractSectionByTitle(fullMaster, 'TECHNICAL SKILLS')
-    || extractSectionByTitle(fullMaster, 'CORE COMPETENCIES');
+    || extractSectionByTitle(fullMaster, 'CORE COMPETENCIES')
+    || extractSectionByTitle(fullMaster, 'SKILLS');
   const educationBlock = extractSectionByTitle(fullMaster, 'EDUCATION');
+  const certificationBlock = extractSectionByTitle(fullMaster, 'CERTIFICATIONS')
+    || extractSectionByTitle(fullMaster, 'CERTIFICATION');
 
   const rawSkills = skillsBlock
-    ? skillsBlock.replace(/^(?:TECHNICAL SKILLS|CORE COMPETENCIES)\s*/i, '').trim()
+    ? skillsBlock.replace(/^(?:TECHNICAL SKILLS|CORE COMPETENCIES|SKILLS)\s*/i, '').trim()
     : '';
   const skills = rawSkills
     ? (emphasize.length ? filterSkillsSection(rawSkills, emphasize) : rawSkills.slice(0, 4000))
     : '';
 
+  const certification = certificationBlock
+    ? certificationBlock
+      .replace(/^(?:CERTIFICATIONS|CERTIFICATION)\s*/i, '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !/^\s*-?\s*\[[^\]]+\]\s*$/.test(line))
+      .join('\n')
+      .trim()
+    : '';
+
   return {
-    summary: summaryBlock ? summaryBlock.replace(/^PROFESSIONAL SUMMARY\s*/i, '').trim().slice(0, 1400) : '',
+    summary: summaryBlock ? summaryBlock.replace(/^(?:PROFESSIONAL SUMMARY|SUMMARY)\s*/i, '').trim().slice(0, 1400) : '',
     skills,
     education: educationBlock ? educationBlock.replace(/^EDUCATION\s*/i, '').trim() : '',
+    certification,
   };
 }

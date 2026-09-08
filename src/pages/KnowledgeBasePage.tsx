@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   BookOpen, Search, FileText, Database,
@@ -16,8 +16,10 @@ import { services } from '@/services';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { RoleBanksStatusBanner } from '@/components/RoleBanksStatusBanner';
 
 export function KnowledgeBasePage() {
+  const qc = useQueryClient();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ chunk: string; score: number; collection: string; tags: string[] }[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -35,14 +37,27 @@ export function KnowledgeBasePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
       const res = await supabase.functions.invoke('ai-chat', {
-        body: { mode: 'sync_google_doc_chunks', fileId },
+        body: { mode: 'sync_google_doc_chunks', fileId, generateRoleBanks: true },
       });
       if (res.error) throw new Error(res.error.message);
-      return res.data as { chunksExtracted: number; newChunksAdded: number; totalExisting: number; resumeUpdated: boolean };
+      return res.data as {
+        chunksExtracted: number;
+        newChunksAdded: number;
+        totalExisting: number;
+        resumeUpdated: boolean;
+        roleBanksScheduled?: boolean;
+      };
     },
     onSuccess: (data) => {
-      toast({ title: 'Google Doc synced', description: `${data.newChunksAdded} new chunks added (${data.totalExisting} total). Master ATS resume updated.` });
+      toast({
+        title: 'Google Doc synced',
+        description: data.roleBanksScheduled
+          ? `${data.newChunksAdded} new chunks added. Master ATS updated; role banks are generating in the background.`
+          : `${data.newChunksAdded} new chunks added (${data.totalExisting} total). Master ATS resume updated.`,
+      });
       refetchCollections();
+      qc.invalidateQueries({ queryKey: ['settings'] });
+      qc.invalidateQueries({ queryKey: ['resumes'] });
     },
     onError: (err) => {
       toast({ title: 'Sync failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
@@ -171,6 +186,7 @@ export function KnowledgeBasePage() {
                   {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
                 </Button>
               </div>
+              <RoleBanksStatusBanner />
 
               {syncMutation.isSuccess && syncMutation.data && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-md border border-primary/30 bg-primary/5 p-4">
@@ -180,6 +196,7 @@ export function KnowledgeBasePage() {
                     <li>New chunks added: <strong>{syncMutation.data.newChunksAdded}</strong></li>
                     <li>Total chunks in knowledge base: <strong>{syncMutation.data.totalExisting}</strong></li>
                     <li>Master ATS resume content: <strong>{syncMutation.data.resumeUpdated ? 'Updated' : 'Unchanged'}</strong></li>
+                    <li>Role banks: <strong>{syncMutation.data.roleBanksScheduled ? 'Generating in background' : 'Not scheduled'}</strong></li>
                   </ul>
                 </motion.div>
               )}
@@ -195,7 +212,8 @@ export function KnowledgeBasePage() {
                 <li>Each bullet is tagged automatically based on keywords (e.g. SnapLogic, BigQuery, performance, security).</li>
                 <li>Only <em>new</em> bullets are inserted — existing chunks are never duplicated.</li>
                 <li>The Master ATS resume content in the database is updated to match the Google Doc.</li>
-                <li>Next time you tailor a resume, the ATS Optimizer uses the updated bullet bank.</li>
+                <li>Role-bank resumes for each job family are generated in the background from the Master ATS.</li>
+                <li>Next time you tailor a resume, the ATS Optimizer uses the matching role bank.</li>
               </ol>
             </CardContent>
           </Card>
