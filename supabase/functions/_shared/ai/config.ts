@@ -72,13 +72,9 @@ export function getGroqApiKey(): string {
   return Deno.env.get('GROQ_API_KEY')?.trim() || '';
 }
 
-/** Provider order: primary Gemini → fallback Gemini key → Groq. */
+/** Paid Gemini fallback key is the only enabled LLM provider. */
 export function getProviderChain(): string[] {
-  const chain: string[] = [];
-  if (getGeminiApiKey()) chain.push('gemini');
-  if (getGeminiFallbackApiKey()) chain.push('gemini_fallback');
-  if (getGroqApiKey()) chain.push('groq');
-  return chain;
+  return getGeminiFallbackApiKey() ? ['gemini_fallback'] : [];
 }
 
 /** LLM bullet rerank burns extra Gemini quota; off by default on free tier. */
@@ -86,10 +82,8 @@ export function isLlmRerankEnabled(): boolean {
   return Deno.env.get('AI_LLM_RERANK_ENABLED')?.trim().toLowerCase() === 'true';
 }
 
-/** Rerank uses only the primary Gemini key (one attempt) to preserve fallback quota. */
+/** Rerank, when enabled, also uses only the paid Gemini fallback key. */
 export function getRerankProviderChain(): string[] {
-  if (getGeminiApiKey()) return ['gemini'];
   if (getGeminiFallbackApiKey()) return ['gemini_fallback'];
-  if (getGroqApiKey()) return ['groq'];
   return [];
 }

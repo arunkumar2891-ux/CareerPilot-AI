@@ -57,6 +57,27 @@ function providerLabel(name: string): string {
   return name === 'gemini_fallback' ? 'gemini-fallback' : name;
 }
 
+function logRejectedGeminiResponse(
+  adapter: ProviderAdapter,
+  request: GenerateRequest,
+  text: string,
+  log: (message: string) => void,
+): void {
+  if (request.operation !== 'resume_tailoring') return;
+  if (adapter.name !== 'gemini' && adapter.name !== 'gemini_fallback') return;
+
+  // Edge log entries have size limits. JSON-encoding independently numbered
+  // chunks preserves newlines and lets the complete rejected response be rebuilt.
+  const chunkSize = 3500;
+  const total = Math.max(1, Math.ceil(text.length / chunkSize));
+  for (let index = 0; index < total; index++) {
+    const chunk = text.slice(index * chunkSize, (index + 1) * chunkSize);
+    log(
+      `[AI] provider=${providerLabel(adapter.name)} operation=${request.operation} raw_response chunk=${index + 1}/${total} ${JSON.stringify(chunk)}`,
+    );
+  }
+}
+
 function resolveValidationGrounding(provider: string, request: GenerateRequest): string | undefined {
   if (request.operation !== 'resume_tailoring') return request.groundingSource;
   // Validate Groq output against the full catalog — not the TPM-truncated prompt.
@@ -120,7 +141,15 @@ async function callAdapter(
   log(`${prefix}provider=${label} operation=${req.operation} started`);
   try {
     const result = await adapter.generate(req);
-    const text = applyResumeValidation(adapter.name, result.text, req);
+    let text: string;
+    try {
+      text = applyResumeValidation(adapter.name, result.text, req);
+    } catch (err) {
+      if (err instanceof ProviderError && err.kind === 'invalid_output') {
+        logRejectedGeminiResponse(adapter, req, result.text, log);
+      }
+      throw err;
+    }
     await recordAiUsage(userId, {
       provider: adapter.name,
       operation: req.operation,
@@ -207,8 +236,8 @@ function splitProviderChain(chain: string[]): { geminiChain: string[]; tailChain
 }
 
 /**
- * Default chain: GEMINI_API_KEY → GEMINI_API_KEY_FALLBACK → GROQ_API_KEY.
- * One attempt per Gemini key by default (no sleep-retry on 429); deterministic resume assembly is last resort.
+ * Provider chain: paid GEMINI_API_KEY_FALLBACK only.
+ * Deterministic resume assembly remains the non-LLM last resort.
  */
 export async function generateWithProviders(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
@@ -225,8 +254,8 @@ export async function generateWithProviders(
 
   if (!chain.length) {
     throw new ProviderError({
-      provider: 'gemini',
-      message: 'No AI provider is configured (set GEMINI_API_KEY, GEMINI_API_KEY_FALLBACK, and/or GROQ_API_KEY)',
+      provider: 'gemini_fallback',
+      message: 'No AI provider is configured (set GEMINI_API_KEY_FALLBACK)',
       retryable: false,
       kind: 'missing_key',
     });
@@ -308,7 +337,7 @@ export async function generateWithProviders(
   throw new Error(
     errors.length
       ? formatAllProvidersFailed(errors, deterministicReason)
-      : 'No AI provider is configured (set GEMINI_API_KEY, GEMINI_API_KEY_FALLBACK, and/or GROQ_API_KEY)',
+      : 'No AI provider is configured (set GEMINI_API_KEY_FALLBACK)',
   );
 }
 

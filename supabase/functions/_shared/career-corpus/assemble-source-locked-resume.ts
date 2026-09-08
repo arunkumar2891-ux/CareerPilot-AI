@@ -52,6 +52,7 @@ function isJunkResumeLine(text: string): boolean {
   if (isAtsSectionHeaderLine(trimmed)) return true;
   if (/^={5,}$/.test(trimmed)) return true;
   if (/\[careerpilot\]/i.test(trimmed) || /last synced/i.test(trimmed)) return true;
+  if (/^rectification\s*&\s*iteration\s*:?$/i.test(trimmed)) return true;
   if (/^example\s*\(/i.test(trimmed)) return true;
   if (/^key achievements/i.test(trimmed)) return true;
   if (/^(duration|role|technologies|role focus)\s*:/i.test(trimmed)) return true;

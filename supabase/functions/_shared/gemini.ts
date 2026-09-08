@@ -1,4 +1,4 @@
-import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiApiKey, getGeminiModel as configuredGeminiModel } from './ai/config.ts';
+import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiFallbackApiKey, getGeminiModel as configuredGeminiModel } from './ai/config.ts';
 import { generateText, generateWithProviders } from './ai/router.ts';
 import { totalTokens, type AiOperation, type DeterministicResumeInput } from './ai/types.ts';
 
@@ -15,8 +15,8 @@ export function getGeminiAtsTimeoutMs(): number {
 }
 
 export function geminiGenerateContentUrl(): string {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+  const apiKey = getGeminiFallbackApiKey();
+  if (!apiKey) throw new Error('GEMINI_API_KEY_FALLBACK not configured');
   const model = getGeminiModel();
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 }

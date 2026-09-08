@@ -1,4 +1,4 @@
-import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
+import { ProviderError, type AiProviderName, type GenerateRequest, type ProviderAdapter } from './types.ts';
 
 const VALID_ATS = `NAME
 Jane Doe
@@ -21,7 +21,7 @@ B.S. Computer Science
 `;
 
 function mockAdapter(
-  name: 'gemini' | 'groq',
+  name: AiProviderName,
   impl: {
     configured?: boolean;
     generate?: (req: GenerateRequest) => Promise<{ text: string; tokensInput: number; tokensOutput: number }>;
@@ -46,6 +46,49 @@ function fail(kind: string, retryable: boolean, status?: number, message = 'boom
   return new ProviderError({ provider: 'gemini', message, retryable, kind, status });
 }
 
+Deno.test('default provider chain uses only the paid Gemini fallback key', async () => {
+  const { getProviderChain, getRerankProviderChain } = await import('./config.ts');
+  Deno.env.set('GEMINI_API_KEY', 'free-key');
+  Deno.env.set('GEMINI_API_KEY_FALLBACK', 'paid-key');
+  Deno.env.set('GROQ_API_KEY', 'groq-key');
+  const chain = getProviderChain();
+  const rerankChain = getRerankProviderChain();
+  if (JSON.stringify(chain) !== JSON.stringify(['gemini_fallback'])) {
+    throw new Error(`unexpected provider chain: ${chain.join(' → ')}`);
+  }
+  if (JSON.stringify(rerankChain) !== JSON.stringify(['gemini_fallback'])) {
+    throw new Error(`unexpected rerank chain: ${rerankChain.join(' → ')}`);
+  }
+});
+
+Deno.test('rejected Gemini resume response is logged before validation', async () => {
+  const { generateWithProviders } = await import('./router.ts');
+  const fallback = mockAdapter('gemini_fallback', {
+    generate: async () => ({
+      text: 'RAW_RESPONSE_MARKER\nunsupported resume output',
+      tokensInput: 10,
+      tokensOutput: 5,
+    }),
+  });
+  const logs: string[] = [];
+  try {
+    await generateWithProviders(
+      { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
+      {
+        adapters: { gemini_fallback: fallback },
+        providerChain: ['gemini_fallback'],
+        log: (message) => logs.push(message),
+      },
+    );
+  } catch {
+    // Validation failure is expected; the raw response must still be observable.
+  }
+  const joined = logs.join('\n');
+  if (!joined.includes('raw_response') || !joined.includes('RAW_RESPONSE_MARKER')) {
+    throw new Error(`raw rejected response missing from logs:\n${joined}`);
+  }
+});
+
 Deno.test('Gemini success does not call Groq', async () => {
   const { generateWithProviders } = await import('./router.ts');
   const gemini = mockAdapter('gemini', {});
@@ -53,7 +96,7 @@ Deno.test('Gemini success does not call Groq', async () => {
   const logs: string[] = [];
   const result = await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
-    { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: (m) => logs.push(m) },
+    { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: (m) => logs.push(m) },
   );
   if (!result.text.includes('PROFESSIONAL EXPERIENCE')) throw new Error('expected ATS text');
   if (result.tokensInput !== 100 || result.tokensOutput !== 200) {
@@ -74,7 +117,7 @@ Deno.test('Gemini timeout falls back to Groq', async () => {
   const logs: string[] = [];
   const result = await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
-    { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: (m) => logs.push(m) },
+    { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: (m) => logs.push(m) },
   );
   if (groq.calls !== 1) throw new Error('groq should be called after timeout');
   if (!result.text.includes('SUMMARY')) throw new Error('expected groq ATS result');
@@ -91,7 +134,7 @@ Deno.test('Gemini 429 falls back to Groq', async () => {
   const groq = mockAdapter('groq', {});
   await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'chat' },
-    { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: () => {} },
+    { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: () => {} },
   );
   if (groq.calls !== 1) throw new Error('expected groq after 429');
 });
@@ -106,7 +149,7 @@ Deno.test('Gemini 500 falls back to Groq', async () => {
   const groq = mockAdapter('groq', {});
   await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'chat' },
-    { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: () => {} },
+    { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: () => {} },
   );
   if (groq.calls !== 1) throw new Error('expected groq after 500');
 });
@@ -123,7 +166,7 @@ Deno.test('Gemini invalid request does not call Groq', async () => {
   try {
     await generateWithProviders(
       { systemPrompt: 's', userPrompt: 'u', operation: 'chat' },
-      { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: () => {} },
+      { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: () => {} },
     );
   } catch {
     threw = true;
@@ -138,7 +181,7 @@ Deno.test('missing Gemini key uses Groq', async () => {
   const groq = mockAdapter('groq', {});
   const result = await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
-    { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: () => {} },
+    { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: () => {} },
   );
   if (gemini.calls !== 0) throw new Error('gemini should be skipped');
   if (groq.calls !== 1) throw new Error('groq should run');
@@ -159,7 +202,7 @@ Deno.test('Groq malformed ATS fails without returning corrupt text', async () =>
   try {
     await generateWithProviders(
       { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
-      { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: () => {} },
+      { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: () => {} },
     );
   } catch (err) {
     message = err instanceof Error ? err.message : String(err);
@@ -192,7 +235,7 @@ Deno.test('both providers fail with combined error', async () => {
   try {
     await generateWithProviders(
       { systemPrompt: 's', userPrompt: 'u', operation: 'chat' },
-      { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: () => {} },
+      { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: () => {} },
     );
   } catch (err) {
     message = err instanceof Error ? err.message : String(err);
@@ -213,7 +256,7 @@ Deno.test('logs never contain API keys', async () => {
   const logs: string[] = [];
   await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'chat' },
-    { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: (m) => logs.push(m) },
+    { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: (m) => logs.push(m) },
   );
   const blob = logs.join('\n') + sanitizeAiErrorMessage('Bearer gsk_LIVESECRETKEY123');
   if (/gsk_LIVE|AIzaSyFAKE/.test(blob)) throw new Error('keys leaked in logs');

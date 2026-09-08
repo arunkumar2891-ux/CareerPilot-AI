@@ -116,3 +116,23 @@ B.Tech in Information Technology`;
   const result = validateResumeOutput(bloated, { skipGrounding: true });
   if (result.ok) throw new Error('expected Master ATS dump to fail the two-page contract');
 });
+
+Deno.test('deterministic fallback drops Master ATS artifact headers', () => {
+  const resume = assembleSourceLockedResume({
+    contactBlock: 'Name: Jane Doe\nEmail: jane@example.com',
+    summarySource: 'Senior engineer with more than ten years of customer-facing delivery experience.',
+    skillsSource: 'Languages: TypeScript, Python',
+    educationSource: 'B.Tech in Information Technology',
+    rerankedBulletIds: ['B003'],
+    catalog: [
+      { id: 'B001', text: 'RECTIFICATION & ITERATION:', isBullet: false, normalized: 'rectification & iteration:' },
+      { id: 'B002', text: 'A long source paragraph that is deliberately not an experience header because it describes supporting context for the selected production achievement.', isBullet: false, normalized: 'a long source paragraph that is deliberately not an experience header because it describes supporting context for the selected production achievement' },
+      { id: 'B003', text: 'Built customer-facing APIs for production systems.', isBullet: true, normalized: 'built customer-facing apis for production systems' },
+    ],
+  });
+  if (resume.includes('RECTIFICATION & ITERATION')) {
+    throw new Error(`artifact leaked into deterministic resume:\n${resume}`);
+  }
+  const result = validateResumeOutput(resume, { skipGrounding: true });
+  if (!result.ok) throw new Error(`deterministic resume should validate: ${result.reason}\n${resume}`);
+});
