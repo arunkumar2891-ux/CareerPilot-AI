@@ -136,3 +136,27 @@ Deno.test('deterministic fallback drops Master ATS artifact headers', () => {
   const result = validateResumeOutput(resume, { skipGrounding: true });
   if (!result.ok) throw new Error(`deterministic resume should validate: ${result.reason}\n${resume}`);
 });
+
+Deno.test('deterministic fallback caps experience at 18 selected bullets', () => {
+  const catalog = [
+    { id: 'H001', text: 'PALO ALTO NETWORKS', isBullet: false, normalized: 'palo alto networks' },
+    ...Array.from({ length: 30 }, (_, index) => ({
+      id: `B${String(index + 1).padStart(3, '0')}`,
+      text: `Built production integration capability number ${index + 1}.`,
+      isBullet: true,
+      normalized: `built production integration capability number ${index + 1}`,
+    })),
+  ];
+  const resume = assembleSourceLockedResume({
+    contactBlock: 'Name: Jane Doe\nEmail: jane@example.com',
+    summarySource: 'Senior engineer with more than ten years of customer-facing delivery experience.',
+    skillsSource: 'Languages: TypeScript, Python',
+    educationSource: 'B.Tech in Information Technology',
+    rerankedBulletIds: catalog.filter((line) => line.isBullet).map((line) => line.id),
+    catalog,
+  });
+  const bullets = resume.split('\n').filter((line) => line.startsWith('- '));
+  if (bullets.length !== 18) throw new Error(`expected 18 bullets, got ${bullets.length}`);
+  const result = validateResumeOutput(resume, { skipGrounding: true });
+  if (!result.ok) throw new Error(`capped deterministic resume should validate: ${result.reason}`);
+});

@@ -143,7 +143,7 @@ function isExperienceHeader(text: string): boolean {
 
 function resolveBulletIds(catalog: CatalogLine[], selectedIds: string[]): string[] {
   const byId = catalogById(catalog);
-  const selectedBullets = selectedIds.filter((id) => byId.get(id)?.isBullet);
+  const selectedBullets = selectedIds.filter((id) => byId.get(id)?.isBullet).slice(0, 18);
   if (selectedBullets.length > 0) return selectedBullets;
   return catalog.filter((line) => line.isBullet).slice(0, 16).map((line) => line.id);
 }

@@ -103,6 +103,7 @@ export async function loadCareerCorpus(
   const fullMaster = applyContactOverlay(String(masterRow.content), contact);
   const twoPageTemplate = applyContactOverlay(String(twoPageRow?.content || ''), contact);
   const { playbook } = pickPlaybook(jobDescription, [...ROLE_PLAYBOOKS]);
+  const selectedPlaybookInstructions = playbookInstructions(playbook);
   // September 4 contract: compact summary/skills/education come from the two-page
   // template. The Master ATS remains the factual bullet bank, never the layout.
   const mandatorySections = extractMandatoryResumeSections(
@@ -148,6 +149,7 @@ export async function loadCareerCorpus(
     contactBlock,
     mandatorySections.skills,
     mandatorySections.education,
+    selectedPlaybookInstructions,
   ]);
 
   return {
@@ -156,7 +158,7 @@ export async function loadCareerCorpus(
     playbookTitle: playbook.title,
     playbookId: playbook.id,
     masterResumeSource: selectedResume.source,
-    playbookInstructions: playbookInstructions(playbook),
+    playbookInstructions: selectedPlaybookInstructions,
     bulletCatalog,
     retrievedEvidence,
     rerankedSelection,

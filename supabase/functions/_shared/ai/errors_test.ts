@@ -140,6 +140,44 @@ MIT
   if (inventedMetric.ok) throw new Error('expected invented metric to fail grounding');
 });
 
+Deno.test('validateResumeOutput allows a summary composed from multiple grounded source lines', () => {
+  const source = `Integration Architect with 10+ years of software engineering experience.
+Built CareerPilot AI with Gemini 3.6 Flash and Groq fallback.
+Engineered Pic-Reel as a browser-based media tool using React and FFmpeg WebAssembly.
+Shipped 4+ production applications using AI-augmented development workflows.
+Reduced RAG review inconsistency from 40% to under 5%.
+TypeScript, Python, GCP
+B.Tech in Information Technology`;
+  const output = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Integration Architect with 10+ years of software engineering experience who shipped 4+ production applications using AI-augmented workflows. Built CareerPilot AI with Gemini 3.6 Flash and Groq fallback alongside the browser-based Pic-Reel media tool. Reduced RAG review inconsistency from 40% to under 5%.
+
+PROFESSIONAL EXPERIENCE
+CareerPilot AI
+- Built CareerPilot AI with Gemini 3.6 Flash and Groq fallback.
+
+SKILLS
+TypeScript, Python, GCP
+
+EDUCATION
+B.Tech in Information Technology`;
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    allowParaphrase: true,
+    identity: {
+      name: 'Jane Doe',
+      contact: 'Email: jane@example.com',
+      education: 'B.Tech in Information Technology',
+    },
+  });
+  if (!result.ok) throw new Error(`multi-source summary should validate: ${result.reason}`);
+});
+
 Deno.test('normalizeResumeLine accepts middle-dot bullets and labeled contact values', () => {
   const allowed = buildAllowedResumeLines(`Email: jane@example.com
 ·     Shipped APIs used by millions of users.`);

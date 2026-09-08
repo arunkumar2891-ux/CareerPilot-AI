@@ -288,10 +288,19 @@ function hasInventedNumericFact(normalized: string, sourceText: string): boolean
   return extractNumericFacts(normalized).some((fact) => !allowed.has(fact));
 }
 
+function isAggregateParaphraseOf(normalized: string, sourceText: string): boolean {
+  const outputTokens = significantTokens(normalized);
+  if (outputTokens.length < 4) return false;
+  const sourceTokens = new Set(significantTokens(normalizeResumeLine(sourceText)));
+  const shared = outputTokens.filter((token) => sourceTokens.has(token)).length;
+  if (outputTokens.length <= 8) return shared >= 3 && shared / outputTokens.length >= 0.6;
+  return shared >= 8 && shared / outputTokens.length >= 0.4;
+}
+
 function isGroundedLine(
   normalized: string,
   allowed: Set<string>,
-  options?: { allowParaphrase?: boolean; sourceText?: string },
+  options?: { allowParaphrase?: boolean; allowAggregate?: boolean; sourceText?: string },
 ): boolean {
   if (allowed.has(normalized)) return true;
 
@@ -302,6 +311,9 @@ function isGroundedLine(
 
   if (!options?.allowParaphrase) return false;
   if (options.sourceText && hasInventedNumericFact(normalized, options.sourceText)) return false;
+  if (options.allowAggregate && options.sourceText && isAggregateParaphraseOf(normalized, options.sourceText)) {
+    return true;
+  }
   return isParaphraseOf(normalized, allowed);
 }
 
@@ -326,9 +338,12 @@ function validateGrounding(
     if (!normalized) continue;
     if (!isGroundedLine(normalized, allowedLines, {
       allowParaphrase: options?.allowParaphrase,
+      allowAggregate: current === 'SUMMARY'
+        || current === 'SKILLS'
+        || (current === 'PROFESSIONAL EXPERIENCE' && !/^\s*[-•]\s+/.test(line)),
       sourceText: groundingSource,
     })) {
-      return { ok: false, reason: 'unsupported_source_line' };
+      return { ok: false, reason: `unsupported_source_line: ${line.trim().slice(0, 180)}` };
     }
     if (emittedLines.has(normalized)) return { ok: false, reason: 'duplicate_source_line' };
     emittedLines.add(normalized);
