@@ -15,7 +15,9 @@ import {
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 import type { createAdminClient } from '../supabase-admin.ts';
 
-export { isJobPipelineStart } from './job-discovery.ts';
+import { formatUnknownError, isJobPipelineStart } from './job-discovery.ts';
+
+export { isJobPipelineStart };
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -233,7 +235,7 @@ export async function executePerJobPipeline(
       }).eq('id', jobExecutionId);
     } catch (err) {
       if (err instanceof RunCancelledError) throw err;
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatUnknownError(err);
       jobFailed = true;
       failedNodeId = chainNode.id;
       failedMessage = message;

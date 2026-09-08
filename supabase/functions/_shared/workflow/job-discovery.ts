@@ -1,3 +1,27 @@
+export function formatUnknownError(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === 'string' && err.trim()) return err;
+  if (err && typeof err === 'object') {
+    const row = err as Record<string, unknown>;
+    for (const key of ['message', 'error', 'details', 'hint']) {
+      const value = row[key];
+      if (typeof value === 'string' && value.trim()) return value;
+      if (value && typeof value === 'object') {
+        const nested = (value as Record<string, unknown>).message;
+        if (typeof nested === 'string' && nested.trim()) return nested;
+      }
+    }
+    try {
+      const json = JSON.stringify(err);
+      if (json && json !== '{}' && json !== 'null') return json;
+    } catch {
+      /* ignore */
+    }
+  }
+  const fallback = String(err);
+  return fallback === '[object Object]' ? 'Unknown error' : fallback;
+}
+
 export function workflowHasLoadJobNode(
   nodes: Array<{ type: string; config?: Record<string, unknown> }>,
 ): boolean {
@@ -72,6 +96,26 @@ export async function loadExistingJobForPipeline(
   if (!id) throw new Error('Job id is required');
   const row = await jobs.findOwned(id, userId);
   if (!row) throw new Error('Job not found');
-  await jobs.markGenerating(id, userId);
+  try {
+    await jobs.markGenerating(id, userId);
+  } catch {
+    // resume_status is optional; a failed update must not abort tailoring
+  }
   return jobRowToPipelineItem(row);
+}
+
+/** Use the seeded Job Discovery item when the DB reload is unavailable. */
+export function resolveLoadJobOutput(
+  loaded: Record<string, unknown> | null,
+  input: unknown,
+  targetJobId?: unknown,
+): Record<string, unknown> {
+  if (loaded?.jobId) return loaded;
+  if (input && typeof input === 'object') {
+    const fallback = jobRowToPipelineItem(input as Record<string, unknown>);
+    if (fallback.jobId) return fallback;
+  }
+  const id = resolvePipelineJobId(input, targetJobId);
+  if (id) return jobRowToPipelineItem({ id });
+  throw new Error('Job id is required');
 }

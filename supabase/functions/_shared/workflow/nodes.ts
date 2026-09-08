@@ -10,7 +10,12 @@ import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemi
 import { buildLatexFromAtsText } from '../resume-latex.ts';
 import { compileLatexToPdf } from '../resume-pdf.ts';
 import { upsertTailoredResume, linkResumePdf } from '../resume-store.ts';
-import { loadExistingJobForPipeline, resolvePipelineJobId } from './job-discovery.ts';
+import {
+  formatUnknownError,
+  loadExistingJobForPipeline,
+  resolveLoadJobOutput,
+  resolvePipelineJobId,
+} from './job-discovery.ts';
 import { uploadOrUpdateDrivePdf, resolveResumePdfFileName } from '../resume-drive.ts';
 import { fetchWithTimeout } from '../fetch-timeout.ts';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
@@ -524,30 +529,40 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           return { output: input, status: 'success' };
         }
         const jobId = resolvePipelineJobId(input, ctx.variables.targetJobId);
-        const item = await loadExistingJobForPipeline(
-          {
-            findOwned: async (id, uid) => {
-              const { data, error } = await admin
-                .from('jobs')
-                .select('*')
-                .eq('id', id)
-                .eq('user_id', uid)
-                .maybeSingle();
-              if (error) throw error;
-              return (data as Record<string, unknown> | null) ?? null;
+        let loaded: Record<string, unknown> | null = null;
+        try {
+          loaded = await loadExistingJobForPipeline(
+            {
+              findOwned: async (id, uid) => {
+                const { data, error } = await admin
+                  .from('jobs')
+                  .select('*')
+                  .eq('id', id)
+                  .eq('user_id', uid)
+                  .maybeSingle();
+                if (error) throw new Error(formatUnknownError(error));
+                return (data as Record<string, unknown> | null) ?? null;
+              },
+              markGenerating: async (id, uid) => {
+                const { error } = await admin
+                  .from('jobs')
+                  .update({ resume_status: 'generating' })
+                  .eq('id', id)
+                  .eq('user_id', uid);
+                if (error) throw new Error(formatUnknownError(error));
+              },
             },
-            markGenerating: async (id, uid) => {
-              const { error } = await admin
-                .from('jobs')
-                .update({ resume_status: 'generating' })
-                .eq('id', id)
-                .eq('user_id', uid);
-              if (error) throw error;
-            },
-          },
-          ctx.userId,
-          jobId,
-        );
+            ctx.userId,
+            jobId,
+          );
+        } catch (err) {
+          loaded = null;
+          const fallback = resolveLoadJobOutput(null, input, ctx.variables.targetJobId);
+          if (!fallback.jobId) throw new Error(formatUnknownError(err));
+          ctx.variables.lastJobId = fallback.jobId;
+          return { output: fallback, status: 'success' };
+        }
+        const item = resolveLoadJobOutput(loaded, input, ctx.variables.targetJobId);
         ctx.variables.lastJobId = item.jobId;
         return { output: item, status: 'success' };
       }

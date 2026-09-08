@@ -1,8 +1,10 @@
 import {
   buildJobDiscoveryRunSeed,
+  formatUnknownError,
   isJobPipelineStart,
   jobRowToPipelineItem,
   loadExistingJobForPipeline,
+  resolveLoadJobOutput,
   workflowHasLoadJobNode,
 } from './job-discovery.ts';
 import { shouldSaveWorkflowSnapshot } from './execution-persistence.ts';
@@ -112,6 +114,47 @@ Deno.test('loadExistingJobForPipeline does not insert a jobs row', async () => {
   if (!calls.includes('find:job-2:user-1')) throw new Error('should load the owned job');
   if (!calls.includes('generating:job-2')) throw new Error('should mark resume generating');
   if (item.jobId !== 'job-2') throw new Error(String(item.jobId));
+});
+
+Deno.test('loadExistingJobForPipeline does not fail when marking generating throws', async () => {
+  const item = await loadExistingJobForPipeline(
+    {
+      findOwned: async (jobId) => ({
+        id: jobId,
+        company: 'Acme',
+        role: 'AI Engineer',
+        description: 'GenAI',
+      }),
+      markGenerating: async () => {
+        throw { message: 'new row violates check constraint', code: '23514' };
+      },
+    },
+    'user-1',
+    'job-3',
+  );
+  if (item.jobId !== 'job-3') throw new Error(String(item.jobId));
+});
+
+Deno.test('formatUnknownError reads PostgREST error objects instead of [object Object]', () => {
+  const message = formatUnknownError({
+    code: '23514',
+    details: null,
+    hint: null,
+    message: 'new row for relation "jobs" violates check constraint',
+  });
+  if (message === '[object Object]') throw new Error('must not stringify as [object Object]');
+  if (!message.includes('check constraint')) throw new Error(message);
+});
+
+Deno.test('resolveLoadJobOutput falls back to the seeded job item', () => {
+  const item = resolveLoadJobOutput(null, {
+    jobId: 'job-4',
+    company: 'Acme',
+    role: 'FDE',
+    description: 'Ship with customers',
+  });
+  if (item.jobId !== 'job-4') throw new Error(String(item.jobId));
+  if (item.title !== 'FDE') throw new Error(String(item.title));
 });
 
 Deno.test('shouldSaveWorkflowSnapshot is true when a pre-created run has none', () => {
