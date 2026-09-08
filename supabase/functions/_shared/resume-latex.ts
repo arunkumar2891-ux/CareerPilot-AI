@@ -190,13 +190,13 @@ export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): 
     body.push(`\\section{Summary}`);
     body.push(`\\cvitem{}{${esc(summarySection.replace(/\n+/g, ' ').trim())}}`);
   }
-  if (skillsSection) {
-    body.push(`\\section{Skills}`);
-    body.push(formatSkillsLatex(skillsSection));
-  }
   if (experienceSection) {
     body.push(`\\section{Professional Experience}`);
     body.push(formatExperienceLatex(experienceSection));
+  }
+  if (skillsSection) {
+    body.push(`\\section{Skills}`);
+    body.push(formatSkillsLatex(skillsSection));
   }
   if (educationSection) {
     body.push(`\\section{Education}`);

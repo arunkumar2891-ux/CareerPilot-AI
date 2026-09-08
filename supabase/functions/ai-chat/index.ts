@@ -1,6 +1,6 @@
 import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
-import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt, buildGroqResumeUserPrompt } from '../_shared/career-corpus/prompt.ts';
-import { loadCareerCorpus } from '../_shared/career-corpus/load.ts';
+import { ATS_SYSTEM_PROMPT } from '../_shared/career-corpus/prompt.ts';
+import { prepareResumeGeneration } from '../_shared/career-corpus/generate.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../_shared/gemini.ts';
 import { sanitizeAiErrorMessage } from '../_shared/ai/errors.ts';
 
@@ -78,61 +78,21 @@ Deno.serve(async (req) => {
 
     if (mode === 'resume') {
       const jd = String(body.jobDescription || content || '');
-      const corpus = await loadCareerCorpus(user.id, jd, {
-        jobTitle: String(body.jobTitle || ''),
-        company: String(body.company || ''),
-      });
-      const userPrompt = buildResumeUserPrompt({
-        jobTitle: String(body.jobTitle || ''),
-        company: String(body.company || ''),
+      const prepared = await prepareResumeGeneration(user.id, {
         jobDescription: jd,
-        playbookTitle: corpus.playbookTitle,
-        playbookInstructions: corpus.playbookInstructions,
-        masterResume: corpus.masterResume,
-        twoPageTemplate: corpus.twoPageTemplate,
-        bulletCatalog: corpus.bulletCatalog,
-        retrievedEvidence: corpus.retrievedEvidence,
-        rerankedSelection: corpus.rerankedSelection,
-        lexicalMatches: corpus.lexicalMatches,
-        contactBlock: corpus.contactBlock,
-        skillsSource: corpus.skillsSource,
-        educationSource: corpus.educationSource,
-        summarySource: corpus.summarySource,
-      });
-      const groqUserPrompt = buildGroqResumeUserPrompt({
         jobTitle: String(body.jobTitle || ''),
         company: String(body.company || ''),
-        jobDescription: jd,
-        bulletCatalog: corpus.bulletCatalog,
-        retrievedEvidence: corpus.retrievedEvidence,
-        rerankedSelection: corpus.rerankedSelection,
-        contactBlock: corpus.contactBlock,
-        skillsSource: corpus.skillsSource,
-        educationSource: corpus.educationSource,
-        summarySource: corpus.summarySource,
       });
       const generated = await callGeminiAtsGenerateContent(
-        ATS_SYSTEM_PROMPT,
-        userPrompt,
+        prepared.systemPrompt,
+        prepared.userPrompt,
         user.id,
-        corpus.groundingSource,
-        {
-          skillsSource: corpus.skillsSource,
-          educationSource: corpus.educationSource,
-          groqUserPrompt,
-          deterministicResume: {
-            contactBlock: corpus.contactBlock,
-            summarySource: corpus.summarySource,
-            skillsSource: corpus.skillsSource,
-            educationSource: corpus.educationSource,
-            rerankedBulletIds: corpus.rerankedBulletIds,
-            catalog: corpus.catalog,
-          },
-        },
+        prepared.groundingSource,
+        prepared.mandatorySections,
       );
       return jsonResponse({
         reply: generated.text,
-        playbook: corpus.playbookTitle,
+        playbook: prepared.corpus.playbookTitle,
         tokens: generated.tokensTotal,
       });
     }

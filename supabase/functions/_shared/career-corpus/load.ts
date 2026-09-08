@@ -101,8 +101,14 @@ export async function loadCareerCorpus(
   const evidenceChunks = selectEvidence(jobDescription, pool);
 
   const fullMaster = applyContactOverlay(String(masterRow.content), contact);
+  const twoPageTemplate = applyContactOverlay(String(twoPageRow?.content || ''), contact);
   const { playbook } = pickPlaybook(jobDescription, [...ROLE_PLAYBOOKS]);
-  const mandatorySections = extractMandatoryResumeSections(fullMaster, playbook.emphasize);
+  // September 4 contract: compact summary/skills/education come from the two-page
+  // template. The Master ATS remains the factual bullet bank, never the layout.
+  const mandatorySections = extractMandatoryResumeSections(
+    twoPageTemplate || fullMaster,
+    playbook.emphasize,
+  );
   const resumeRows = (resumes || []).map((r) => ({
     name: String(r.name),
     content: r.content as string | null,
@@ -146,7 +152,7 @@ export async function loadCareerCorpus(
 
   return {
     masterResume,
-    twoPageTemplate: applyContactOverlay(String(twoPageRow?.content || ''), contact),
+    twoPageTemplate,
     playbookTitle: playbook.title,
     playbookId: playbook.id,
     masterResumeSource: selectedResume.source,

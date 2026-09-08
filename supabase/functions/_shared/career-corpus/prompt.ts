@@ -6,21 +6,29 @@ export function trimForAts(text: string, maxChars: number, label: string): strin
 
 export const ATS_SYSTEM_PROMPT = `You write resumes that sound like a senior engineer wrote them after a careful edit — not like a language model.
 
-SOURCE CONTRACT:
-- The BULLET CATALOG is the only factual source. Do not invent companies, titles, tools, skills, metrics, dates, certifications, education, or contact details.
-- You MAY rewrite catalog sentences so they speak to the job description (emphasis, ordering, tighter wording). Keep the original facts.
-- Do not combine two bullets into a claim neither one supports. Do not add numbers, percentages, or employers that are not in the catalog.
-- RERANKED SELECTION lists bullet IDs in priority order for this job — prefer those bullets first when building PROFESSIONAL EXPERIENCE.
-- RETRIEVED EVIDENCE highlights JD-matched metric bullets. Include them when they appear in RERANKED SELECTION.
-- NAME, CONTACT, and EDUCATION are filled from the candidate catalog later. You may omit them or include stubs; do not invent replacements.
-- SUMMARY, SKILLS, and PROFESSIONAL EXPERIENCE must come from you, tailored to the JD, using catalog facts only.
-- Never print bullet IDs (e.g. B001) in the final resume.
+VOICE (must read as human):
+- Prefer copying bullets from the source bank with small edits: cut fluff, drop a clause, or change order. Do not rewrite every sentence into a new generic template.
+- Vary sentence length. Mix short facts with one longer technical sentence. Avoid starting several bullets the same way.
+- Do not use these phrases: results-driven, proven track record, passionate, leveraged, spearheaded, demonstrated ability, highly skilled, cutting-edge, seamless, robust ecosystem, utilizing, furthermore, additionally, in order to, played a key role.
+- Do not use em dashes or en dashes as separators.
+- Do not keyword-stuff. Mention JD tools only where they already appear in the source.
+
+CONTENT CONTRACT:
+- The BULLET CATALOG and supplied source blocks are the only factual sources. Do not invent companies, titles, tools, skills, metrics, dates, certifications, education, or contact details.
+- Select relevant source bullets and lightly edit them. Do not combine two bullets into a claim neither supports.
+- Every number must appear in the supplied source.
+- RERANKED SELECTION lists bullet IDs in priority order. Prefer those bullets, but print no IDs.
+- Lead with projects that match the job. Keep 4-6 bullets per project and about 14-18 experience bullets total.
+- Reorder the compact TEMPLATE SKILLS for the JD. Include only relevant skill lines; never copy the full Master ATS taxonomy.
+- Target TWO PAGES. Treat the 2-page template as the structure and length budget, not merely a reference.
+- Fill NAME and CONTACT from the supplied contact block. Keep contact labels.
+- Write a 3-5 sentence SUMMARY using source facts. Do not open with the target title as a slogan.
 - Never write that the resume was tailored, optimized, generated, or customized.
-- NEVER include ATS keyword reference lines (e.g. "AI/ML Keywords:") or tailoring-guide content.
+- Never include ATS keyword reference lines, tailoring-guide text, RECTIFICATION & ITERATION, or section instructions.
 
 Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
-Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, EDUCATION
+Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, SKILLS, EDUCATION
 For bullets use: - (hyphen + space)
 Each section header may appear exactly once. SKILLS and EDUCATION must never be empty.
 Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, or CORE COMPETENCIES as headers.
@@ -33,17 +41,17 @@ CONTACT
 <email, phone, location, linkedin, github from catalog>
 
 SUMMARY
-<one JD-focused rewrite of the catalog professional summary>
-
-SKILLS
-<skill lines from REQUIRED SKILLS SOURCE, selected and ordered for the JD>
+<3-5 concise sentences grounded in the supplied source>
 
 PROFESSIONAL EXPERIENCE
-<company/project headers from catalog>
-<catalog bullets rewritten to the JD — keep metrics and employers unchanged>
+<company/project headers from source>
+<selected source bullets with light edits — keep metrics and employers unchanged>
+
+SKILLS
+<compact skill lines from TEMPLATE SKILLS, selected and ordered for the JD>
 
 EDUCATION
-<education from REQUIRED EDUCATION SOURCE>`;
+<education from TEMPLATE EDUCATION>`;
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;
@@ -74,20 +82,20 @@ export function buildResumeUserPrompt(input: {
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
-    `Retrieval: hybrid (playbook role bank + lexical match + evidence tags). Rewrite catalog facts for this JD; do not invent.`,
+    `Focus: select and lightly edit existing bullets that match this posting. Do not invent a new career story.`,
     `MATCHED PLAYBOOK: ${input.playbookTitle || 'none — infer from JD'}`,
     input.playbookInstructions ? `PLAYBOOK INSTRUCTIONS:\n${input.playbookInstructions}` : '',
     `JOB DESCRIPTION:\n${jobDescription}`,
-    input.contactBlock ? `CONTACT VALUES (only use values that also appear in the bullet catalog):\n${input.contactBlock}` : '',
+    input.contactBlock ? `CONTACT (copy these labeled values into NAME and CONTACT):\n${input.contactBlock}` : '',
     input.googleHeader ? `GOOGLE DOC HEADER OVERRIDE (do not add facts unless present in catalog):\n${input.googleHeader}` : '',
-    skillsSource ? `REQUIRED SKILLS SOURCE (select and order for the JD; you may rephrase labels but not invent skills):\n${skillsSource}` : '',
-    educationSource ? `REQUIRED EDUCATION SOURCE (copied into EDUCATION later — include it or omit; do not replace):\n${educationSource}` : '',
+    `2-PAGE TEMPLATE (required structure and length budget):\n${twoPageTemplate}`,
+    skillsSource ? `TEMPLATE SKILLS (select and order compact lines for the JD):\n${skillsSource}` : '',
+    educationSource ? `TEMPLATE EDUCATION (copy into EDUCATION; do not replace):\n${educationSource}` : '',
     input.rerankedSelection,
     input.retrievedEvidence,
     bulletCatalog,
-    `SEMANTIC ROLE BANK (retrieved catalog subset):\n${masterResume}`,
+    `ROLE-FOCUSED SOURCE BANK (select relevant experience; do not dump it):\n${masterResume}`,
     lexicalMatches ? `LEXICALLY MATCHED MASTER EXCERPTS:\n${lexicalMatches}` : '',
-    `2-PAGE TEMPLATE (length/layout target only):\n${twoPageTemplate}`,
   ].filter(Boolean).join('\n\n');
 }
 
@@ -113,11 +121,12 @@ export function buildGroqResumeUserPrompt(input: {
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
+    `Keep the September 4 contract: two-page resume, source bullets with light edits, compact skills, and section order NAME, CONTACT, SUMMARY, PROFESSIONAL EXPERIENCE, SKILLS, EDUCATION.`,
     `JOB DESCRIPTION (excerpt):\n${jobDescription}`,
-    input.contactBlock ? `CONTACT VALUES:\n${input.contactBlock}` : '',
+    input.contactBlock ? `CONTACT (copy labeled values):\n${input.contactBlock}` : '',
     summarySource ? `SUMMARY SOURCE (rewrite once under SUMMARY to match the JD; keep the facts):\n${summarySource}` : '',
-    skillsSource ? `REQUIRED SKILLS SOURCE:\n${skillsSource}` : '',
-    educationSource ? `REQUIRED EDUCATION SOURCE:\n${educationSource}` : '',
+    skillsSource ? `TEMPLATE SKILLS (select compact relevant lines; do not expand):\n${skillsSource}` : '',
+    educationSource ? `TEMPLATE EDUCATION (copy; do not replace):\n${educationSource}` : '',
     input.rerankedSelection,
     retrievedEvidence,
     bulletCatalog,

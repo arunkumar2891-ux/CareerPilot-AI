@@ -15,12 +15,19 @@ const REQUIRED_SECTIONS = [
   'NAME',
   'CONTACT',
   'SUMMARY',
-  'SKILLS',
   'PROFESSIONAL EXPERIENCE',
+  'SKILLS',
   'EDUCATION',
 ] as const;
 
-const CONTACT_FIELD_KEYS = new Set(['email', 'phone', 'location', 'linkedin', 'github']);
+const CONTACT_FIELD_LABELS: Record<string, string> = {
+  title: 'Title',
+  email: 'Email',
+  phone: 'Phone',
+  location: 'Location',
+  linkedin: 'LinkedIn',
+  github: 'GitHub',
+};
 
 function parseContactBlock(contactBlock: string): { name: string; contactLines: string[] } {
   let name = '';
@@ -33,7 +40,7 @@ function parseContactBlock(contactBlock: string): { name: string; contactLines: 
     const value = match[2].trim();
     if (!value) continue;
     if (key === 'name') name = value;
-    else if (CONTACT_FIELD_KEYS.has(key)) contactLines.push(value);
+    else if (CONTACT_FIELD_LABELS[key]) contactLines.push(`${CONTACT_FIELD_LABELS[key]}: ${value}`);
   }
 
   return { name, contactLines };

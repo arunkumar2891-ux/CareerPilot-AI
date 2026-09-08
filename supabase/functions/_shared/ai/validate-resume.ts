@@ -5,7 +5,7 @@ export function stripModelFences(text: string): string {
     .trim();
 }
 
-const REQUIRED_HEADERS = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'EDUCATION'];
+const REQUIRED_HEADERS = ['NAME', 'CONTACT', 'SUMMARY', 'PROFESSIONAL EXPERIENCE', 'SKILLS', 'EDUCATION'];
 const HEADER_ALIASES: Record<string, string> = {
   'PROFESSIONAL SUMMARY': 'SUMMARY',
   'EXECUTIVE SUMMARY': 'SUMMARY',
@@ -336,6 +336,26 @@ function validateGrounding(
   return { ok: true };
 }
 
+function validateTwoPageShape(text: string): { ok: true } | { ok: false; reason: string } {
+  // The September 4 resume contract is intentionally compact. These bounds reject
+  // Master ATS/category dumps while leaving room for normal two-page variation.
+  if (text.length > 9500) return { ok: false, reason: 'exceeds_two_page_budget' };
+  if (/RECTIFICATION\s*&\s*ITERATION|ATS keyword reference|tailoring guide/i.test(text)) {
+    return { ok: false, reason: 'master_bank_artifact' };
+  }
+
+  const summary = extractSectionBody(text, 'SUMMARY');
+  const skills = extractSectionBody(text, 'SKILLS');
+  const experience = extractSectionBody(text, 'PROFESSIONAL EXPERIENCE');
+  const skillLines = skills.split('\n').map((line) => line.trim()).filter(Boolean);
+  const experienceBullets = experience.split('\n').filter((line) => /^\s*[-•]\s+/.test(line));
+
+  if (summary.length > 1400) return { ok: false, reason: 'summary_too_long' };
+  if (skills.length > 2500 || skillLines.length > 10) return { ok: false, reason: 'skills_too_long' };
+  if (experienceBullets.length > 22) return { ok: false, reason: 'too_many_experience_bullets' };
+  return { ok: true };
+}
+
 /** Same contract as LaTeX builder: ATS text must include SUMMARY and PROFESSIONAL EXPERIENCE. */
 export function validateResumeOutput(
   raw: string,
@@ -377,6 +397,9 @@ export function validateResumeOutput(
       return { ok: false, reason: 'empty_section' };
     }
   }
+
+  const shape = validateTwoPageShape(text);
+  if (!shape.ok) return shape;
 
   if (options?.groundingSource && !options?.skipGrounding) {
     const grounding = validateGrounding(text, options.groundingSource, {

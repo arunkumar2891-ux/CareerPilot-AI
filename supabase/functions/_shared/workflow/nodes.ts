@@ -3,8 +3,7 @@ import { getSecretOrIntegration, getIntegrationCredentials, getUserSettings } fr
 import { resolveTemplate } from './graph.ts';
 import { createAdminClient } from '../supabase-admin.ts';
 import { buildEmailSummaryBlock } from './execution-persistence.ts';
-import { ATS_SYSTEM_PROMPT, buildResumeUserPrompt, buildGroqResumeUserPrompt } from '../career-corpus/prompt.ts';
-import { loadCareerCorpus } from '../career-corpus/load.ts';
+import { prepareResumeGeneration } from '../career-corpus/generate.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
 import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
@@ -465,62 +464,28 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   gemini: {
     async execute(ctx, node, input) {
-      const systemPrompt = String(node.config.systemPrompt || ATS_SYSTEM_PROMPT);
       const job = (input && typeof input === 'object' ? input : ctx.variables.currentItem) as Record<string, unknown> | undefined;
       if (!job) {
         return { output: { skipped: true, reason: 'no_job_input' }, status: 'success' };
       }
       const jd = String(job.jobDescription || job.description || '');
-      const corpus = await loadCareerCorpus(ctx.userId, jd, {
-        jobTitle: String(job.title || job.role || ''),
-        company: String(job.company || job.companyName || ''),
-      });
-      const userPrompt = buildResumeUserPrompt({
-        jobTitle: String(job.title || job.role || ''),
-        company: String(job.company || job.companyName || ''),
+      const prepared = await prepareResumeGeneration(ctx.userId, {
         jobDescription: jd,
-        playbookTitle: corpus.playbookTitle,
-        playbookInstructions: corpus.playbookInstructions,
-        masterResume: corpus.masterResume,
-        twoPageTemplate: corpus.twoPageTemplate,
-        bulletCatalog: corpus.bulletCatalog,
-        retrievedEvidence: corpus.retrievedEvidence,
-        rerankedSelection: corpus.rerankedSelection,
-        lexicalMatches: corpus.lexicalMatches,
-        contactBlock: corpus.contactBlock,
+        jobTitle: String(job.title || job.role || ''),
+        company: String(job.company || job.companyName || ''),
         googleHeader: String(ctx.variables.googleHeader || ''),
-        skillsSource: corpus.skillsSource,
-        educationSource: corpus.educationSource,
-        summarySource: corpus.summarySource,
       });
-      const groqUserPrompt = buildGroqResumeUserPrompt({
-        jobTitle: String(job.title || job.role || ''),
-        company: String(job.company || job.companyName || ''),
-        jobDescription: jd,
-        bulletCatalog: corpus.bulletCatalog,
-        retrievedEvidence: corpus.retrievedEvidence,
-        rerankedSelection: corpus.rerankedSelection,
-        contactBlock: corpus.contactBlock,
-        skillsSource: corpus.skillsSource,
-        educationSource: corpus.educationSource,
-        summarySource: corpus.summarySource,
-      });
-      const output = await callGemini(ctx, systemPrompt, userPrompt, true, corpus.groundingSource, {
-        skillsSource: corpus.skillsSource,
-        educationSource: corpus.educationSource,
-        groqUserPrompt,
-        deterministicResume: {
-          contactBlock: corpus.contactBlock,
-          summarySource: corpus.summarySource,
-          skillsSource: corpus.skillsSource,
-          educationSource: corpus.educationSource,
-          rerankedBulletIds: corpus.rerankedBulletIds,
-          catalog: corpus.catalog,
-        },
-      });
+      const output = await callGemini(
+        ctx,
+        prepared.systemPrompt,
+        prepared.userPrompt,
+        true,
+        prepared.groundingSource,
+        prepared.mandatorySections,
+      );
       ctx.variables.lastAgentOutput = output;
-      ctx.variables.playbook = corpus.playbookTitle;
-      ctx.variables.masterResumeSource = corpus.masterResumeSource;
+      ctx.variables.playbook = prepared.corpus.playbookTitle;
+      ctx.variables.masterResumeSource = prepared.corpus.masterResumeSource;
 
       const tailoredContent = String(output || '').trim();
       if (tailoredContent.length > 0) {

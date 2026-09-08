@@ -294,8 +294,11 @@ Deno.test('assembleSourceLockedResume maps catalog fallbacks into the correct AT
   if (!/typescript/i.test(skillsBody) && !/python/i.test(skillsBody)) {
     throw new Error(`SKILLS should contain skill tokens, got:\n${skillsBody}`);
   }
-  if (/jul 2024/i.test(contactBody) || /architect \|/i.test(contactBody)) {
-    throw new Error(`CONTACT should omit title and start date:\n${contactBody}`);
+  if (/jul 2024/i.test(contactBody)) {
+    throw new Error(`CONTACT should omit employment start date:\n${contactBody}`);
+  }
+  if (!contactBody.includes('Title: Integration Architect | GenAI Developer | Forward Deployment Engineer')) {
+    throw new Error(`CONTACT should preserve the labeled professional title:\n${contactBody}`);
   }
   if (!experienceBody.includes('- Built 2 conversational AI agents')) {
     throw new Error(`EXPERIENCE should include the selected bullet:\n${experienceBody}`);
