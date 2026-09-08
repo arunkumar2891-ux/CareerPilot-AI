@@ -19,6 +19,7 @@ import {
 } from '@/content/career-corpus';
 import { buildFocusedMasterResume, resumeBankName } from '@/content/career-corpus/resume-bank';
 import { isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import { buildTailoredResumeName } from '@/utils/resume-name';
 import { PROVIDER_FREE_TIER_MONTHLY_TOKENS } from '@/constants/ai-usage';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
@@ -530,14 +531,12 @@ export class ResumeService {
     const content = String(data?.reply || '');
     if (!content) throw new Error('Resume tailoring returned empty output');
 
-    const tailoredName = `Tailored: ${job.company} ${job.role}`.slice(0, 120);
+    const tailoredName = buildTailoredResumeName(String(job.company), String(job.role), jobId);
     const { data: byJob } = await supabase.from('resumes').select('id').eq('user_id', userId).eq('job_id', jobId).maybeSingle();
-    const { data: existing } = byJob?.id
-      ? { data: byJob }
-      : await supabase.from('resumes').select('id').eq('user_id', userId).eq('name', tailoredName).maybeSingle();
-    let tailoredId = existing?.id as string | undefined;
+    let tailoredId = byJob?.id as string | undefined;
     if (tailoredId) {
       const { error: updateError } = await supabase.from('resumes').update({
+        name: tailoredName,
         content,
         job_id: jobId,
         updated_at: new Date().toISOString(),
@@ -627,18 +626,21 @@ export class ResumeService {
     link.click();
     URL.revokeObjectURL(objectUrl);
   }
-  async deleteAllJobResumes(): Promise<number> {
+  async deleteJobResumes(ids: string[]): Promise<number> {
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    if (uniqueIds.length === 0) return 0;
+
     const userId = await requireUserId();
-    const jobResumes = await this.list({ kind: 'job' });
+    const jobResumes = (await this.list({ kind: 'job' })).filter((resume) => uniqueIds.includes(resume.id));
     if (jobResumes.length === 0) return 0;
 
-    const ids = jobResumes.map((resume) => resume.id);
+    const ownedIds = jobResumes.map((resume) => resume.id);
     const jobIds = [...new Set(jobResumes.map((resume) => resume.jobId).filter((id): id is string => !!id))];
 
     const { data: versions, error: versionListError } = await supabase
       .from('resume_versions')
       .select('id')
-      .in('resume_id', ids)
+      .in('resume_id', ownedIds)
       .eq('user_id', userId);
     if (versionListError) throw versionListError;
 
@@ -652,7 +654,7 @@ export class ResumeService {
       if (error) throw error;
     }
 
-    for (const batch of chunkArray(ids, 50)) {
+    for (const batch of chunkArray(ownedIds, 50)) {
       const { error } = await supabase
         .from('resume_versions')
         .delete()
@@ -675,11 +677,15 @@ export class ResumeService {
         .eq('user_id', userId)
         .in('id', batch);
       if (jobError) {
-        console.warn('deleteAllJobResumes: job status reset failed', jobError);
+        console.warn('deleteJobResumes: job status reset failed', jobError);
       }
     }
 
-    return ids.length;
+    return ownedIds.length;
+  }
+  async deleteAllJobResumes(): Promise<number> {
+    const jobResumes = await this.list({ kind: 'job' });
+    return this.deleteJobResumes(jobResumes.map((resume) => resume.id));
   }
   async repairSync(): Promise<{
     resumesLinkedToJobs: number;

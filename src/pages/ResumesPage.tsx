@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Plus, FileText, Download, GitCompare,
+  Plus, FileText, GitCompare,
   Clock, Sparkles, FileX, Cloud, CloudUpload, Trash2, RefreshCw,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -41,7 +41,7 @@ export function ResumesPage() {
   const [newContent, setNewContent] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSyncing, setBulkSyncing] = useState(false);
-  const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<'all' | { ids: string[]; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const toggleSelected = (id: string) => {
@@ -85,15 +85,22 @@ export function ResumesPage() {
     qc.invalidateQueries({ queryKey: ['resumes'] });
   };
 
-  const deleteAllJobResumes = async () => {
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const count = await services.resume.deleteAllJobResumes();
+      const count = deleteTarget === 'all'
+        ? await services.resume.deleteAllJobResumes()
+        : await services.resume.deleteJobResumes(deleteTarget.ids);
       await qc.invalidateQueries({ queryKey: ['resumes'] });
       await qc.invalidateQueries({ queryKey: ['jobs'] });
+      const deletedIds = deleteTarget === 'all'
+        ? new Set(resumes?.map((resume) => resume.id) ?? [])
+        : new Set(deleteTarget.ids);
+      if (selected && deletedIds.has(selected.id)) setSelected(null);
+      setSelectedIds((prev) => new Set([...prev].filter((id) => !deletedIds.has(id))));
       toast.success(`Deleted ${count} job resume${count === 1 ? '' : 's'}`);
-      setShowDeleteAll(false);
-      setSelectedIds(new Set());
+      setDeleteTarget(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete resumes');
     } finally {
@@ -117,7 +124,7 @@ export function ResumesPage() {
         description="Job-tailored resumes from search pipelines and manual generation"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowDeleteAll(true)} disabled={!resumes?.length} className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget('all')} disabled={!resumes?.length} className="gap-2">
               <Trash2 className="h-4 w-4" /> Delete All
             </Button>
             <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -168,11 +175,27 @@ export function ResumesPage() {
               <Button
                 size="sm"
                 className="gap-2"
-                disabled={bulkSyncing}
+                disabled={bulkSyncing || deleting}
                 onClick={bulkSyncToDrive}
               >
                 <CloudUpload className="h-4 w-4" />
                 {bulkSyncing ? 'Copying…' : 'Copy to Google Drive'}
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="gap-2"
+                disabled={deleting}
+                onClick={() => {
+                  const ids = Array.from(selectedIds);
+                  const label = ids.length === 1
+                    ? resumes?.find((resume) => resume.id === ids[0])?.name || 'this resume'
+                    : `${ids.length} selected resumes`;
+                  setDeleteTarget({ ids, label });
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete selected
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>Clear</Button>
             </div>
@@ -185,7 +208,7 @@ export function ResumesPage() {
                 <EmptyState
                   icon={FileX}
                   title="No job resumes yet"
-                  description='Run a job search pipeline or open a job and click "Generate Resume". Tailored resumes appear here as "Tailored: Company Role".'
+                  description='Run a job search pipeline or open a job and click "Generate Resume". Tailored resumes appear here as "Tailored: Company Role (job id)".'
                   action={
                     <Button asChild className="gap-2">
                       <Link to="/jobs"><Sparkles className="h-4 w-4" /> Go to Job Discovery</Link>
@@ -216,7 +239,22 @@ export function ResumesPage() {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        <Badge variant="secondary" className="capitalize">{r.type}</Badge>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            aria-label={`Delete ${r.name}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteTarget({ ids: [r.id], label: r.name });
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <Badge variant="secondary" className="capitalize">{r.type}</Badge>
+                        </div>
                         {r.jobId && <Badge variant="outline" className="text-xs">Job linked</Badge>}
                         {r.driveFileId && (
                           <Badge variant="outline" className="gap-1 text-xs">
@@ -306,19 +344,27 @@ export function ResumesPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={showDeleteAll} onOpenChange={setShowDeleteAll}>
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete all job resumes?</DialogTitle>
+            <DialogTitle>
+              {deleteTarget === 'all'
+                ? 'Delete all job resumes?'
+                : deleteTarget && deleteTarget.ids.length === 1
+                  ? `Delete ${deleteTarget.label}?`
+                  : `Delete ${deleteTarget?.ids.length ?? 0} selected resumes?`}
+            </DialogTitle>
             <DialogDescription>
-              This permanently deletes all tailored job resumes and their version history from the database. Corpus resumes (master ATS, templates, role banks) are kept. Linked jobs will have their resume status reset so you can regenerate them from the Job Discovery page.
+              {deleteTarget === 'all'
+                ? 'This permanently deletes all tailored job resumes and their version history from the database. Corpus resumes (master ATS, templates, role banks) are kept. Linked jobs will have their resume status reset so you can regenerate them from the Job Discovery page.'
+                : 'This permanently deletes the selected job resume(s) and their version history. Linked jobs will have their resume status reset so you can regenerate them from the Job Discovery page.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteAll(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={deleteAllJobResumes} disabled={deleting} className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting} className="gap-2">
               {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Delete all job resumes
+              {deleteTarget === 'all' ? 'Delete all job resumes' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

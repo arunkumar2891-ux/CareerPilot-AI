@@ -51,11 +51,14 @@ Deno.test('Gemini success does not call Groq', async () => {
   const gemini = mockAdapter('gemini', {});
   const groq = mockAdapter('groq', {});
   const logs: string[] = [];
-  const text = await generateWithProviders(
+  const result = await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
     { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: (m) => logs.push(m) },
   );
-  if (!text.includes('PROFESSIONAL EXPERIENCE')) throw new Error('expected ATS text');
+  if (!result.text.includes('PROFESSIONAL EXPERIENCE')) throw new Error('expected ATS text');
+  if (result.tokensInput !== 100 || result.tokensOutput !== 200) {
+    throw new Error(`expected provider tokens, got ${result.tokensInput}/${result.tokensOutput}`);
+  }
   if (gemini.calls !== 1) throw new Error(`gemini calls ${gemini.calls}`);
   if (groq.calls !== 0) throw new Error('groq should not be called');
 });
@@ -69,12 +72,12 @@ Deno.test('Gemini timeout falls back to Groq', async () => {
   });
   const groq = mockAdapter('groq', {});
   const logs: string[] = [];
-  const text = await generateWithProviders(
+  const result = await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
     { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: (m) => logs.push(m) },
   );
   if (groq.calls !== 1) throw new Error('groq should be called after timeout');
-  if (!text.includes('SUMMARY')) throw new Error('expected groq ATS result');
+  if (!result.text.includes('SUMMARY')) throw new Error('expected groq ATS result');
   if (!logs.some((l) => l.includes('timeout'))) throw new Error('expected timeout log');
 });
 
@@ -133,13 +136,13 @@ Deno.test('missing Gemini key uses Groq', async () => {
   const { generateWithProviders } = await import('./router.ts');
   const gemini = mockAdapter('gemini', { configured: false });
   const groq = mockAdapter('groq', {});
-  const text = await generateWithProviders(
+  const result = await generateWithProviders(
     { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
     { adapters: { gemini, groq }, primary: 'gemini', fallback: 'groq', log: () => {} },
   );
   if (gemini.calls !== 0) throw new Error('gemini should be skipped');
   if (groq.calls !== 1) throw new Error('groq should run');
-  if (!text.includes('PROFESSIONAL EXPERIENCE')) throw new Error('expected resume result');
+  if (!result.text.includes('PROFESSIONAL EXPERIENCE')) throw new Error('expected resume result');
 });
 
 Deno.test('Groq malformed ATS fails without returning corrupt text', async () => {

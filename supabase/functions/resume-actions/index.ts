@@ -25,7 +25,7 @@ type ResumeRow = {
 function parseTailoredMeta(name: string): { company: string; role: string } {
   const match = name.match(/^Tailored:\s*(.+)$/i);
   if (!match) return { company: 'Company', role: name || 'Role' };
-  const rest = match[1].trim();
+  const rest = match[1].trim().replace(/\s*\([0-9a-f]{8}\)\s*$/i, '').trim();
   const slash = rest.indexOf(' / ');
   if (slash > 0) {
     return { company: rest.slice(0, slash).trim(), role: rest.slice(slash + 3).trim() };

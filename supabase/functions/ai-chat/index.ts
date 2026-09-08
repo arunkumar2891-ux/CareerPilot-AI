@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
         educationSource: corpus.educationSource,
         summarySource: corpus.summarySource,
       });
-      const reply = await callGeminiAtsGenerateContent(
+      const generated = await callGeminiAtsGenerateContent(
         ATS_SYSTEM_PROMPT,
         userPrompt,
         user.id,
@@ -130,7 +130,11 @@ Deno.serve(async (req) => {
           },
         },
       );
-      return jsonResponse({ reply, playbook: corpus.playbookTitle, tokens: reply.length / 4 });
+      return jsonResponse({
+        reply: generated.text,
+        playbook: corpus.playbookTitle,
+        tokens: generated.tokensTotal,
+      });
     }
 
     if (mode === 'resume_improvement') {

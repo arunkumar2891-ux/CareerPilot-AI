@@ -3,7 +3,7 @@ import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
 import { assembleSourceLockedResume } from '../career-corpus/assemble-source-locked-resume.ts';
 import { geminiAdapter, geminiFallbackAdapter } from './gemini.ts';
 import { groqAdapter } from './groq.ts';
-import { ProviderError, type GenerateRequest, type ProviderAdapter } from './types.ts';
+import { ProviderError, totalTokens, type GenerateRequest, type GenerateResult, type ProviderAdapter } from './types.ts';
 import { validateResumeOutput, extractAtsSection } from './validate-resume.ts';
 import { recordAiUsage } from './usage.ts';
 
@@ -113,7 +113,7 @@ async function callAdapter(
   role: 'primary' | 'fallback',
   log: (message: string) => void,
   userId?: string,
-): Promise<string> {
+): Promise<GenerateResult> {
   const started = Date.now();
   const label = providerLabel(adapter.name);
   const prefix = role === 'fallback' ? '[AI] fallback ' : '[AI] ';
@@ -127,8 +127,9 @@ async function callAdapter(
       tokensInput: result.tokensInput,
       tokensOutput: result.tokensOutput,
     });
-    log(`[AI] provider=${label} operation=${req.operation} success duration_ms=${Date.now() - started} tokens=${result.tokensInput + result.tokensOutput}`);
-    return text;
+    const tokens = totalTokens(result);
+    log(`[AI] provider=${label} operation=${req.operation} success duration_ms=${Date.now() - started} tokens=${tokens}`);
+    return { text, tokensInput: result.tokensInput, tokensOutput: result.tokensOutput };
   } catch (err) {
     const kind = err instanceof ProviderError ? err.kind : 'unknown';
     const detail = err instanceof ProviderError ? ` ${err.message}` : '';
@@ -150,7 +151,7 @@ async function tryProvider(
   maxAttempts: number,
   log: (message: string) => void,
   userId?: string,
-): Promise<string> {
+): Promise<GenerateResult> {
   let lastErr: unknown;
   const attempts = Math.max(1, maxAttempts);
   for (let i = 1; i <= attempts; i++) {
@@ -212,7 +213,7 @@ function splitProviderChain(chain: string[]): { geminiChain: string[]; tailChain
 export async function generateWithProviders(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
   deps: GenerateDeps = {},
-): Promise<string> {
+): Promise<GenerateResult> {
   const log = (message: string) => (deps.log ?? console.log)(sanitizeAiErrorMessage(message));
   const defaultTimeout = req.operation === 'resume_tailoring' ? getAtsTimeoutMs() : getAiTimeoutMs();
   const timeoutMs = req.timeoutMs ?? deps.timeoutMs ?? defaultTimeout;
@@ -270,7 +271,7 @@ export async function generateWithProviders(
 
   if (request.operation === 'resume_tailoring') {
     const deterministic = tryDeterministicResume(request, log);
-    if (deterministic) return deterministic;
+    if (deterministic) return { text: deterministic, tokensInput: 0, tokensOutput: 0 };
   }
 
   for (let index = 0; index < tailChain.length && !requestIsUnservable; index++) {
@@ -315,7 +316,8 @@ export async function generateText(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
   deps: GenerateDeps = {},
 ): Promise<string> {
-  return generateWithProviders(req, deps);
+  const result = await generateWithProviders(req, deps);
+  return result.text;
 }
 
 export function providerNames(): { chain: string[] } {

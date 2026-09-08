@@ -49,13 +49,14 @@ async function callGemini(
   },
 ): Promise<string> {
   if (forAts) {
-    return await callGeminiAtsGenerateContent(
+    const generated = await callGeminiAtsGenerateContent(
       systemPrompt,
       userPrompt,
       ctx.userId,
       groundingSource,
       mandatorySections,
     );
+    return generated.text;
   }
   return await callGeminiGenerateContent(systemPrompt, userPrompt, { userId: ctx.userId });
 }

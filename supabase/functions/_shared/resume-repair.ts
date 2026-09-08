@@ -1,5 +1,5 @@
 import type { createAdminClient } from './supabase-admin.ts';
-import { buildTailoredResumeName } from './resume-store.ts';
+import { buildTailoredResumeName, parseTailoredJobKey } from './resume-store.ts';
 import { listDrivePdfs, driveFileBaseKey, resolveResumePdfFileName } from './resume-drive.ts';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -39,7 +39,13 @@ export async function repairResumeJobLinks(admin: AdminClient, userId: string): 
       .select('id, company, role')
       .eq('user_id', userId);
 
-    const match = (jobs || []).find((job) => buildTailoredResumeName(String(job.company), String(job.role)) === resume.name);
+    const jobKey = parseTailoredJobKey(String(resume.name));
+    const match = (jobs || []).find((job) => {
+      const id = String(job.id);
+      if (jobKey && id.replace(/-/g, '').startsWith(jobKey)) return true;
+      return buildTailoredResumeName(String(job.company), String(job.role), id) === resume.name
+        || buildTailoredResumeName(String(job.company), String(job.role)) === resume.name;
+    });
     if (!match) continue;
     if (await countResumesForJob(admin, match.id) > 0) continue;
 
@@ -58,13 +64,16 @@ export async function repairResumeJobLinks(admin: AdminClient, userId: string): 
   for (const job of jobs || []) {
     if (await countResumesForJob(admin, job.id) > 0) continue;
 
-    const tailoredName = buildTailoredResumeName(String(job.company), String(job.role));
-    const { data: resume } = await admin
+    const tailoredName = buildTailoredResumeName(String(job.company), String(job.role), job.id);
+    const legacyName = buildTailoredResumeName(String(job.company), String(job.role));
+    const { data: matches } = await admin
       .from('resumes')
       .select('id')
       .eq('user_id', userId)
-      .eq('name', tailoredName)
-      .maybeSingle();
+      .in('name', [tailoredName, legacyName])
+      .is('job_id', null)
+      .limit(1);
+    const resume = matches?.[0];
 
     if (resume?.id) {
       await admin.from('resumes').update({
@@ -106,7 +115,7 @@ export async function reconcileDriveFiles(
     let company = String(job?.company || '');
     let role = String(job?.role || '');
     if (!company && tailoredMatch) {
-      const rest = tailoredMatch[1].trim();
+      const rest = tailoredMatch[1].trim().replace(/\s*\([0-9a-f]{8}\)\s*$/i, '').trim();
       const slash = rest.indexOf(' / ');
       if (slash > 0) {
         company = rest.slice(0, slash).trim();

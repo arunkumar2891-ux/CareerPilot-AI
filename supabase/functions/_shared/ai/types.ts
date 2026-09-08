@@ -54,6 +54,10 @@ export interface GenerateResult {
   tokensOutput: number;
 }
 
+export function totalTokens(result: Pick<GenerateResult, 'tokensInput' | 'tokensOutput'>): number {
+  return result.tokensInput + result.tokensOutput;
+}
+
 export interface ProviderAdapter {
   name: AiProviderName;
   isConfigured(): boolean;

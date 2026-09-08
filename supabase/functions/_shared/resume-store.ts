@@ -2,8 +2,22 @@ import type { createAdminClient } from './supabase-admin.ts';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-export function buildTailoredResumeName(company: string, role: string): string {
-  return `Tailored: ${company} ${role}`.slice(0, 120);
+export function shortJobKey(jobId: string): string {
+  return jobId.replace(/-/g, '').slice(0, 8);
+}
+
+export function parseTailoredJobKey(name: string): string | null {
+  const match = name.trim().match(/\(([0-9a-f]{8})\)\s*$/i);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
+/** `Tailored: Company Role (jobKey)` — job key keeps two postings of the same role distinct. */
+export function buildTailoredResumeName(company: string, role: string, jobId?: string): string {
+  const suffix = jobId ? ` (${shortJobKey(jobId)})` : '';
+  const prefix = 'Tailored: ';
+  const maxBase = Math.max(8, 120 - prefix.length - suffix.length);
+  const base = `${company} ${role}`.replace(/\s+/g, ' ').trim().slice(0, maxBase).trim();
+  return `${prefix}${base}${suffix}`;
 }
 
 export async function upsertTailoredResume(
@@ -11,7 +25,7 @@ export async function upsertTailoredResume(
   userId: string,
   input: { jobId?: string; company: string; role: string; content: string },
 ): Promise<string> {
-  const name = buildTailoredResumeName(input.company, input.role);
+  const name = buildTailoredResumeName(input.company, input.role, input.jobId);
   const now = new Date().toISOString();
 
   if (input.jobId) {
@@ -29,22 +43,20 @@ export async function upsertTailoredResume(
       }).eq('id', byJob.id);
       return String(byJob.id);
     }
-  }
-
-  const { data: byName } = await admin
-    .from('resumes')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('name', name)
-    .maybeSingle();
-  if (byName?.id) {
-    const patch: Record<string, unknown> = {
-      content: input.content,
-      updated_at: now,
-    };
-    if (input.jobId) patch.job_id = input.jobId;
-    await admin.from('resumes').update(patch).eq('id', byName.id);
-    return String(byName.id);
+  } else {
+    const { data: byName } = await admin
+      .from('resumes')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', name)
+      .maybeSingle();
+    if (byName?.id) {
+      await admin.from('resumes').update({
+        content: input.content,
+        updated_at: now,
+      }).eq('id', byName.id);
+      return String(byName.id);
+    }
   }
 
   const { data: created, error } = await admin.from('resumes').insert({
