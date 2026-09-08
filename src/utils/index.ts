@@ -44,6 +44,7 @@ export function formatExecutionStart(iso: string): string {
 export function describeTriggerType(triggerType?: string): string {
   if (triggerType === 'schedule') return 'Scheduled';
   if (triggerType === 'retry') return 'Retry';
+  if (triggerType === 'job_discovery') return 'Job Discovery';
   if (triggerType === 'manual') return 'Manual';
   return 'Manual';
 }

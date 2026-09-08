@@ -221,6 +221,7 @@ export interface WorkflowRun {
   jobsSkipped?: number;
   triggerType?: string;
   isLegacy?: boolean;
+  targetJobId?: string;
 }
 
 export interface WorkflowSnapshotNode {

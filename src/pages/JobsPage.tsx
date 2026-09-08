@@ -426,17 +426,32 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
 
 function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => void }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [starting, setStarting] = useState(false);
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
   if (!job) return null;
 
   const generateResume = async () => {
+    if (starting) return;
+    if (!hasGoogleDocResumeId(settings)) {
+      toast.error('Add a Google Doc Resume ID in Settings before generating a tailored resume');
+      navigate('/settings?tab=jobsearch');
+      return;
+    }
+    setStarting(true);
     try {
-      toast.success('Generating tailored resume from Master ATS corpus...');
-      await services.resume.generateTailored(job.id);
-      toast.success('Resume generated — check Resumes');
+      toast.success('Starting resume tailoring...');
+      const { runId } = await services.resume.startResumeTailoring(job.id);
+      toast.success('Resume tailoring started — check Executions for progress');
+      await qc.invalidateQueries({ queryKey: ['runs'] });
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
       await qc.invalidateQueries({ queryKey: ['resumes'] });
       onClose();
+      navigate(`/executions/${runId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Resume generation failed');
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -484,7 +499,9 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
           </div>
         </ScrollArea>
         <div className="flex items-center gap-2 border-t border-border pt-4">
-          <Button onClick={generateResume} className="gap-2"><FileText className="h-4 w-4" /> Generate Resume</Button>
+          <Button onClick={generateResume} disabled={starting} className="gap-2">
+            <FileText className="h-4 w-4" /> {starting ? 'Starting…' : 'Generate Resume'}
+          </Button>
           <Button variant="outline" className="gap-2"><Star className="h-4 w-4" /> Save</Button>
           <Button variant="ghost" className="ml-auto gap-2" onClick={() => window.open(job.url, '_blank')}>
             View Posting <ExternalLink className="h-3.5 w-3.5" />

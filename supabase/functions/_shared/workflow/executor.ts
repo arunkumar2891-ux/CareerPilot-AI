@@ -14,6 +14,7 @@ import {
   insertStructuredLog,
   refreshRunJobCounters,
   saveWorkflowSnapshot,
+  shouldSaveWorkflowSnapshot,
   startNodeExecution,
 } from './execution-persistence.ts';
 import { deriveRunStatus } from './execution-status.ts';
@@ -39,7 +40,7 @@ export async function loadWorkflow(workflowId: string, userId: string) {
 export async function createRun(
   workflowId: string,
   userId: string,
-  options?: { triggerType?: string; triggeredBy?: string },
+  options?: { triggerType?: string; triggeredBy?: string; context?: Record<string, unknown> },
 ) {
   const admin = createAdminClient();
   const { data, error } = await admin.from('workflow_runs').insert({
@@ -48,7 +49,7 @@ export async function createRun(
     status: 'running',
     started_at: new Date().toISOString(),
     duration_ms: 0,
-    context: {},
+    context: options?.context ?? {},
     trigger_type: options?.triggerType ?? null,
   }).select().single();
   if (error) throw error;
@@ -246,6 +247,16 @@ export async function executeWorkflow(
       settings,
       currentNodeId: resumeNodeId || run.current_node_id,
     };
+    if (shouldSaveWorkflowSnapshot(run.workflow_snapshot)) {
+      await saveWorkflowSnapshot(
+        admin,
+        runId,
+        workflowId,
+        String(workflow.name || 'Workflow'),
+        nodes,
+        edges,
+      );
+    }
   } else {
     const run = await createRun(workflowId, userId, { triggerType: options?.triggerType });
     runId = run.id;

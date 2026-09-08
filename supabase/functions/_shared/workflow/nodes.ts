@@ -10,6 +10,7 @@ import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemi
 import { buildLatexFromAtsText } from '../resume-latex.ts';
 import { compileLatexToPdf } from '../resume-pdf.ts';
 import { upsertTailoredResume, linkResumePdf } from '../resume-store.ts';
+import { loadExistingJobForPipeline, resolvePipelineJobId } from './job-discovery.ts';
 import { uploadOrUpdateDrivePdf, resolveResumePdfFileName } from '../resume-drive.ts';
 import { fetchWithTimeout } from '../fetch-timeout.ts';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
@@ -518,6 +519,38 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(ctx, node, input) {
       const action = node.config.action as string || 'insert_job';
       const admin = createAdminClient();
+      if (action === 'load_job') {
+        if (input && typeof input === 'object' && (input as Record<string, unknown>).skipped) {
+          return { output: input, status: 'success' };
+        }
+        const jobId = resolvePipelineJobId(input, ctx.variables.targetJobId);
+        const item = await loadExistingJobForPipeline(
+          {
+            findOwned: async (id, uid) => {
+              const { data, error } = await admin
+                .from('jobs')
+                .select('*')
+                .eq('id', id)
+                .eq('user_id', uid)
+                .maybeSingle();
+              if (error) throw error;
+              return (data as Record<string, unknown> | null) ?? null;
+            },
+            markGenerating: async (id, uid) => {
+              const { error } = await admin
+                .from('jobs')
+                .update({ resume_status: 'generating' })
+                .eq('id', id)
+                .eq('user_id', uid);
+              if (error) throw error;
+            },
+          },
+          ctx.userId,
+          jobId,
+        );
+        ctx.variables.lastJobId = item.jobId;
+        return { output: item, status: 'success' };
+      }
       if (action === 'insert_job') {
         if (input == null || typeof input !== 'object') {
           return { output: input ?? { skipped: true }, status: 'success' };

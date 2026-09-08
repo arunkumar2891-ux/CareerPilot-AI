@@ -70,6 +70,10 @@ function summarizeOutput(output: unknown): Record<string, unknown> | null {
   return summary;
 }
 
+export function shouldSaveWorkflowSnapshot(existing: unknown): boolean {
+  return existing == null;
+}
+
 export async function saveWorkflowSnapshot(
   admin: AdminClient,
   runId: string,

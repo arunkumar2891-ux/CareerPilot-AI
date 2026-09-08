@@ -98,7 +98,10 @@ export function ExecutionDetailPage() {
       return;
     }
     try {
-      const newRun = await services.execution.runWorkflow(run.workflowId);
+      const newRun = await services.execution.runWorkflow(
+        run.workflowId,
+        run.targetJobId ? { jobId: run.targetJobId } : undefined,
+      );
       toast.success('New execution started');
       navigate(`/executions/${newRun.id}`);
     } catch (err) {

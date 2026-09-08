@@ -8,7 +8,7 @@ import type {
 } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/auth';
-import { DEFAULT_JOB_SEARCH_WORKFLOW, buildSeedEdges } from '@/constants/workflow-seed';
+import { DEFAULT_JOB_SEARCH_WORKFLOW, DEFAULT_RESUME_TAILOR_WORKFLOW, buildSeedEdges, buildTailorSeedEdges } from '@/constants/workflow-seed';
 import { computeNextCronRun } from '@/utils/cron-schedule';
 import {
   CAREER_CORPUS,
@@ -18,7 +18,6 @@ import {
   replaceEducationPlaceholders,
 } from '@/content/career-corpus';
 import { isCorpusResume, isJobResume } from '@/utils/resume-classification';
-import { buildTailoredResumeName } from '@/utils/resume-name';
 import { PROVIDER_FREE_TIER_MONTHLY_TOKENS } from '@/constants/ai-usage';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
@@ -511,61 +510,18 @@ export class ResumeService {
     const { error } = await supabase.from('resumes').update(patch).eq('id', id);
     if (error) throw error;
   }
-  async generateTailored(jobId: string, resumeId?: string, _style?: 'technical' | 'executive' | 'general'): Promise<Resume> {
-    const userId = await requireUserId();
+  async startResumeTailoring(jobId: string): Promise<{ runId: string }> {
     const settings = await new SettingsService().get();
     const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
     if (!resumeFileId) {
       throw new Error('Add a Google Doc Resume ID in Settings before generating a tailored resume.');
     }
-    const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).maybeSingle();
+    const { data: job } = await supabase.from('jobs').select('id').eq('id', jobId).maybeSingle();
     if (!job) throw new Error('Job not found');
-
-    const { data, error } = await invokeAiChat({
-      mode: 'resume',
-      jobId,
-      resumeId,
-      jobDescription: job.description,
-      jobTitle: job.role,
-      company: job.company,
-    });
-    if (error) throw error;
-    const serverError = payloadErrorMessage(data);
-    if (serverError) throw new Error(serverError);
-    const content = String(data?.reply || '');
-    if (!content) throw new Error('Resume tailoring returned empty output');
-
-    const tailoredName = buildTailoredResumeName(String(job.company), String(job.role), jobId);
-    const { data: byJob } = await supabase.from('resumes').select('id').eq('user_id', userId).eq('job_id', jobId).maybeSingle();
-    let tailoredId = byJob?.id as string | undefined;
-    if (tailoredId) {
-      const { error: updateError } = await supabase.from('resumes').update({
-        name: tailoredName,
-        content,
-        job_id: jobId,
-        updated_at: new Date().toISOString(),
-      }).eq('id', tailoredId);
-      if (updateError) throw updateError;
-    } else {
-      const { data: created, error: createError } = await supabase
-        .from('resumes')
-        .insert({ user_id: userId, name: tailoredName, type: 'technical', content, ats_score: 0, job_id: jobId })
-        .select('*, resume_versions(*)')
-        .single();
-      if (createError) throw createError;
-      tailoredId = created.id as string;
-    }
-    const latest = await this.get(tailoredId);
-    await supabase.from('resume_versions').insert({
-      user_id: userId,
-      resume_id: tailoredId,
-      version: (latest?.versions.length ?? 0) + 1,
-      content,
-      ats_score: 0,
-      note: `Tailored for ${job.role} at ${job.company}`,
-    });
-    await supabase.from('jobs').update({ resume_status: 'ready', status: 'resume_ready' }).eq('id', jobId);
-    return (await this.get(tailoredId))!;
+    const wf = await new WorkflowService().ensureTailorPipeline();
+    const run = await new ExecutionService().runWorkflow(wf.id, { jobId });
+    if (!run.id) throw new Error('Resume tailoring failed to start');
+    return { runId: run.id };
   }
   async compare(idA: string, idB: string): Promise<{ a: Resume; b: Resume; diff: string[] }> {
     const a = await this.get(idA);
@@ -960,6 +916,51 @@ export class WorkflowService {
     ];
     await this.saveGraph(workflowId, wf.nodes, repaired);
   }
+
+  async ensureTailorPipeline(): Promise<Workflow> {
+    const userId = await requireUserId();
+    const { data: existing } = await supabase
+      .from('workflows')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', DEFAULT_RESUME_TAILOR_WORKFLOW.name)
+      .maybeSingle();
+    if (existing) {
+      await this.repairTailorPipelineGraph(existing.id);
+      const wf = await this.get(existing.id);
+      if (wf) return wf;
+    }
+    const wf = await this.create(DEFAULT_RESUME_TAILOR_WORKFLOW.name, DEFAULT_RESUME_TAILOR_WORKFLOW.description);
+    await this.provisionTailorGraph(wf.id);
+    return (await this.get(wf.id))!;
+  }
+
+  private async provisionTailorGraph(workflowId: string): Promise<void> {
+    const nodeIds = DEFAULT_RESUME_TAILOR_WORKFLOW.nodes.map(() => crypto.randomUUID());
+    const nodes: WorkflowNode[] = DEFAULT_RESUME_TAILOR_WORKFLOW.nodes.map((n, i) => ({
+      id: nodeIds[i],
+      type: n.type,
+      name: n.name,
+      position: { x: n.x, y: n.y },
+      config: n.config,
+    }));
+    const edges: WorkflowEdge[] = buildTailorSeedEdges().map((e) => ({
+      id: crypto.randomUUID(),
+      source: nodeIds[e.source],
+      target: nodeIds[e.target],
+    }));
+    await this.saveGraph(workflowId, nodes, edges);
+  }
+
+  private async repairTailorPipelineGraph(workflowId: string): Promise<void> {
+    const wf = await this.get(workflowId);
+    if (!wf) return;
+    const hasLoad = wf.nodes.some((n) => n.type === 'supabase' && n.config.action === 'load_job');
+    const required = ['ATS Optimizer', 'Build LaTeX', 'Compile PDF', 'Upload to Storage'];
+    const hasAll = hasLoad && required.every((name) => wf.nodes.some((n) => n.name === name));
+    if (hasAll) return;
+    await this.provisionTailorGraph(workflowId);
+  }
   async toggle(id: string): Promise<void> {
     const { data } = await supabase.from('workflows').select('active').eq('id', id).maybeSingle();
     if (data) {
@@ -1009,6 +1010,9 @@ function mapRunRow(r: Record<string, unknown>): WorkflowRun {
     jobsFailed: Number(r.jobs_failed ?? 0) || undefined,
     jobsSkipped: Number(r.jobs_skipped ?? 0) || undefined,
     triggerType: r.trigger_type as string | undefined,
+    targetJobId: typeof variables.targetJobId === 'string' && variables.targetJobId
+      ? variables.targetJobId
+      : undefined,
     isLegacy: jobExecutions.length === 0,
     nodeResults: mergeNodeResults(
       ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
@@ -1112,14 +1116,17 @@ export class ExecutionService {
       retriedJobs: Number(data?.retriedJobs ?? 0),
     };
   }
-  async runWorkflow(id: string): Promise<Workflow['runs'][number]> {
+  async runWorkflow(id: string, options?: { jobId?: string }): Promise<Workflow['runs'][number]> {
     const settings = await new SettingsService().get();
     const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
     if (!resumeFileId) {
       throw new Error('Add a Google Doc Resume ID in Settings before running a job search workflow.');
     }
-    const { data, error } = await supabase.functions.invoke('workflow-run', { body: { workflowId: id } });
+    const body: Record<string, unknown> = { workflowId: id };
+    if (options?.jobId) body.jobId = options.jobId;
+    const { data, error } = await supabase.functions.invoke('workflow-run', { body });
     if (error) throw error;
+    if (data?.error) throw new Error(String(data.error));
     const runs = await this.listRuns();
     const run = runs.find((r) => r.id === data?.runId);
     if (!run) {
@@ -1876,6 +1883,7 @@ export class BootstrapService {
     if (!user) return;
 
     await this.workflow.ensureDefaultPipeline();
+    await this.workflow.ensureTailorPipeline();
     await this.seedCareerCorpus(user.id);
     try {
       await supabase.functions.invoke('resume-actions', { body: { mode: 'repair_sync' } });

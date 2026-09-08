@@ -34,6 +34,19 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
   ] as SeedNode[],
 };
 
+/** Built-in single-job tailoring — auto-provisioned on login; started from Job Discovery */
+export const DEFAULT_RESUME_TAILOR_WORKFLOW = {
+  name: 'Resume Tailoring',
+  description: 'ATS optimize an existing job → LaTeX PDF → Storage (no scrape)',
+  nodes: [
+    { type: 'supabase', name: 'Load Job', x: 0, y: 200, config: { action: 'load_job' } },
+    { type: 'gemini', name: 'ATS Optimizer', x: 200, y: 200, config: {} },
+    { type: 'function', name: 'Build LaTeX', x: 400, y: 200, config: { builtin: 'build_latex' } },
+    { type: 'pdf', name: 'Compile PDF', x: 600, y: 200, config: {} },
+    { type: 'storage', name: 'Upload to Storage', x: 800, y: 200, config: {} },
+  ] as SeedNode[],
+};
+
 /** Edge definitions as source/target node indices */
 export function buildSeedEdges(_nodeIds: string[]): { source: number; target: number; label?: string }[] {
   return [
@@ -54,5 +67,14 @@ export function buildSeedEdges(_nodeIds: string[]): { source: number; target: nu
     { source: 13, target: 14 },
     { source: 14, target: 15 },
     { source: 15, target: 16 },
+  ];
+}
+
+export function buildTailorSeedEdges(): { source: number; target: number }[] {
+  return [
+    { source: 0, target: 1 },
+    { source: 1, target: 2 },
+    { source: 2, target: 3 },
+    { source: 3, target: 4 },
   ];
 }

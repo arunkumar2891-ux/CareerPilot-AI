@@ -1,5 +1,7 @@
 import { createUserClient, createAdminClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
-import { createRun, executeWorkflow } from '../_shared/workflow/executor.ts';
+import { getUserSettings } from '../_shared/credentials.ts';
+import { createRun, executeWorkflow, loadWorkflow } from '../_shared/workflow/executor.ts';
+import { buildJobDiscoveryRunSeed, workflowHasLoadJobNode } from '../_shared/workflow/job-discovery.ts';
 
 async function markRunFailed(runId: string, message: string) {
   const admin = createAdminClient();
@@ -31,7 +33,44 @@ Deno.serve(async (req) => {
     const workflowId = body.workflowId as string;
     if (!workflowId) return jsonResponse({ error: 'workflowId required' }, 400);
 
-    const run = await createRun(workflowId, user.id, { triggerType: 'manual', triggeredBy: user.id });
+    const jobId = String(body.jobId || '').trim();
+    const { nodes } = await loadWorkflow(workflowId, user.id);
+    const requiresJob = workflowHasLoadJobNode(nodes);
+    if (requiresJob && !jobId) {
+      return jsonResponse({ error: 'Resume Tailoring requires a job. Start it from Job Discovery.' }, 400);
+    }
+
+    let triggerType = 'manual';
+    let runContext: Record<string, unknown> | undefined;
+    if (jobId && requiresJob) {
+      const settings = await getUserSettings(user.id);
+      const resumeFileId = String(
+        (settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '',
+      ).trim();
+      if (!resumeFileId) {
+        return jsonResponse({ error: 'Add a Google Doc Resume ID in Settings before generating a tailored resume.' }, 400);
+      }
+
+      const admin = createAdminClient();
+      const { data: job, error: jobError } = await admin
+        .from('jobs')
+        .select('*')
+        .eq('id', jobId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (jobError) throw jobError;
+      if (!job) return jsonResponse({ error: 'Job not found' }, 404);
+
+      const seed = buildJobDiscoveryRunSeed(job as Record<string, unknown>);
+      triggerType = seed.triggerType;
+      runContext = seed.context;
+    }
+
+    const run = await createRun(workflowId, user.id, {
+      triggerType,
+      triggeredBy: user.id,
+      context: runContext,
+    });
     const runId = run.id as string;
 
     const task = executeWorkflow(workflowId, user.id, runId).catch(async (err) => {

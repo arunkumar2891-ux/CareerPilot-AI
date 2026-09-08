@@ -15,14 +15,12 @@ import {
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 import type { createAdminClient } from '../supabase-admin.ts';
 
+export { isJobPipelineStart } from './job-discovery.ts';
+
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 function isAggregateNode(node: WorkflowNodeRow): boolean {
   return node.type === 'function' && node.config.builtin === 'email_summary';
-}
-
-export function isJobPipelineStart(node: WorkflowNodeRow): boolean {
-  return node.type === 'supabase' && (node.config.action as string || 'insert_job') === 'insert_job';
 }
 
 export function buildPerJobPipelineChain(
