@@ -510,16 +510,21 @@ export class ResumeService {
     const { error } = await supabase.from('resumes').update(patch).eq('id', id);
     if (error) throw error;
   }
-  async startResumeTailoring(jobId: string): Promise<{ runId: string }> {
+  async startResumeTailoring(jobIds: string | string[]): Promise<{ runId: string }> {
+    const ids = [...new Set((Array.isArray(jobIds) ? jobIds : [jobIds]).map((id) => id.trim()).filter(Boolean))];
+    if (ids.length === 0) throw new Error('Select at least one job');
     const settings = await new SettingsService().get();
     const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
     if (!resumeFileId) {
       throw new Error('Add a Google Doc Resume ID in Settings before generating a tailored resume.');
     }
-    const { data: job } = await supabase.from('jobs').select('id').eq('id', jobId).maybeSingle();
-    if (!job) throw new Error('Job not found');
+    const { data: jobs } = await supabase.from('jobs').select('id').in('id', ids);
+    if (!jobs?.length || jobs.length !== ids.length) throw new Error('One or more jobs were not found');
     const wf = await new WorkflowService().ensureTailorPipeline();
-    const run = await new ExecutionService().runWorkflow(wf.id, { jobId });
+    const run = await new ExecutionService().runWorkflow(
+      wf.id,
+      ids.length === 1 ? { jobId: ids[0] } : { jobIds: ids },
+    );
     if (!run.id) throw new Error('Resume tailoring failed to start');
     return { runId: run.id };
   }
@@ -1179,14 +1184,15 @@ export class ExecutionService {
       retriedJobs: Number(data?.retriedJobs ?? 0),
     };
   }
-  async runWorkflow(id: string, options?: { jobId?: string }): Promise<Workflow['runs'][number]> {
+  async runWorkflow(id: string, options?: { jobId?: string; jobIds?: string[] }): Promise<Workflow['runs'][number]> {
     const settings = await new SettingsService().get();
     const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
     if (!resumeFileId) {
       throw new Error('Add a Google Doc Resume ID in Settings before running a job search workflow.');
     }
     const body: Record<string, unknown> = { workflowId: id };
-    if (options?.jobId) body.jobId = options.jobId;
+    if (options?.jobIds?.length) body.jobIds = options.jobIds;
+    else if (options?.jobId) body.jobId = options.jobId;
     const { data, error } = await supabase.functions.invoke('workflow-run', { body });
     if (error) throw error;
     if (data?.error) throw new Error(String(data.error));

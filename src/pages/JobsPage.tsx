@@ -18,6 +18,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { services } from '@/services';
@@ -39,6 +40,8 @@ export function JobsPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [repairing, setRepairing] = useState(false);
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
+  const [bulkTailoring, setBulkTailoring] = useState(false);
   const [filters, setFilters] = useState({
     keywords: '',
     location: '',
@@ -108,6 +111,44 @@ export function JobsPage() {
   const kanbanJobs = filtered.filter((job) => knownStatuses.has(job.status));
   const unfiledJobs = filtered.filter((job) => !knownStatuses.has(job.status));
   const kanbanVisibleCount = kanbanJobs.length + unfiledJobs.length;
+
+  const toggleSelected = (id: string) => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedJobIds(new Set(filtered.map((job) => job.id)));
+  };
+
+  const bulkGenerateResumes = async () => {
+    const ids = Array.from(selectedJobIds);
+    if (ids.length === 0 || bulkTailoring) return;
+    if (!hasGoogleDocResumeId(settings)) {
+      toast.error('Add a Google Doc Resume ID in Settings before generating tailored resumes');
+      navigate('/settings?tab=jobsearch');
+      return;
+    }
+    setBulkTailoring(true);
+    try {
+      toast.success(`Starting resume tailoring for ${ids.length} job${ids.length === 1 ? '' : 's'}...`);
+      const { runId } = await services.resume.startResumeTailoring(ids);
+      toast.success('Resume tailoring started — check Executions for progress');
+      await qc.invalidateQueries({ queryKey: ['runs'] });
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
+      setSelectedJobIds(new Set());
+      navigate(`/executions/${runId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Resume generation failed');
+    } finally {
+      setBulkTailoring(false);
+    }
+  };
 
   const repairSync = async () => {
     setRepairing(true);
@@ -268,6 +309,29 @@ export function JobsPage() {
         </CardContent>
       </Card>
 
+      {selectedJobIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 p-3">
+          <span className="text-sm text-muted-foreground">
+            {selectedJobIds.size} selected
+            {filtered.length > selectedJobIds.size && (
+              <Button variant="link" className="h-auto p-0 pl-1 text-sm" onClick={selectAllFiltered}>
+                Select all {filtered.length}
+              </Button>
+            )}
+          </span>
+          <Button
+            size="sm"
+            className="gap-2"
+            disabled={bulkTailoring}
+            onClick={bulkGenerateResumes}
+          >
+            <FileText className="h-4 w-4" />
+            {bulkTailoring ? 'Starting…' : `Generate Resumes (${selectedJobIds.size})`}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds(new Set())}>Clear</Button>
+        </div>
+      )}
+
       {!isLoading && (view === 'kanban' ? (
         filtered.length === 0 ? (
           <Card>
@@ -297,7 +361,13 @@ export function JobsPage() {
                   <ScrollArea className="h-[calc(100vh-340px)]">
                     <div className="space-y-2 pr-2">
                       {colJobs.map((job) => (
-                        <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />
+                        <JobCard
+                          key={job.id}
+                          job={job}
+                          selected={selectedJobIds.has(job.id)}
+                          onToggleSelect={() => toggleSelected(job.id)}
+                          onClick={() => setSelectedJob(job)}
+                        />
                       ))}
                     </div>
                   </ScrollArea>
@@ -313,7 +383,13 @@ export function JobsPage() {
                 <ScrollArea className="h-[calc(100vh-340px)]">
                   <div className="space-y-2 pr-2">
                     {unfiledJobs.map((job) => (
-                      <JobCard key={job.id} job={job} onClick={() => setSelectedJob(job)} />
+                      <JobCard
+                        key={job.id}
+                        job={job}
+                        selected={selectedJobIds.has(job.id)}
+                        onToggleSelect={() => toggleSelected(job.id)}
+                        onClick={() => setSelectedJob(job)}
+                      />
                     ))}
                   </div>
                 </ScrollArea>
@@ -331,6 +407,16 @@ export function JobsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filtered.length > 0 && filtered.every((job) => selectedJobIds.has(job.id))}
+                      onCheckedChange={(checked) => {
+                        if (checked) selectAllFiltered();
+                        else setSelectedJobIds(new Set());
+                      }}
+                      aria-label="Select all visible jobs"
+                    />
+                  </TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Match</TableHead>
@@ -345,7 +431,18 @@ export function JobsPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((job) => (
-                  <TableRow key={job.id} className="cursor-pointer" onClick={() => setSelectedJob(job)}>
+                  <TableRow
+                    key={job.id}
+                    className={`cursor-pointer ${selectedJobIds.has(job.id) ? 'bg-primary/5' : ''}`}
+                    onClick={() => setSelectedJob(job)}
+                  >
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedJobIds.has(job.id)}
+                        onCheckedChange={() => toggleSelected(job.id)}
+                        aria-label={`Select ${job.company} ${job.role}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{job.company}</TableCell>
                     <TableCell>{job.role}</TableCell>
                     <TableCell>
@@ -382,17 +479,35 @@ export function JobsPage() {
   );
 }
 
-function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
+function JobCard({
+  job,
+  selected,
+  onToggleSelect,
+  onClick,
+}: {
+  job: Job;
+  selected: boolean;
+  onToggleSelect: () => void;
+  onClick: () => void;
+}) {
   return (
     <StaggerItem
       as="article"
-      className="glass-card cursor-pointer p-3 transition-colors hover:bg-accent/30 hover:shadow-glow-sm"
+      className={`glass-card cursor-pointer p-3 transition-colors hover:bg-accent/30 hover:shadow-glow-sm ${selected ? 'ring-2 ring-primary' : ''}`}
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{job.role}</p>
-          <p className="truncate text-xs text-muted-foreground">{job.company}</p>
+        <div className="flex min-w-0 items-start gap-2">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Select ${job.company} ${job.role}`}
+          />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{job.role}</p>
+            <p className="truncate text-xs text-muted-foreground">{job.company}</p>
+          </div>
         </div>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
           {job.matchScore}

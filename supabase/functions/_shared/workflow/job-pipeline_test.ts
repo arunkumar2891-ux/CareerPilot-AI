@@ -1,5 +1,6 @@
 import {
   buildJobDiscoveryRunSeed,
+  buildMultiJobDiscoveryRunSeed,
   formatUnknownError,
   isJobPipelineStart,
   jobRowToPipelineItem,
@@ -83,6 +84,37 @@ Deno.test('buildJobDiscoveryRunSeed stores one pending job and job_discovery tri
   }
   if (seed.context.variables.pendingJobItems[0].jobId !== 'job-9') {
     throw new Error('pending item must carry jobId');
+  }
+});
+
+Deno.test('buildMultiJobDiscoveryRunSeed fans out multiple pending jobs in order', () => {
+  const seed = buildMultiJobDiscoveryRunSeed([
+    { id: 'job-a', company: 'Acme', role: 'Engineer', description: 'A' },
+    { id: 'job-b', company: 'Beta', role: 'Architect', description: 'B' },
+  ]);
+  if (seed.triggerType !== 'job_discovery') throw new Error(seed.triggerType);
+  if (seed.context.variables.targetJobId !== 'job-a') {
+    throw new Error(`expected first job as target, got ${seed.context.variables.targetJobId}`);
+  }
+  if (seed.context.variables.pendingJobItems.length !== 2) {
+    throw new Error(`expected 2 pending items, got ${seed.context.variables.pendingJobItems.length}`);
+  }
+  if (seed.context.variables.pendingJobItems[0].jobId !== 'job-a') {
+    throw new Error('first pending item must be job-a');
+  }
+  if (seed.context.variables.pendingJobItems[1].jobId !== 'job-b') {
+    throw new Error('second pending item must be job-b');
+  }
+});
+
+Deno.test('buildMultiJobDiscoveryRunSeed rejects empty job list', () => {
+  try {
+    buildMultiJobDiscoveryRunSeed([]);
+    throw new Error('expected error for empty jobs');
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.includes('At least one job')) {
+      throw err;
+    }
   }
 });
 

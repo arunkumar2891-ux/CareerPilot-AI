@@ -33,7 +33,46 @@ Supabase Edge Functions
 Apify · Gemini (primary) · Groq (fallback) · Resend · Google APIs · LaTeX compiler
 ```
 
-The client uses React Router, TanStack Query, Zustand, Tailwind CSS, and shadcn/ui components. Server-side operations are implemented in TypeScript/Deno Edge Functions, keeping provider keys out of the browser.
+The client uses React Router, TanStack Query, Zustand, Tailwind CSS, shadcn/ui, and Framer Motion. Server-side operations are implemented in TypeScript/Deno Edge Functions, keeping provider keys out of the browser.
+
+## UI and motion system
+
+The dashboard uses a **Mission Control Premium** visual language: restrained cyan accents, tight glow shadows, mono status labels, and orbital loaders — not heavy blur or particle effects. Motion is centralized so pages stay consistent and accessible.
+
+### Design tokens
+
+| Location | Contents |
+| --- | --- |
+| [`src/lib/motion.ts`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/lib/motion.ts) | Shared easing (`EASE_OUT`), durations, page transitions, stagger variants, `useReducedMotion()` |
+| [`src/index.css`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/index.css) | `grid-bg`, `gradient-text`, `status-label`, `glow-border`, `animate-shimmer`, `animate-orbit`, `animate-scan`, `animate-status-pulse` |
+| [`tailwind.config.js`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/tailwind.config.js) | `shadow-glow-sm`, `shadow-glow-primary` |
+
+Primary entrances use opacity + a short `y` translate (~450ms, decelerate easing). `prefers-reduced-motion` and mobile viewports disable orbit/scan animations and page transitions.
+
+### Brand
+
+[`src/components/brand/LogoMark.tsx`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/components/brand/LogoMark.tsx) is a custom SVG (trajectory arc + node). It replaces the generic rocket icon in the sidebar, auth screen, Copilot header, setup guide, and boot loader. Lucide icons remain for navigation and actions.
+
+### Motion kit (`src/components/motion/`)
+
+| Component | Role |
+| --- | --- |
+| `AppLoader` | Full-screen boot loader (orbital rings + cycling status text) — used in `ProtectedRoute` |
+| `PageLoader` | Centered or overlay loading for execution detail and workflow graph |
+| `InlineLoader` | Button/action spinner — replaces raw `Loader2` / `RefreshCw` spinners app-wide |
+| `StaggerList` / `StaggerItem` | Standard list and card entrance choreography |
+| `FadeIn` | Single-element fade-up (page headers, chat bubbles, settings tabs) |
+| `ScanLineBackground` | Subtle HUD scan line over the auth grid |
+| `IconFrame` | Consistent glowing icon container (empty states) |
+| `SkeletonCard` / `SkeletonMetricGrid` / `SkeletonTable` | Shimmer loading placeholders wired to corpus, resumes, jobs, and metrics |
+
+Import from `@/components/motion` or use shared components (`PageHeader`, `MetricCard`, `EmptyState`) that already compose these primitives.
+
+### Where motion is applied
+
+- **Layout:** Sidebar active-link glow bar, Copilot nav pulse ring, topbar command-palette hover glow, notification bell pulse, refined route transitions in `AppLayout`
+- **Shared:** `StatusBadge` glow for running/generating states, `ExecutionGraph` orbital mini-loader on active nodes, `RoleBanksStatusBanner` mono status labels
+- **Pages:** All 15 routed pages use the motion kit for loading states, list entrances, or section fades (Dashboard through Settings, including Auth)
 
 ## Job-search pipeline
 
@@ -84,12 +123,19 @@ This flow requires migration `018_resume_ats_review_chat.sql` and the deployed `
 
 ```text
 src/
-  pages/                       Routed product pages
-  components/                  Layout, shared, resume, execution, and UI components
+  pages/                       Routed product pages (motion kit applied on all 15 routes)
+  components/
+    brand/                     LogoMark SVG
+    motion/                    AppLoader, loaders, stagger, fade, skeletons
+    layout/                    Sidebar, Topbar, CommandPalette
+    shared/                    PageHeader, MetricCard, EmptyState, StatusBadge
+    resume/ execution/ ui/     Feature and shadcn primitives
   services/index.ts            Typed Supabase-facing service layer and bootstrap logic
   content/career-corpus/       Resume source material, role playbooks, and evidence chunks
-  constants/workflow-seed.ts   Default 17-node workflow
-  lib/                         Supabase client and auth helpers
+  constants/workflow-seed.ts   Default workflows (daily pipeline + resume tailoring)
+  lib/
+    motion.ts                  Motion tokens and useReducedMotion
+    supabase.ts                Supabase client and auth helpers
   store/                       Zustand stores
 
 supabase/
@@ -129,7 +175,7 @@ Then run the application:
 ```bash
 npm run dev        # http://localhost:5173
 npm run lint       # ESLint
-npm run typecheck  # TypeScript, no emit
+npm run typecheck  # TypeScript, no emit (run after UI/motion changes)
 npm run build      # sync corpus, type-check, then Vite production build
 npm run preview    # serve the production build
 
@@ -229,6 +275,7 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` on the static host, update 
 
 ## Notes and limits
 
+- UI motion honors `prefers-reduced-motion`; orbital loaders fall back to static rings and page transitions are skipped on mobile.
 - Google Docs and Drive features require a Google Cloud OAuth client with the requested scopes and a connected user account.
 - PDFs depend on the configured LaTeX compiler service.
 - ATS scoring and resume-linked Copilot use the configured AI provider; quality depends on the supplied resume content and should be reviewed before use.

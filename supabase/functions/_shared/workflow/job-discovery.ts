@@ -68,13 +68,28 @@ export function buildJobDiscoveryRunSeed(job: Record<string, unknown>): {
     nodeOutputs: Record<string, unknown>;
   };
 } {
-  const item = jobRowToPipelineItem(job);
+  return buildMultiJobDiscoveryRunSeed([job]);
+}
+
+export function buildMultiJobDiscoveryRunSeed(jobs: Record<string, unknown>[]): {
+  triggerType: 'job_discovery';
+  context: {
+    variables: { targetJobId: string; pendingJobItems: Record<string, unknown>[] };
+    nodeOutputs: Record<string, unknown>;
+  };
+} {
+  const pendingJobItems = jobs
+    .map((job) => jobRowToPipelineItem(job))
+    .filter((item) => String(item.jobId || '').trim());
+  if (pendingJobItems.length === 0) {
+    throw new Error('At least one job is required for resume tailoring');
+  }
   return {
     triggerType: 'job_discovery',
     context: {
       variables: {
-        targetJobId: String(item.jobId),
-        pendingJobItems: [item],
+        targetJobId: String(pendingJobItems[0].jobId),
+        pendingJobItems,
       },
       nodeOutputs: {},
     },

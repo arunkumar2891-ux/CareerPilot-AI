@@ -1,7 +1,7 @@
 import { createUserClient, createAdminClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { getUserSettings } from '../_shared/credentials.ts';
 import { createRun, executeWorkflow, loadWorkflow } from '../_shared/workflow/executor.ts';
-import { buildJobDiscoveryRunSeed, workflowHasLoadJobNode } from '../_shared/workflow/job-discovery.ts';
+import { buildMultiJobDiscoveryRunSeed, workflowHasLoadJobNode } from '../_shared/workflow/job-discovery.ts';
 
 async function markRunFailed(runId: string, message: string) {
   const admin = createAdminClient();
@@ -34,15 +34,20 @@ Deno.serve(async (req) => {
     if (!workflowId) return jsonResponse({ error: 'workflowId required' }, 400);
 
     const jobId = String(body.jobId || '').trim();
+    const rawJobIds = Array.isArray(body.jobIds) ? body.jobIds : [];
+    const jobIds = [...new Set([
+      ...rawJobIds.map((id: unknown) => String(id || '').trim()).filter(Boolean),
+      ...(jobId ? [jobId] : []),
+    ])];
     const { nodes } = await loadWorkflow(workflowId, user.id);
     const requiresJob = workflowHasLoadJobNode(nodes);
-    if (requiresJob && !jobId) {
-      return jsonResponse({ error: 'Resume Tailoring requires a job. Start it from Job Discovery.' }, 400);
+    if (requiresJob && jobIds.length === 0) {
+      return jsonResponse({ error: 'Resume Tailoring requires at least one job. Start it from Job Discovery.' }, 400);
     }
 
     let triggerType = 'manual';
     let runContext: Record<string, unknown> | undefined;
-    if (jobId && requiresJob) {
+    if (jobIds.length > 0 && requiresJob) {
       const settings = await getUserSettings(user.id);
       const resumeFileId = String(
         (settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '',
@@ -52,16 +57,20 @@ Deno.serve(async (req) => {
       }
 
       const admin = createAdminClient();
-      const { data: job, error: jobError } = await admin
+      const { data: jobs, error: jobError } = await admin
         .from('jobs')
         .select('*')
-        .eq('id', jobId)
         .eq('user_id', user.id)
-        .maybeSingle();
+        .in('id', jobIds);
       if (jobError) throw jobError;
-      if (!job) return jsonResponse({ error: 'Job not found' }, 404);
+      if (!jobs?.length) return jsonResponse({ error: 'Job not found' }, 404);
+      if (jobs.length !== jobIds.length) {
+        return jsonResponse({ error: 'One or more selected jobs were not found' }, 404);
+      }
 
-      const seed = buildJobDiscoveryRunSeed(job as Record<string, unknown>);
+      const byId = new Map(jobs.map((row) => [String(row.id), row as Record<string, unknown>]));
+      const orderedJobs = jobIds.map((id) => byId.get(id)).filter(Boolean) as Record<string, unknown>[];
+      const seed = buildMultiJobDiscoveryRunSeed(orderedJobs);
       triggerType = seed.triggerType;
       runContext = seed.context;
     }
