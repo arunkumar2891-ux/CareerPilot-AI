@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { BookOpen, FileText, Clock } from 'lucide-react';
+import { BookOpen, Clock, RefreshCw, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { ResumeEditor } from '@/components/resumes/ResumeEditor';
 import { services } from '@/services';
 import { timeAgo } from '@/utils';
@@ -15,6 +18,7 @@ import { corpusGroup } from '@/utils/resume-classification';
 import { MASTER_RESUME_NAME, TWO_PAGE_RESUME_NAME } from '@/content/career-corpus';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { RoleBanksStatusBanner } from '@/components/RoleBanksStatusBanner';
+import { toast } from 'sonner';
 import type { Resume } from '@/types';
 
 const GROUP_LABELS = {
@@ -30,11 +34,35 @@ export function CorpusPage() {
     queryFn: () => services.resume.list({ kind: 'corpus' }),
   });
   const [selected, setSelected] = useState<Resume | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<'all' | { ids: string[]; label: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const grouped = {
     core: (resumes || []).filter((r) => corpusGroup(r.name) === 'core'),
     'role-bank': (resumes || []).filter((r) => corpusGroup(r.name) === 'role-bank'),
     other: (resumes || []).filter((r) => corpusGroup(r.name) === 'other'),
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const count = deleteTarget === 'all'
+        ? await services.resume.deleteAllCorpusResumes()
+        : await services.resume.deleteCorpusResumes(deleteTarget.ids);
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
+      await qc.invalidateQueries({ queryKey: ['settings'] });
+      const deletedIds = deleteTarget === 'all'
+        ? new Set(resumes?.map((resume) => resume.id) ?? [])
+        : new Set(deleteTarget.ids);
+      if (selected && deletedIds.has(selected.id)) setSelected(null);
+      toast.success(`Deleted ${count} corpus document${count === 1 ? '' : 's'}`);
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete corpus');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -45,6 +73,14 @@ export function CorpusPage() {
         actions={
           <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
             <RoleBanksStatusBanner />
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget('all')}
+              disabled={!resumes?.length || deleting}
+              className="gap-2"
+            >
+              <Trash2 className="h-4 w-4" /> Delete All
+            </Button>
             <Button variant="outline" asChild>
               <Link to="/knowledge">Sync from Google Doc</Link>
             </Button>
@@ -54,7 +90,8 @@ export function CorpusPage() {
 
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="py-4 text-sm text-muted-foreground">
-          These documents power ATS optimization and tailored resumes. Job-specific outputs appear on the{' '}
+          These documents power ATS optimization and tailored resumes. Delete stale banks here, then sync from Google Doc to refresh.
+          Job-specific outputs appear on the{' '}
           <Link to="/resumes" className="font-medium text-primary underline-offset-4 hover:underline">Resumes</Link> page.
           Edit contact details in <Link to="/settings" className="font-medium text-primary underline-offset-4 hover:underline">Settings</Link> to update headers across the corpus.
         </CardContent>
@@ -67,8 +104,13 @@ export function CorpusPage() {
           <CardContent>
             <EmptyState
               icon={BookOpen}
-              title="Corpus seeding"
+              title="Corpus empty"
               description="Master ATS and the 2-page template seed on login. Role banks are generated after you sync a Google Doc Resume ID."
+              action={
+                <Button asChild className="gap-2">
+                  <Link to="/knowledge">Sync from Google Doc</Link>
+                </Button>
+              }
             />
           </CardContent>
         </Card>
@@ -98,7 +140,22 @@ export function CorpusPage() {
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                             <BookOpen className="h-5 w-5 text-primary" />
                           </div>
-                          <Badge variant="secondary" className="capitalize">{r.type}</Badge>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              aria-label={`Delete ${r.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget({ ids: [r.id], label: r.name });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                            <Badge variant="secondary" className="capitalize">{r.type}</Badge>
+                          </div>
                         </div>
                         <p className="mt-3 font-semibold">{r.name}</p>
                         <p className="text-xs text-muted-foreground">
@@ -128,6 +185,30 @@ export function CorpusPage() {
           );
         })
       )}
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteTarget === 'all'
+                ? 'Delete all corpus documents?'
+                : `Delete ${deleteTarget?.label ?? 'this document'}?`}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteTarget === 'all'
+                ? 'This permanently deletes Master ATS, the 2-page template, role banks, and their version history. Job-tailored resumes are kept. Sync from Google Doc afterward to rebuild the corpus.'
+                : 'This permanently deletes this corpus document and its version history. Job-tailored resumes are kept. You can regenerate it by syncing from Google Doc (role banks) or signing in again (core templates).'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting} className="gap-2">
+              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleteTarget === 'all' ? 'Delete all corpus' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ResumeEditor
         resume={selected}

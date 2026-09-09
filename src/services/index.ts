@@ -17,7 +17,7 @@ import {
   applyContactOverlay,
   replaceEducationPlaceholders,
 } from '@/content/career-corpus';
-import { isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import { corpusGroup, isCorpusResume, isJobResume } from '@/utils/resume-classification';
 import { PROVIDER_FREE_TIER_MONTHLY_TOKENS } from '@/constants/ai-usage';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
@@ -646,6 +646,69 @@ export class ResumeService {
   async deleteAllJobResumes(): Promise<number> {
     const jobResumes = await this.list({ kind: 'job' });
     return this.deleteJobResumes(jobResumes.map((resume) => resume.id));
+  }
+  async deleteCorpusResumes(ids: string[]): Promise<number> {
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    if (uniqueIds.length === 0) return 0;
+
+    const userId = await requireUserId();
+    const corpusResumes = (await this.list({ kind: 'corpus' })).filter((resume) => uniqueIds.includes(resume.id));
+    if (corpusResumes.length === 0) return 0;
+
+    const ownedIds = corpusResumes.map((resume) => resume.id);
+
+    const { data: versions, error: versionListError } = await supabase
+      .from('resume_versions')
+      .select('id')
+      .in('resume_id', ownedIds)
+      .eq('user_id', userId);
+    if (versionListError) throw versionListError;
+
+    const versionIds = (versions || []).map((row) => String(row.id));
+    for (const batch of chunkArray(versionIds, 50)) {
+      const { error } = await supabase
+        .from('applications')
+        .update({ resume_version_id: null })
+        .eq('user_id', userId)
+        .in('resume_version_id', batch);
+      if (error) throw error;
+    }
+
+    for (const batch of chunkArray(ownedIds, 50)) {
+      const { error } = await supabase
+        .from('resume_versions')
+        .delete()
+        .in('resume_id', batch)
+        .eq('user_id', userId);
+      if (error) throw error;
+
+      const { error: resumeError } = await supabase
+        .from('resumes')
+        .delete()
+        .in('id', batch)
+        .eq('user_id', userId);
+      if (resumeError) throw resumeError;
+    }
+
+    const remaining = await this.list({ kind: 'corpus' });
+    if (!remaining.some((resume) => corpusGroup(resume.name) === 'role-bank')) {
+      const settings = await new SettingsService().get();
+      const previousJobSearch = (settings.jobSearch as Record<string, unknown> | undefined) || {};
+      await new SettingsService().update({
+        jobSearch: {
+          ...previousJobSearch,
+          roleBanksStatus: '',
+          roleBanksGeneratedAt: '',
+          roleBanksError: '',
+        },
+      });
+    }
+
+    return ownedIds.length;
+  }
+  async deleteAllCorpusResumes(): Promise<number> {
+    const corpusResumes = await this.list({ kind: 'corpus' });
+    return this.deleteCorpusResumes(corpusResumes.map((resume) => resume.id));
   }
   async repairSync(): Promise<{
     resumesLinkedToJobs: number;
