@@ -56,6 +56,10 @@ export default {
           5: 'hsl(var(--chart-5))',
         },
       },
+      boxShadow: {
+        'glow-sm': '0 0 8px -2px hsl(var(--primary) / 0.4)',
+        'glow-primary': '0 0 16px -4px hsl(var(--primary) / 0.5), 0 0 0 1px hsl(var(--primary) / 0.2)',
+      },
       keyframes: {
         'accordion-down': {
           from: {

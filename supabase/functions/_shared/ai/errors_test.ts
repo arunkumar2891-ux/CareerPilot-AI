@@ -178,6 +178,42 @@ B.Tech in Information Technology`;
   if (!result.ok) throw new Error(`multi-source summary should validate: ${result.reason}`);
 });
 
+Deno.test('validateResumeOutput accepts experience bullets paraphrased from the 2-page template', () => {
+  const masterCatalog = `PALO ALTO NETWORKS
+- Designed BigQuery schema using MERGE statements ensuring idempotent operations, preventing duplicate records, and enabling replay-safe processing for critical business data`;
+  const twoPageTemplate = `PROJECT: PC to CC Migration
+- Designed MERGE statement pattern for idempotent operations; specified changes across 5 pipelines (7 removed, 13 added, 8 modified snaps) with validation scripts`;
+  const source = `${masterCatalog}\n${twoPageTemplate}`;
+  const output = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Integration Architect with cloud migration experience.
+
+SKILLS
+BigQuery, SnapLogic
+
+PROFESSIONAL EXPERIENCE
+PALO ALTO NETWORKS
+- Designed MERGE statement pattern for idempotent operations and specified changes across 5 pipelines with automated validation scripts.
+
+EDUCATION
+B.Tech in Information Technology`;
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    allowParaphrase: true,
+    identity: {
+      name: 'Jane Doe',
+      contact: 'Email: jane@example.com',
+      education: 'B.Tech in Information Technology',
+    },
+  });
+  if (!result.ok) throw new Error(`expected 2-page template bullet to validate: ${result.reason}`);
+});
+
 Deno.test('normalizeResumeLine accepts middle-dot bullets and labeled contact values', () => {
   const allowed = buildAllowedResumeLines(`Email: jane@example.com
 ·     Shipped APIs used by millions of users.`);

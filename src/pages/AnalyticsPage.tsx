@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { MetricCard } from '@/components/shared/MetricCard';
+import { FadeIn, StaggerList } from '@/components/motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { services } from '@/services';
 
@@ -28,14 +29,14 @@ export function AnalyticsPage() {
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader title="Analytics" description="Track your job search progress and pipeline performance" />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StaggerList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total Jobs Found" value={metrics?.jobsProcessed ?? 0} icon={<Briefcase className="h-5 w-5" />} accent="bg-primary/40" />
-        <MetricCard label="Resumes Generated" value={metrics?.applicationsReady ?? 0} icon={<FileCheck className="h-5 w-5" />} delay={0.05} accent="bg-chart-2/40" />
-        <MetricCard label="Applications Sent" value={metrics?.applicationsSubmitted ?? 0} icon={<Send className="h-5 w-5" />} delay={0.1} accent="bg-chart-3/40" />
-        <MetricCard label="Success Rate" value={`${metrics?.successRate ?? 0}%`} icon={<Target className="h-5 w-5" />} delay={0.15} accent="bg-success/40" />
-      </div>
+        <MetricCard label="Resumes Generated" value={metrics?.applicationsReady ?? 0} icon={<FileCheck className="h-5 w-5" />} accent="bg-chart-2/40" />
+        <MetricCard label="Applications Sent" value={metrics?.applicationsSubmitted ?? 0} icon={<Send className="h-5 w-5" />} accent="bg-chart-3/40" />
+        <MetricCard label="Success Rate" value={`${metrics?.successRate ?? 0}%`} icon={<Target className="h-5 w-5" />} accent="bg-success/40" />
+      </StaggerList>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <FadeIn className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -72,8 +73,9 @@ export function AnalyticsPage() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
-      </div>
+      </FadeIn>
 
+      <FadeIn>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Summary</CardTitle>
@@ -103,6 +105,7 @@ export function AnalyticsPage() {
           </div>
         </CardContent>
       </Card>
+      </FadeIn>
     </div>
   );
 }

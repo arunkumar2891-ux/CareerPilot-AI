@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { StaggerItem, StaggerList } from '@/components/motion';
 import {
   Plus, FileText, Building2, Calendar, User, StickyNote,
   Paperclip, ChevronRight, Filter, Inbox,
@@ -66,16 +66,16 @@ export function ApplicationsPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {statusCounts.map((s, i) => (
-          <motion.div key={s.status} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+      <StaggerList className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        {statusCounts.map((s) => (
+          <StaggerItem key={s.status}>
             <Card className="p-3">
-              <p className="text-xs text-muted-foreground capitalize">{s.status}</p>
+              <p className="status-label normal-case">{s.status}</p>
               <p className="mt-1 text-xl font-semibold">{s.count}</p>
             </Card>
-          </motion.div>
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerList>
 
       <Tabs defaultValue="list">
         <TabsList>
@@ -87,8 +87,10 @@ export function ApplicationsPage() {
         <TabsContent value="list" className="space-y-2">
           {(!apps || apps.length === 0) ? (
             <Card><CardContent><EmptyState icon={Inbox} title="No applications yet" description="Add your first application to start tracking your job search progress." /></CardContent></Card>
-          ) : apps.map((app, i) => (
-            <motion.div key={app.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+          ) : (
+          <StaggerList className="space-y-2">
+          {apps.map((app) => (
+            <StaggerItem key={app.id}>
               <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(app)}>
                 <CardContent className="flex items-center gap-4 py-4">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -110,8 +112,10 @@ export function ApplicationsPage() {
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </CardContent>
               </Card>
-            </motion.div>
+            </StaggerItem>
           ))}
+          </StaggerList>
+          )}
         </TabsContent>
 
         <TabsContent value="board" className="overflow-x-auto">

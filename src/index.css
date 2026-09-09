@@ -101,9 +101,17 @@
 
   .grid-bg {
     background-image:
-      linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
-      linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
-    background-size: 32px 32px;
+      linear-gradient(to right, hsl(var(--border) / 0.25) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.25) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .status-label {
+    @apply font-mono text-[10px] font-medium uppercase tracking-widest text-muted-foreground;
+  }
+
+  .glow-border {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.25), 0 0 12px -2px hsl(var(--primary) / 0.35);
   }
 
   .scrollbar-thin {
@@ -137,6 +145,51 @@
 }
 .pulse-ring {
   animation: pulse-ring 2s infinite;
+}
+
+@keyframes orbit {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-orbit {
+  animation: orbit 1.4s linear infinite;
+}
+
+@keyframes orbit-reverse {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+.animate-orbit-reverse {
+  animation: orbit-reverse 2s linear infinite;
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+.animate-scan {
+  animation: scan 6s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.animate-status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-orbit,
+  .animate-orbit-reverse,
+  .animate-scan,
+  .animate-status-pulse,
+  .pulse-ring,
+  .animate-shimmer {
+    animation: none !important;
+  }
 }
 
 @media (max-width: 1023px) {

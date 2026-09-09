@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { LogoMark } from '@/components/brand/LogoMark';
+import { FadeIn, InlineLoader } from '@/components/motion';
 import { services } from '@/services';
 import { uid, timeAgo } from '@/utils';
 import { toast } from 'sonner';
@@ -166,8 +168,10 @@ export function CopilotPage() {
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <Sparkles className="h-5 w-5 shrink-0 text-primary" />
-            <span className="truncate font-medium">AI Copilot</span>
+            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-sm">
+              <LogoMark size={18} />
+            </div>
+            <span className="truncate font-medium gradient-text">AI Copilot</span>
             {activeConversation?.resumeId ? (
               <Badge variant="secondary" className="hidden max-w-48 truncate text-[10px] sm:inline-flex">
                 ATS review: {linkedResume?.name || 'linked resume'}
@@ -186,8 +190,8 @@ export function CopilotPage() {
           <div className="mx-auto max-w-3xl space-y-4 p-4 sm:space-y-6 sm:p-6">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-4 pt-10 text-center sm:pt-20">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-chart-4 shadow-xl shadow-primary/20 sm:h-16 sm:w-16">
-                  <Sparkles className="h-7 w-7 text-primary-foreground sm:h-8 sm:w-8" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-primary sm:h-16 sm:w-16">
+                  <LogoMark size={32} animated />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold sm:text-xl">How can I help your job search?</h2>
@@ -209,7 +213,7 @@ export function CopilotPage() {
             )}
 
             {messages.map((msg) => (
-              <div
+              <FadeIn
                 key={msg.id}
                 className={cn('flex gap-2 sm:gap-3', msg.role === 'user' && 'flex-row-reverse')}
               >
@@ -227,7 +231,7 @@ export function CopilotPage() {
                     </div>
                   )}
                 </div>
-              </div>
+              </FadeIn>
             ))}
           </div>
         </ScrollArea>
@@ -245,7 +249,7 @@ export function CopilotPage() {
                 className="min-h-[2.5rem] border-0 bg-transparent shadow-none focus-visible:ring-0"
               />
               <Button onClick={send} disabled={streaming} size="icon" className="shrink-0" aria-label="Send message">
-                <Send className="h-4 w-4" />
+                {streaming ? <InlineLoader /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
             <p className="mt-2 hidden text-center text-[10px] text-muted-foreground sm:block">Press Enter to send · Shift+Enter for new line</p>

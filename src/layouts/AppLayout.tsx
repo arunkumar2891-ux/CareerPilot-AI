@@ -8,14 +8,14 @@ import { CommandPalette } from '@/components/layout/CommandPalette';
 import { RequireGoogleDocGate } from '@/components/RequireGoogleDocGate';
 import { useUIStore } from '@/store';
 import { services } from '@/services';
-import { useMediaQuery } from '@/hooks/use-media-query';
+import { pageTransition, transitionBase, useReducedMotion } from '@/lib/motion';
 
 export function AppLayout() {
   const { commandOpen, setCommandOpen, setMobileNavOpen } = useUIStore();
   const location = useLocation();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const reduceMotion = useMediaQuery('(max-width: 1023px), (prefers-reduced-motion: reduce)');
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     services.bootstrap.ensure()
@@ -62,10 +62,11 @@ export function AppLayout() {
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.2 }}
+                variants={pageTransition}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                transition={transitionBase}
                 className="min-h-full"
               >
                 {pageContent}

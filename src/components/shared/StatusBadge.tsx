@@ -7,12 +7,16 @@ interface StatusBadgeProps {
   className?: string;
 }
 
+const GLOW_STATUSES = new Set(['running', 'generating', 'queued', 'in_progress']);
+
 export function StatusBadge({ status, className }: StatusBadgeProps) {
+  const glow = GLOW_STATUSES.has(status);
   return (
     <span
       className={cn(
         'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize',
         STATUS_COLORS[status] || 'bg-muted text-muted-foreground',
+        glow && 'glow-border animate-status-pulse',
         className
       )}
     >

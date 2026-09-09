@@ -21,6 +21,7 @@ import { AnalyticsPage } from '@/pages/AnalyticsPage';
 import { IntegrationsPage } from '@/pages/IntegrationsPage';
 import { SetupPage } from '@/pages/SetupPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { AppLoader } from '@/components/motion';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, refetchOnWindowFocus: false, retry: 1 } },
@@ -40,14 +41,7 @@ function OAuthReturnRedirect() {
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, initializing } = useAuthStore();
   if (initializing) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading CareerPilot AI...</p>
-        </div>
-      </div>
-    );
+    return <AppLoader />;
   }
   if (!user) return <Navigate to="/auth" replace />;
   return <>{children}</>;

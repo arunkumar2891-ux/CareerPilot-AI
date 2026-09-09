@@ -44,7 +44,7 @@ export function Topbar() {
       <Button
         variant="outline"
         onClick={() => setCommandOpen(true)}
-        className="h-9 min-w-0 flex-1 justify-start gap-2 px-2 text-muted-foreground sm:px-3 lg:max-w-md"
+        className="h-9 min-w-0 flex-1 justify-start gap-2 px-2 text-muted-foreground transition-shadow hover:shadow-glow-sm sm:px-3 lg:max-w-md"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="truncate text-sm">Search...</span>
@@ -67,6 +67,7 @@ export function Topbar() {
               <Bell className="h-4 w-4" />
               {unread > 0 && (
                 <span className="absolute right-1.5 top-1.5 flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-status-pulse rounded-full bg-primary opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                 </span>
               )}

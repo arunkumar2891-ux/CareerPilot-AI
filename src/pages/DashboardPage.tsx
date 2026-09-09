@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { StaggerItem, StaggerList } from '@/components/motion';
 import {
   Briefcase, FileCheck, Send, FileText, Sparkles, Activity,
   TrendingUp, Zap, ArrowRight, Play, Clock, CheckCircle2,
@@ -45,20 +45,19 @@ export function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="Jobs Found Today" value={metrics?.jobsFoundToday ?? 0} icon={<Briefcase className="h-5 w-5" />} trend={12} delay={0} />
-        <MetricCard label="Jobs Processed" value={metrics?.jobsProcessed ?? 0} icon={<Activity className="h-5 w-5" />} trend={8} delay={0.05} accent="bg-chart-2/40" />
-        <MetricCard label="Applications Ready" value={metrics?.applicationsReady ?? 0} icon={<FileCheck className="h-5 w-5" />} trend={5} delay={0.1} accent="bg-warning/40" />
-        <MetricCard label="Applications Submitted" value={metrics?.applicationsSubmitted ?? 0} icon={<Send className="h-5 w-5" />} trend={15} delay={0.15} accent="bg-chart-4/40" />
-        <MetricCard label="Resume Versions" value={metrics?.resumeVersions ?? 0} icon={<FileText className="h-5 w-5" />} trend={-3} delay={0.2} accent="bg-chart-5/40" />
+      <StaggerList className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+        <MetricCard label="Jobs Found Today" value={metrics?.jobsFoundToday ?? 0} icon={<Briefcase className="h-5 w-5" />} trend={12} />
+        <MetricCard label="Jobs Processed" value={metrics?.jobsProcessed ?? 0} icon={<Activity className="h-5 w-5" />} trend={8} accent="bg-chart-2/40" />
+        <MetricCard label="Applications Ready" value={metrics?.applicationsReady ?? 0} icon={<FileCheck className="h-5 w-5" />} trend={5} accent="bg-warning/40" />
+        <MetricCard label="Applications Submitted" value={metrics?.applicationsSubmitted ?? 0} icon={<Send className="h-5 w-5" />} trend={15} accent="bg-chart-4/40" />
+        <MetricCard label="Resume Versions" value={metrics?.resumeVersions ?? 0} icon={<FileText className="h-5 w-5" />} trend={-3} accent="bg-chart-5/40" />
         <MetricCard
           label="AI Tokens (month)"
           value={formatNumber(metrics?.aiTokensUsed ?? 0)}
           icon={<Sparkles className="h-5 w-5" />}
-          delay={0.25}
           accent="bg-primary/40"
         />
-      </div>
+      </StaggerList>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-2">
@@ -253,32 +252,31 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StaggerList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.05}>
         {[
           { label: 'New Resume', icon: FileText, path: '/resumes' },
           { label: 'Search Jobs', icon: Briefcase, path: '/jobs' },
           { label: 'AI Copilot', icon: Sparkles, path: '/copilot' },
           { label: 'Executions', icon: Activity, path: '/executions' },
-        ].map((q, i) => (
-          <motion.button
-            key={q.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 + i * 0.05 }}
-            onClick={() => navigate(q.path)}
-            className="glass-card flex items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <q.icon className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm font-medium">{q.label}</p>
-              <p className="text-xs text-muted-foreground">Quick action</p>
-            </div>
-            <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
-          </motion.button>
+        ].map((q) => (
+          <StaggerItem key={q.label}>
+            <button
+              type="button"
+              onClick={() => navigate(q.path)}
+              className="glass-card flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30 hover:shadow-glow-sm"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-glow-sm">
+                <q.icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">{q.label}</p>
+                <p className="text-xs text-muted-foreground">Quick action</p>
+              </div>
+              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+            </button>
+          </StaggerItem>
         ))}
-      </div>
+      </StaggerList>
     </div>
   );
 }

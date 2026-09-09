@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, RefreshCw, Loader2, StopCircle, RotateCcw, Play,
+  ArrowLeft, RefreshCw, StopCircle, RotateCcw, Play,
 } from 'lucide-react';
+import { InlineLoader, PageLoader } from '@/components/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
@@ -125,11 +126,7 @@ export function ExecutionDetailPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary motion-reduce:animate-none" />
-      </div>
-    );
+    return <PageLoader label="Loading execution…" />;
   }
 
   if (error || !run) {
@@ -165,13 +162,13 @@ export function ExecutionDetailPage() {
             </Button>
             {isActive && (
               <Button variant="outline" size="sm" className="gap-1.5" disabled={stopping} onClick={handleStop}>
-                {stopping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <StopCircle className="h-3.5 w-3.5" />}
+                {stopping ? <InlineLoader /> : <StopCircle className="h-3.5 w-3.5" />}
                 Stop
               </Button>
             )}
             {canRetry && (
               <Button size="sm" className="gap-1.5" disabled={retrying} onClick={handleRetry}>
-                {retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                {retrying ? <InlineLoader /> : <RotateCcw className="h-3.5 w-3.5" />}
                 Retry Failed Jobs
               </Button>
             )}
@@ -217,8 +214,8 @@ export function ExecutionDetailPage() {
           Execution graph
         </p>
         {workflowLoading ? (
-          <div className="flex items-center justify-center rounded-lg border border-border bg-card py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" />
+          <div className="relative rounded-lg border border-border bg-card py-12">
+            <PageLoader label="Loading workflow graph…" />
           </div>
         ) : graph ? (
           <ExecutionGraph graph={graph} onSelectNode={setSelectedNode} />

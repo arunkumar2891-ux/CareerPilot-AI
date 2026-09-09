@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { StaggerItem, StaggerList } from '@/components/motion';
 import { CheckCircle2, XCircle, RefreshCw, Settings, Plus, Webhook, Cloud, type LucideIcon } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -137,13 +137,13 @@ export function IntegrationsPage() {
         description="Only two connections exist: Apify for job scrape, Google Drive for optional PDF upload. Gemini and email use Edge Function secrets, not this page."
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {CORE.map((core, i) => {
+      <StaggerList className="grid gap-4 md:grid-cols-2">
+        {CORE.map((core) => {
           const int = byName.get(core.name);
           const connected = int?.status === 'connected';
           const Icon = core.icon;
           return (
-            <motion.div key={core.name} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+            <StaggerItem key={core.name}>
               <Card className={int ? 'cursor-pointer transition-colors hover:bg-accent/30' : ''} onClick={() => int && setSelected(int)}>
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between">
@@ -173,10 +173,10 @@ export function IntegrationsPage() {
                   </div>
                 </CardContent>
               </Card>
-            </motion.div>
+            </StaggerItem>
           );
         })}
-      </div>
+      </StaggerList>
 
       <Dialog open={showApify} onOpenChange={setShowApify}>
         <DialogContent>

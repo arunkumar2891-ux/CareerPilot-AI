@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import {
   Clock, CheckCircle2, XCircle, AlertCircle, Activity,
-  ChevronRight, Inbox, Loader2, Trash2, RefreshCw, StopCircle,
+  ChevronRight, Inbox, Trash2, StopCircle,
 } from 'lucide-react';
+import { InlineLoader, StaggerItem, StaggerList } from '@/components/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -147,7 +147,7 @@ export function ExecutionsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowClearConfirm(false)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={deleteAllRuns} disabled={deleting} className="gap-2">
-              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleting ? <InlineLoader /> : <Trash2 className="h-4 w-4" />}
               Delete all
             </Button>
           </DialogFooter>
@@ -170,7 +170,7 @@ export function ExecutionsPage() {
               disabled={deleting || !deleteTargetId}
               className="gap-2"
             >
-              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleting ? <InlineLoader /> : <Trash2 className="h-4 w-4" />}
               Delete
             </Button>
           </DialogFooter>
@@ -186,15 +186,17 @@ export function ExecutionsPage() {
       <div className="space-y-2">
         {allRuns.length === 0 ? (
           <Card><CardContent><EmptyState icon={Inbox} title="No executions yet" description="Workflow runs will appear here once you execute them." /></CardContent></Card>
-        ) : allRuns.map((run, i) => (
-          <motion.div key={run.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
+        ) : (
+        <StaggerList className="space-y-2">
+        {allRuns.map((run) => (
+          <StaggerItem key={run.id}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => navigate(`/executions/${run.id}`)}>
               <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                 <div className="flex min-w-0 items-start gap-3 sm:flex-1 sm:items-center">
                 {run.status === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success sm:mt-0" />
                   : run.status === 'failed' ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive sm:mt-0" />
                   : run.status === 'cancelled' ? <StopCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning sm:mt-0" />
-                  : isActiveRun(run.status) ? <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary sm:mt-0" />
+                  : isActiveRun(run.status) ? <InlineLoader className="mt-0.5 shrink-0 sm:mt-0" />
                   : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground sm:mt-0" />}
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -223,7 +225,7 @@ export function ExecutionsPage() {
                     aria-label="Stop execution"
                   >
                     {stoppingRunId === run.id
-                      ? <RefreshCw className="h-4 w-4 animate-spin" />
+                      ? <InlineLoader />
                       : <StopCircle className="h-4 w-4 text-warning" />}
                   </Button>
                 )}
@@ -244,8 +246,10 @@ export function ExecutionsPage() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </StaggerItem>
         ))}
+        </StaggerList>
+        )}
       </div>
     </div>
   );

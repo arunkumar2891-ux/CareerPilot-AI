@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, ChevronDown, ExternalLink, Rocket } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LogoMark } from '@/components/brand/LogoMark';
+import { transitionFast } from '@/lib/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -133,7 +135,7 @@ function StepAccordion({ step, index }: { step: SetupStep; index: number }) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            transition={transitionFast}
             className="overflow-hidden"
           >
             <div className="space-y-3 px-6 pb-5 pl-[60px]">
@@ -182,7 +184,7 @@ export function SetupPage() {
 
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <Rocket className="h-4 w-4 text-primary" />
+          <LogoMark size={16} className="text-primary" />
           <span className="text-sm font-semibold">Your Account ({accountDone}/{accountDone})</span>
         </div>
         <div className="flex items-center gap-3">

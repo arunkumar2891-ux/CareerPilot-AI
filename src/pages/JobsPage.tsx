@@ -3,8 +3,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Briefcase, MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
-  Table as TableIcon, Zap, RefreshCw, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2,
+  Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2,
 } from 'lucide-react';
+import { FadeIn, InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
+import { transitionFast } from '@/lib/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -154,7 +156,7 @@ export function JobsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowClearConfirm(false)} disabled={clearing}>Cancel</Button>
             <Button variant="destructive" onClick={clearAllJobs} disabled={clearing} className="gap-2">
-              {clearing ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {clearing ? <InlineLoader /> : <Trash2 className="h-4 w-4" />}
               Delete all jobs
             </Button>
           </DialogFooter>
@@ -169,7 +171,9 @@ export function JobsPage() {
         </Card>
       )}
 
-      {!isLoading && jobs && jobs.length > 0 && (
+      {isLoading ? (
+        <SkeletonCard count={6} columns={3} />
+      ) : jobs && jobs.length > 0 && (
         <p className="text-sm text-muted-foreground">
           Showing {filtered.length} of {jobs.length} jobs
           {view === 'kanban' && kanbanVisibleCount < filtered.length && (
@@ -227,7 +231,7 @@ export function JobsPage() {
           </div>
 
           {showFilters && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={transitionFast} className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5">
                 <Label>Keywords</Label>
                 <Input placeholder="React, Senior, Frontend" value={filters.keywords} onChange={(e) => setFilters({ ...filters, keywords: e.target.value })} />
@@ -264,7 +268,7 @@ export function JobsPage() {
         </CardContent>
       </Card>
 
-      {view === 'kanban' ? (
+      {!isLoading && (view === 'kanban' ? (
         filtered.length === 0 ? (
           <Card>
             <CardContent>
@@ -371,7 +375,7 @@ export function JobsPage() {
             </Table>
           )}
         </Card>
-      )}
+      ))}
 
       <JobDetailDialog job={selectedJob} onClose={() => setSelectedJob(null)} />
     </div>
@@ -380,11 +384,10 @@ export function JobsPage() {
 
 function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
+    <StaggerItem
+      as="article"
+      className="glass-card cursor-pointer p-3 transition-colors hover:bg-accent/30 hover:shadow-glow-sm"
       onClick={onClick}
-      className="glass-card cursor-pointer p-3 transition-colors hover:bg-accent/30"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -420,7 +423,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
           <Badge variant="secondary" className="text-[10px]">Resume missing</Badge>
         )}
       </div>
-    </motion.div>
+    </StaggerItem>
   );
 }
 

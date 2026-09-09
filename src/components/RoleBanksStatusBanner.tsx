@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { InlineLoader } from '@/components/motion';
 import { services } from '@/services';
 
 export function RoleBanksStatusBanner() {
@@ -29,8 +29,8 @@ export function RoleBanksStatusBanner() {
   if (status === 'generating') {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Role banks: generating from Master ATS…
+        <InlineLoader />
+        <span className="status-label normal-case tracking-wide">Role banks: generating from Master ATS…</span>
       </p>
     );
   }

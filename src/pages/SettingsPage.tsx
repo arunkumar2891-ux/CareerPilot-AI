@@ -5,6 +5,7 @@ import {
   User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { FadeIn } from '@/components/motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -171,6 +172,7 @@ export function SettingsPage() {
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader title="Settings" description="Manage your account, preferences, and configuration" />
 
+      <FadeIn>
       <Tabs
         value={settingsTab}
         onValueChange={(value) => {
@@ -392,6 +394,7 @@ export function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      </FadeIn>
     </div>
   );
 }

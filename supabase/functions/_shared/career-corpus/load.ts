@@ -148,12 +148,15 @@ export async function loadCareerCorpus(
   const bulletCatalog = formatBulletCatalogBlock(priorityLines.length ? priorityLines : catalog.slice(0, 40));
   const retrievedEvidence = formatRetrievedEvidenceBlock(evidenceMatches);
   const rerankedSelection = formatRerankedSelection(rerankedBulletIds);
+  // Grounding must include the 2-page template — the model is instructed to use it as
+  // structure/length budget and may copy bullets that are not verbatim in the Master catalog.
   const groundingSource = buildCatalogGroundingSource(catalog, [
     contactBlock,
     mandatorySections.skills,
     mandatorySections.education,
     mandatorySections.certification,
     selectedPlaybookInstructions,
+    twoPageTemplate,
   ]);
 
   return {

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import {
-  CheckCircle2, XCircle, Clock, Loader2, AlertCircle, StopCircle, ChevronDown, ChevronRight,
+  CheckCircle2, XCircle, Clock, AlertCircle, StopCircle, ChevronDown, ChevronRight,
 } from 'lucide-react';
+import { InlineLoader } from '@/components/motion';
 import { cn } from '@/lib/utils';
 import type { GraphNodeView, JobBranchView, ExecutionGraphView } from '@/utils/execution-graph';
 import type { WorkflowRunStatus } from '@/types';
@@ -12,7 +13,7 @@ function StatusIcon({ status }: { status: WorkflowRunStatus | 'pending' }) {
   if (status === 'failed') return <XCircle className="h-3 w-3 text-destructive shrink-0" />;
   if (status === 'cancelled') return <StopCircle className="h-3 w-3 text-warning shrink-0" />;
   if (status === 'running' || status === 'queued') {
-    return <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0 motion-reduce:animate-none" />;
+    return <InlineLoader className="!h-3 !w-3 text-primary shrink-0" />;
   }
   if (status === 'skipped') return <AlertCircle className="h-3 w-3 text-muted-foreground shrink-0" />;
   if (status === 'waiting') return <Clock className="h-3 w-3 text-chart-4 shrink-0" />;
@@ -22,7 +23,7 @@ function StatusIcon({ status }: { status: WorkflowRunStatus | 'pending' }) {
 const statusBorder: Record<string, string> = {
   success: 'border-success/60 bg-success/5',
   failed: 'border-destructive/70 bg-destructive/5',
-  running: 'border-primary/60 bg-primary/5',
+  running: 'border-primary/60 bg-primary/5 glow-border animate-status-pulse',
   queued: 'border-primary/40 bg-primary/5',
   cancelled: 'border-warning/60 bg-warning/5',
   skipped: 'border-muted-foreground/30 bg-muted/30',

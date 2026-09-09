@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import {
   Plus, FileText, GitCompare,
-  Clock, Sparkles, FileX, Cloud, CloudUpload, Trash2, RefreshCw,
+  Clock, Sparkles, FileX, Cloud, CloudUpload, Trash2,
 } from 'lucide-react';
+import { InlineLoader, SkeletonCard, StaggerItem, StaggerList } from '@/components/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -201,7 +201,7 @@ export function ResumesPage() {
             </div>
           )}
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading resumes…</p>
+            <SkeletonCard count={6} columns={3} />
           ) : !resumes || resumes.length === 0 ? (
             <Card>
               <CardContent>
@@ -218,9 +218,9 @@ export function ResumesPage() {
               </CardContent>
             </Card>
           ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {resumes.map((r, i) => (
-              <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {resumes.map((r) => (
+              <StaggerItem key={r.id}>
                 <Card
                   className={`cursor-pointer transition-colors hover:bg-accent/30 ${selectedIds.has(r.id) ? 'ring-2 ring-primary' : ''}`}
                   onClick={() => setSelected(r)}
@@ -279,9 +279,9 @@ export function ResumesPage() {
                     </div>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerList>
           )}
         </TabsContent>
 
@@ -363,7 +363,7 @@ export function ResumesPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={deleting} className="gap-2">
-              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleting ? <InlineLoader /> : <Trash2 className="h-4 w-4" />}
               {deleteTarget === 'all' ? 'Delete all job resumes' : 'Delete'}
             </Button>
           </DialogFooter>

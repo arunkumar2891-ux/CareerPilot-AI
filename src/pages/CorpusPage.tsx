@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { BookOpen, Clock, RefreshCw, Trash2 } from 'lucide-react';
+import { BookOpen, Clock, Trash2 } from 'lucide-react';
+import { InlineLoader, SkeletonCard, StaggerItem, StaggerList } from '@/components/motion';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
@@ -98,7 +98,7 @@ export function CorpusPage() {
       </Card>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading corpus…</p>
+        <SkeletonCard count={6} columns={3} />
       ) : !resumes?.length ? (
         <Card>
           <CardContent>
@@ -123,14 +123,9 @@ export function CorpusPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 {GROUP_LABELS[groupKey]}
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {items.map((r, i) => (
-                  <motion.div
-                    key={r.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                  >
+              <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {items.map((r) => (
+                  <StaggerItem key={r.id}>
                     <Card
                       className="cursor-pointer transition-colors hover:bg-accent/30"
                       onClick={() => setSelected(r)}
@@ -178,9 +173,9 @@ export function CorpusPage() {
                         </div>
                       </CardContent>
                     </Card>
-                  </motion.div>
+                  </StaggerItem>
                 ))}
-              </div>
+              </StaggerList>
             </section>
           );
         })
@@ -203,7 +198,7 @@ export function CorpusPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={confirmDelete} disabled={deleting} className="gap-2">
-              {deleting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleting ? <InlineLoader /> : <Trash2 className="h-4 w-4" />}
               {deleteTarget === 'all' ? 'Delete all corpus' : 'Delete'}
             </Button>
           </DialogFooter>

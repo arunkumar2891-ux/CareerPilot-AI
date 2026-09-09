@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
 import {
   BookOpen, Search, FileText, Database,
-  Layers, SearchX, RefreshCw, CloudDownload,
+  Layers, SearchX, CloudDownload,
 } from 'lucide-react';
+import { FadeIn, InlineLoader, StaggerItem, StaggerList } from '@/components/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -105,7 +105,10 @@ export function KnowledgeBasePage() {
                     {(collections || []).map((c) => <SelectItem key={c.collection} value={c.collection}>{c.collection}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button onClick={search} disabled={searching} className="flex-1 gap-2 sm:flex-none"><Search className="h-4 w-4" /> {searching ? 'Searching...' : 'Search'}</Button>
+                <Button onClick={search} disabled={searching} className="flex-1 gap-2 sm:flex-none">
+                  {searching ? <InlineLoader /> : <Search className="h-4 w-4" />}
+                  {searching ? 'Searching…' : 'Search'}
+                </Button>
                 </div>
               </div>
             </CardContent>
@@ -115,8 +118,10 @@ export function KnowledgeBasePage() {
             <div className="space-y-3">
               {results.length === 0 ? (
                 <Card><CardContent><EmptyState icon={SearchX} title="No results found" description="Try a different search query or wait for the career corpus to seed on login." /></CardContent></Card>
-              ) : results.map((r, i) => (
-                <motion.div key={`${r.chunk.slice(0, 24)}-${i}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+              ) : (
+              <StaggerList className="space-y-3">
+              {results.map((r, i) => (
+                <StaggerItem key={`${r.chunk.slice(0, 24)}-${i}`}>
                   <Card>
                     <CardContent className="pt-6">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -127,8 +132,10 @@ export function KnowledgeBasePage() {
                       <p className="text-sm leading-relaxed">{r.chunk}</p>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </StaggerItem>
               ))}
+              </StaggerList>
+              )}
             </div>
           )}
         </TabsContent>
@@ -137,9 +144,9 @@ export function KnowledgeBasePage() {
           {(!collections || collections.length === 0) ? (
             <Card><CardContent><EmptyState icon={BookOpen} title="Corpus seeding" description="Sign in and wait a moment — evidence chunks seed automatically from your Master ATS." /></CardContent></Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {collections.map((c, i) => (
-                <motion.div key={c.collection} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+            <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {collections.map((c) => (
+                <StaggerItem key={c.collection}>
                   <Card>
                     <CardContent className="pt-6">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -149,9 +156,9 @@ export function KnowledgeBasePage() {
                       <p className="text-xs text-muted-foreground">{c.count} evidence chunks</p>
                     </CardContent>
                   </Card>
-                </motion.div>
+                </StaggerItem>
               ))}
-            </div>
+            </StaggerList>
           )}
         </TabsContent>
 
@@ -182,14 +189,14 @@ export function KnowledgeBasePage() {
                   disabled={!googleDocId.trim() || syncMutation.isPending}
                   className="gap-2"
                 >
-                  {syncMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4" />}
-                  {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
+                  {syncMutation.isPending ? <InlineLoader /> : <CloudDownload className="h-4 w-4" />}
+                  {syncMutation.isPending ? 'Syncing…' : 'Sync Now'}
                 </Button>
               </div>
               <RoleBanksStatusBanner />
 
               {syncMutation.isSuccess && syncMutation.data && (
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-md border border-primary/30 bg-primary/5 p-4">
+                <FadeIn className="rounded-md border border-primary/30 bg-primary/5 p-4 glow-border">
                   <p className="text-sm font-medium text-primary">Sync Complete</p>
                   <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                     <li>Chunks extracted from doc: <strong>{syncMutation.data.chunksExtracted}</strong></li>
@@ -198,7 +205,7 @@ export function KnowledgeBasePage() {
                     <li>Master ATS resume content: <strong>{syncMutation.data.resumeUpdated ? 'Updated' : 'Unchanged'}</strong></li>
                     <li>Role banks: <strong>{syncMutation.data.roleBanksScheduled ? 'Generating in background' : 'Not scheduled'}</strong></li>
                   </ul>
-                </motion.div>
+                </FadeIn>
               )}
             </CardContent>
           </Card>

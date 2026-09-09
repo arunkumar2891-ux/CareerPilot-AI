@@ -1,5 +1,6 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Rocket, ChevronLeft, Settings, LogOut } from 'lucide-react';
+import { ChevronLeft, Settings, LogOut } from 'lucide-react';
+import { LogoMark } from '@/components/brand/LogoMark';
 import { NAV_ITEMS } from '@/constants';
 import { useUIStore, useAuthStore } from '@/store';
 import { cn } from '@/lib/utils';
@@ -39,12 +40,12 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
   return (
     <>
       <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-chart-4 shadow-lg shadow-primary/20">
-          <Rocket className="h-5 w-5 text-primary-foreground" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-sm">
+          <LogoMark size={20} />
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <p className="text-sm font-semibold leading-tight">CareerPilot</p>
+            <p className="text-sm font-semibold leading-tight gradient-text">CareerPilot</p>
             <div className="flex items-center gap-1.5">
               <p className="truncate text-xs text-muted-foreground">AI Job Search</p>
               <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px] font-medium leading-none">
@@ -66,6 +67,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
             <div className="space-y-0.5">
               {NAV_ITEMS.filter((i) => i.group === group).map((item) => {
                 const active = location.pathname === item.path;
+                const isAiRoute = item.path === '/copilot';
                 const Icon = item.icon;
                 return (
                   <NavLink
@@ -75,11 +77,14 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                     className={cn(
                       'relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                       active
-                        ? 'bg-primary/10 text-primary'
+                        ? 'bg-primary/10 text-primary shadow-glow-sm'
                         : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                     )}
                   >
-                    <Icon className="relative h-4 w-4 shrink-0" />
+                    {active && (
+                      <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
+                    )}
+                    <Icon className={cn('relative h-4 w-4 shrink-0', isAiRoute && active && 'pulse-ring rounded-full')} />
                     {!collapsed && (
                       <span className="relative flex flex-1 items-center justify-between gap-2">
                         <span>{item.label}</span>
