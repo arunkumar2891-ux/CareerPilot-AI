@@ -1191,8 +1191,12 @@ export class ExecutionService {
       throw new Error('Add a Google Doc Resume ID in Settings before running a job search workflow.');
     }
     const body: Record<string, unknown> = { workflowId: id };
-    if (options?.jobIds?.length) body.jobIds = options.jobIds;
-    else if (options?.jobId) body.jobId = options.jobId;
+    if (options?.jobIds?.length) {
+      body.jobIds = options.jobIds;
+      body.jobId = options.jobIds[0];
+    } else if (options?.jobId) {
+      body.jobId = options.jobId;
+    }
     const { data, error } = await supabase.functions.invoke('workflow-run', { body });
     if (error) throw error;
     if (data?.error) throw new Error(String(data.error));
