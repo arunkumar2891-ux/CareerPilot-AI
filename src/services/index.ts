@@ -1147,7 +1147,95 @@ function mergeNodeResults(
   return Array.from(byNode.values());
 }
 
-function mapRunRow(r: Record<string, unknown>): WorkflowRun {
+const WORKFLOW_RUN_LIST_COLUMNS = [
+  'id',
+  'workflow_id',
+  'status',
+  'started_at',
+  'finished_at',
+  'duration_ms',
+  'current_node_id',
+  'error_message',
+  'created_at',
+  'jobs_total',
+  'jobs_successful',
+  'jobs_failed',
+  'jobs_skipped',
+  'trigger_type',
+].join(',');
+
+const WORKFLOW_RUN_NODES_LIST = 'workflow_run_nodes(node_id,status,duration_ms)';
+const WORKFLOW_JOB_EXECUTIONS_LIST = 'workflow_job_executions(id)';
+const WORKFLOW_JOB_EXECUTIONS_DETAIL = [
+  'workflow_job_executions(id,run_id,job_index,job_id,label,status,attempt,',
+  'failed_node_id,started_at,completed_at,duration_ms,error_type,error_code,error_message)',
+].join('');
+const WORKFLOW_NODE_EXECUTIONS_DETAIL = [
+  'workflow_node_executions(id,run_id,job_execution_id,workflow_node_id,node_name,node_type,',
+  'job_index,attempt,status,started_at,completed_at,duration_ms,error_type,error_code,error_message,output_summary)',
+].join('');
+
+const WORKFLOW_RUN_LIST_SELECT = [
+  WORKFLOW_RUN_LIST_COLUMNS,
+  'workflow:workflows(name)',
+  WORKFLOW_RUN_NODES_LIST,
+  WORKFLOW_JOB_EXECUTIONS_LIST,
+].join(',');
+
+const WORKFLOW_RUN_DETAIL_SELECT = [
+  WORKFLOW_RUN_LIST_COLUMNS,
+  'workflow_snapshot',
+  'workflow:workflows(name)',
+  WORKFLOW_RUN_NODES_LIST,
+  WORKFLOW_JOB_EXECUTIONS_DETAIL,
+  WORKFLOW_NODE_EXECUTIONS_DETAIL,
+].join(',');
+
+const WORKFLOW_LOG_SELECT = [
+  'id',
+  'level',
+  'message',
+  'timestamp',
+  'node_id',
+  'job_execution_id',
+  'node_execution_id',
+  'job_index',
+  'attempt',
+].join(',');
+
+const WORKFLOW_LOG_LIMIT = 2000;
+
+function targetJobIdFromRow(r: Record<string, unknown>): string | undefined {
+  const stored = (r.context as Record<string, unknown>) || {};
+  const variables = (stored.variables as Record<string, unknown>) || {};
+  if (typeof variables.targetJobId === 'string' && variables.targetJobId) {
+    return variables.targetJobId;
+  }
+  const jobIds = [...new Set(
+    ((r.workflow_job_executions as Record<string, unknown>[]) || [])
+      .map((row) => row.job_id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  )];
+  return jobIds.length === 1 ? jobIds[0] : undefined;
+}
+
+function mapLogRows(rows: Record<string, unknown>[]): WorkflowRun['logs'] {
+  return rows
+    .map((l) => ({
+      id: String(l.id),
+      level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',
+      message: String(l.message ?? ''),
+      timestamp: (l.timestamp as string) ?? '',
+      nodeId: l.node_id as string | undefined,
+      jobExecutionId: l.job_execution_id as string | undefined,
+      nodeExecutionId: l.node_execution_id as string | undefined,
+      jobIndex: l.job_index as number | undefined,
+      attempt: l.attempt as number | undefined,
+    }))
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+}
+
+function mapRunRow(r: Record<string, unknown>, logs?: Record<string, unknown>[]): WorkflowRun {
   const stored = (r.context as Record<string, unknown>) || {};
   const variables = (stored.variables as Record<string, unknown>) || {};
   const batchProgress = variables.batchProgress as { node: string; index: number; total: number } | undefined;
@@ -1167,31 +1255,16 @@ function mapRunRow(r: Record<string, unknown>): WorkflowRun {
     jobsFailed: Number(r.jobs_failed ?? 0) || undefined,
     jobsSkipped: Number(r.jobs_skipped ?? 0) || undefined,
     triggerType: r.trigger_type as string | undefined,
-    targetJobId: typeof variables.targetJobId === 'string' && variables.targetJobId
-      ? variables.targetJobId
-      : undefined,
+    targetJobId: targetJobIdFromRow(r),
     isLegacy: jobExecutions.length === 0,
     nodeResults: mergeNodeResults(
       ((r.workflow_run_nodes as Record<string, unknown>[]) ?? []).map((n) => ({
         nodeId: String(n.node_id ?? ''),
         status: (n.status as WorkflowRun['nodeResults'][number]['status']) ?? 'success',
         duration: Number(n.duration_ms ?? 0),
-        output: n.output as string | undefined,
       })),
     ),
-    logs: ((r.workflow_logs as Record<string, unknown>[]) ?? [])
-      .map((l) => ({
-        id: String(l.id),
-        level: (l.level as 'info' | 'warn' | 'error' | 'debug') ?? 'info',
-        message: String(l.message ?? ''),
-        timestamp: (l.timestamp as string) ?? '',
-        nodeId: l.node_id as string | undefined,
-        jobExecutionId: l.job_execution_id as string | undefined,
-        nodeExecutionId: l.node_execution_id as string | undefined,
-        jobIndex: l.job_index as number | undefined,
-        attempt: l.attempt as number | undefined,
-      }))
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
+    logs: mapLogRows(logs ?? ((r.workflow_logs as Record<string, unknown>[]) ?? [])),
     workflowName: (r.workflow as Record<string, unknown>)?.name as string | undefined
       ?? (r.workflow_snapshot as WorkflowSnapshot | null)?.workflowName,
   };
@@ -1240,27 +1313,37 @@ export class ExecutionService {
   async listRuns(): Promise<Workflow['runs']> {
     const { data, error } = await supabase
       .from('workflow_runs')
-      .select('*, workflow:workflows(name), workflow_run_nodes(*), workflow_logs(*), workflow_job_executions(id)')
+      .select(WORKFLOW_RUN_LIST_SELECT)
       .order('created_at', { ascending: false })
       .limit(20);
     if (error) throw error;
-    return (data || []).map(mapRunRow) as unknown as Workflow['runs'];
+    return (data || []).map((row) => mapRunRow(row as unknown as Record<string, unknown>)) as unknown as Workflow['runs'];
   }
 
   async getRunDetail(runId: string): Promise<WorkflowRunDetail | null> {
-    const { data, error } = await supabase
-      .from('workflow_runs')
-      .select('*, workflow:workflows(name), workflow_run_nodes(*), workflow_logs(*), workflow_job_executions(*), workflow_node_executions(*)')
-      .eq('id', runId)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data) return null;
-    const base = mapRunRow(data);
+    const [runResult, logsResult] = await Promise.all([
+      supabase
+        .from('workflow_runs')
+        .select(WORKFLOW_RUN_DETAIL_SELECT)
+        .eq('id', runId)
+        .maybeSingle(),
+      supabase
+        .from('workflow_logs')
+        .select(WORKFLOW_LOG_SELECT)
+        .eq('run_id', runId)
+        .order('timestamp', { ascending: false })
+        .limit(WORKFLOW_LOG_LIMIT),
+    ]);
+    if (runResult.error) throw runResult.error;
+    if (!runResult.data) return null;
+    const runRow = runResult.data as unknown as Record<string, unknown>;
+    const logs = logsResult.error ? [] : ((logsResult.data || []) as unknown as Record<string, unknown>[]);
+    const base = mapRunRow(runRow, logs);
     return {
       ...base,
-      workflowSnapshot: data.workflow_snapshot as WorkflowSnapshot | undefined,
-      jobExecutions: ((data.workflow_job_executions as Record<string, unknown>[]) || []).map(mapJobExecution),
-      nodeExecutions: ((data.workflow_node_executions as Record<string, unknown>[]) || []).map(mapNodeExecution),
+      workflowSnapshot: runRow.workflow_snapshot as WorkflowSnapshot | undefined,
+      jobExecutions: ((runRow.workflow_job_executions as Record<string, unknown>[]) || []).map(mapJobExecution),
+      nodeExecutions: ((runRow.workflow_node_executions as Record<string, unknown>[]) || []).map(mapNodeExecution),
     };
   }
 
@@ -1287,20 +1370,15 @@ export class ExecutionService {
     const { data, error } = await supabase.functions.invoke('workflow-run', { body });
     if (error) throw error;
     if (data?.error) throw new Error(String(data.error));
-    const runs = await this.listRuns();
-    const run = runs.find((r) => r.id === data?.runId);
-    if (!run) {
-      return {
-        id: data?.runId || '',
-        workflowId: id,
-        status: (data?.status as Workflow['runs'][number]['status']) || 'running',
-        startedAt: new Date().toISOString(),
-        duration: 0,
-        nodeResults: [],
-        logs: [],
-      };
-    }
-    return run;
+    return {
+      id: data?.runId || '',
+      workflowId: id,
+      status: (data?.status as Workflow['runs'][number]['status']) || 'running',
+      startedAt: new Date().toISOString(),
+      duration: 0,
+      nodeResults: [],
+      logs: [],
+    };
   }
   async cancelRun(runId: string): Promise<void> {
     const userId = await requireUserId();

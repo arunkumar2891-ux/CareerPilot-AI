@@ -3,7 +3,7 @@ import {
   Clock, CheckCircle2, XCircle, AlertCircle, Activity,
   ChevronRight, Inbox, Trash2, StopCircle,
 } from 'lucide-react';
-import { InlineLoader, StaggerItem, StaggerList } from '@/components/motion';
+import { InlineLoader, PageLoader, StaggerItem, StaggerList } from '@/components/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,7 +24,7 @@ import type { WorkflowRun, WorkflowRunStatus } from '@/types';
 export function ExecutionsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: runs } = useQuery({
+  const { data: runs, isLoading, error: runsError } = useQuery({
     queryKey: ['runs'],
     queryFn: () => services.execution.listRuns(),
     refetchInterval: (query) => {
@@ -95,14 +95,24 @@ export function ExecutionsPage() {
     }
   };
 
+  const jobProgressLabel = (run: WorkflowRun) => {
+    const total = run.jobsTotal ?? 0;
+    if (total < 2) return undefined;
+    const done = (run.jobsSuccessful ?? 0) + (run.jobsFailed ?? 0) + (run.jobsSkipped ?? 0);
+    return `Job ${Math.min(done + 1, total)}/${total}`;
+  };
+
   const describeRunProgress = (run: WorkflowRun) => {
     const step = getActiveExecutionStep(run);
-    if (!step) return `${run.nodeResults.length} nodes completed`;
+    const jobDetail = jobProgressLabel(run);
+    if (!step) {
+      return jobDetail ? `${jobDetail} · ${run.nodeResults.length} nodes completed` : `${run.nodeResults.length} nodes completed`;
+    }
     const elapsed = formatDurationMs(Date.now() - new Date(step.startedAt).getTime());
     const batch = run.batchProgress;
     const detail = batch && batch.node === step.name
       ? `Job ${batch.index}/${batch.total}`
-      : step.detail;
+      : (step.detail || jobDetail);
     return `${step.name}${detail ? ` · ${detail}` : ''} · ${elapsed}`;
   };
 
@@ -183,8 +193,18 @@ export function ExecutionsPage() {
         <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Activity className="h-5 w-5 text-primary" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-semibold">{allRuns.length > 0 ? formatDurationMs(allRuns.reduce((a, r) => a + computeRunDurationMs(r), 0) / allRuns.length) : '0.0s'}</p></div></div></CardContent></Card>
       </div>
 
+      {runsError && (
+        <Card className="border-destructive/50">
+          <CardContent className="py-3 text-sm text-destructive">
+            Could not load executions: {runsError instanceof Error ? runsError.message : 'Unknown error'}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="space-y-2">
-        {allRuns.length === 0 ? (
+        {isLoading ? (
+          <PageLoader label="Loading executions…" />
+        ) : allRuns.length === 0 ? (
           <Card><CardContent><EmptyState icon={Inbox} title="No executions yet" description="Workflow runs will appear here once you execute them." /></CardContent></Card>
         ) : (
         <StaggerList className="space-y-2">

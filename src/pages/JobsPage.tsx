@@ -142,11 +142,11 @@ export function JobsPage() {
       toast.success(`Starting resume tailoring for ${ids.length} job${ids.length === 1 ? '' : 's'}...`);
       const { runId } = await services.resume.startResumeTailoring(ids);
       toast.success('Resume tailoring started — check Executions for progress');
+      setSelectedJobIds(new Set());
+      navigate(`/executions/${runId}`);
       await qc.invalidateQueries({ queryKey: ['runs'] });
       await qc.invalidateQueries({ queryKey: ['jobs'] });
       await qc.invalidateQueries({ queryKey: ['resumes'] });
-      setSelectedJobIds(new Set());
-      navigate(`/executions/${runId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Resume generation failed');
     } finally {
@@ -568,11 +568,11 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
       toast.success('Starting resume tailoring...');
       const { runId } = await services.resume.startResumeTailoring(job.id);
       toast.success('Resume tailoring started — check Executions for progress');
+      onClose();
+      navigate(`/executions/${runId}`);
       await qc.invalidateQueries({ queryKey: ['runs'] });
       await qc.invalidateQueries({ queryKey: ['jobs'] });
       await qc.invalidateQueries({ queryKey: ['resumes'] });
-      onClose();
-      navigate(`/executions/${runId}`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Resume generation failed');
     } finally {
