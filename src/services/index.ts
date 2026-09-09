@@ -11,13 +11,16 @@ import { requireUserId } from '@/lib/auth';
 import { DEFAULT_JOB_SEARCH_WORKFLOW, DEFAULT_RESUME_TAILOR_WORKFLOW, buildSeedEdges, buildTailorSeedEdges } from '@/constants/workflow-seed';
 import { computeNextCronRun } from '@/utils/cron-schedule';
 import {
-  CAREER_CORPUS,
   MASTER_RESUME_NAME,
-  TWO_PAGE_RESUME_NAME,
   applyContactOverlay,
-  replaceEducationPlaceholders,
 } from '@/content/career-corpus';
-import { corpusGroup, isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import { hasUsableMasterResume, isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import {
+  assertResumeUploadFile,
+  sanitizeAttachmentLabel,
+  sanitizeExtractedResumeText,
+  sanitizeResumeName,
+} from '@/utils/upload-sanitize';
 import { PROVIDER_FREE_TIER_MONTHLY_TOKENS } from '@/constants/ai-usage';
 import type { WorkflowEdge, WorkflowNode } from '@/types';
 
@@ -163,6 +166,8 @@ function mapResume(row: Record<string, unknown>): Resume {
     updatedAt: row.updated_at as string,
   };
   resume.isCorpus = row.is_corpus === true || isCorpusResume(resume);
+  resume.corpusType = (row.corpus_type as Resume['corpusType']) || null;
+  resume.corpusSource = (row.corpus_source as Resume['corpusSource']) || null;
   return resume;
 }
 
@@ -199,7 +204,7 @@ function mapApplication(row: Record<string, unknown>): Application {
       description: e.description as string | undefined,
     })) ?? [],
     notes: String(row.notes ?? ''),
-    attachments: (row.attachments as string[]) ?? [],
+    attachments: ((row.attachments as string[]) ?? []).map(sanitizeAttachmentLabel),
     createdAt: row.created_at as string,
   };
 }
@@ -395,7 +400,7 @@ function mapProfile(row: Record<string, unknown>): UserProfile {
 /* ── services ── */
 
 export class JobSearchService {
-  async list(_config?: Partial<JobSearchConfig>): Promise<Job[]> {
+  async list(): Promise<Job[]> {
     const userId = await requireUserId();
     const [{ data: jobRows, error }, { data: resumeRows, error: resumeError }] = await Promise.all([
       supabase.from('jobs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
@@ -476,19 +481,120 @@ export class ResumeService {
     if (kind === 'corpus') rows = rows.filter(isCorpusResume);
     return rows;
   }
+  async hasMasterResume(): Promise<boolean> {
+    const resumes = await this.list({ kind: 'corpus' });
+    return hasUsableMasterResume(resumes);
+  }
   async get(id: string): Promise<Resume | undefined> {
     const { data, error } = await supabase.from('resumes').select('*, resume_versions(*)').eq('id', id).maybeSingle();
     if (error) throw error;
     return data ? mapResume(data) : undefined;
   }
+  async createCorpus(input: {
+    name: string;
+    content: string;
+    corpusType: 'master' | 'role_specific';
+    corpusSource: 'google_doc' | 'upload' | 'paste';
+  }): Promise<Resume> {
+    const userId = await requireUserId();
+    const name = input.corpusType === 'master' ? MASTER_RESUME_NAME : sanitizeResumeName(input.name);
+    if (!name) throw new Error('Role name is required');
+    const content = sanitizeExtractedResumeText(input.content);
+    if (!content) throw new Error('Resume content is empty');
+    const { data: existing } = await supabase
+      .from('resumes')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', name)
+      .maybeSingle();
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('resumes')
+        .update({
+          content,
+          is_corpus: true,
+          corpus_type: input.corpusType,
+          corpus_source: input.corpusSource,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select('*, resume_versions(*)')
+        .single();
+      if (error) throw error;
+      return mapResume(data);
+    }
+    const { data, error } = await supabase.from('resumes').insert({
+      user_id: userId,
+      name,
+      type: 'technical',
+      content,
+      ats_score: 0,
+      is_corpus: true,
+      corpus_type: input.corpusType,
+      corpus_source: input.corpusSource,
+    }).select('*, resume_versions(*)').single();
+    if (error) throw error;
+    return mapResume(data);
+  }
+  async parseUploadedResume(file: File): Promise<string> {
+    const mime = assertResumeUploadFile(file);
+    if (mime === 'text/plain' || mime === 'text/markdown') {
+      const text = sanitizeExtractedResumeText(await file.text());
+      if (!text) throw new Error('File is empty');
+      return text;
+    }
+    const userId = await requireUserId();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^[.-]+/, '').slice(0, 80) || 'resume';
+    const storagePath = `${userId}/uploads/${crypto.randomUUID()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage.from('resumes').upload(storagePath, file, {
+      upsert: false,
+      contentType: mime,
+    });
+    if (uploadError) throw uploadError;
+    try {
+      const { data, error } = await supabase.functions.invoke('resume-actions', {
+        body: { mode: 'parse_uploaded_resume', storagePath, fileName: file.name },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(String(data.error));
+      const text = sanitizeExtractedResumeText(String(data?.text || ''));
+      if (!text) throw new Error('Could not extract text from the uploaded resume');
+      return text;
+    } finally {
+      await supabase.storage.from('resumes').remove([storagePath]).catch(() => undefined);
+    }
+  }
+  async syncGoogleDocCorpus(input: {
+    fileId: string;
+    corpusType?: 'master' | 'role_specific';
+    name?: string;
+  }): Promise<void> {
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: {
+        mode: 'sync_google_doc_chunks',
+        fileId: input.fileId,
+        corpusType: input.corpusType || 'master',
+        name: input.name,
+      },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(String(data.error));
+  }
   async create(name: string, type: Resume['type'], content: string): Promise<Resume> {
     const userId = await requireUserId();
-    const { data, error } = await supabase.from('resumes').insert({ user_id: userId, name, type, content, ats_score: 0 }).select('*, resume_versions(*)').single();
+    const { data, error } = await supabase.from('resumes').insert({
+      user_id: userId,
+      name: sanitizeResumeName(name) || 'Resume',
+      type,
+      content: sanitizeExtractedResumeText(content),
+      ats_score: 0,
+    }).select('*, resume_versions(*)').single();
     if (error) throw error;
     return mapResume(data);
   }
   async update(id: string, content: string): Promise<void> {
-    const { error } = await supabase.from('resumes').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
+    const sanitized = sanitizeExtractedResumeText(content);
+    const { error } = await supabase.from('resumes').update({ content: sanitized, updated_at: new Date().toISOString() }).eq('id', id);
     if (error) throw error;
   }
   async updateScore(id: string, score: number, content?: string): Promise<void> {
@@ -513,10 +619,8 @@ export class ResumeService {
   async startResumeTailoring(jobIds: string | string[]): Promise<{ runId: string }> {
     const ids = [...new Set((Array.isArray(jobIds) ? jobIds : [jobIds]).map((id) => id.trim()).filter(Boolean))];
     if (ids.length === 0) throw new Error('Select at least one job');
-    const settings = await new SettingsService().get();
-    const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
-    if (!resumeFileId) {
-      throw new Error('Add a Google Doc Resume ID in Settings before generating a tailored resume.');
+    if (!(await this.hasMasterResume())) {
+      throw new Error('Add a master resume on the Corpus page before generating a tailored resume.');
     }
     const { data: jobs } = await supabase.from('jobs').select('id').in('id', ids);
     if (!jobs?.length || jobs.length !== ids.length) throw new Error('One or more jobs were not found');
@@ -695,20 +799,6 @@ export class ResumeService {
       if (resumeError) throw resumeError;
     }
 
-    const remaining = await this.list({ kind: 'corpus' });
-    if (!remaining.some((resume) => corpusGroup(resume.name) === 'role-bank')) {
-      const settings = await new SettingsService().get();
-      const previousJobSearch = (settings.jobSearch as Record<string, unknown> | undefined) || {};
-      await new SettingsService().update({
-        jobSearch: {
-          ...previousJobSearch,
-          roleBanksStatus: '',
-          roleBanksGeneratedAt: '',
-          roleBanksError: '',
-        },
-      });
-    }
-
     return ownedIds.length;
   }
   async deleteAllCorpusResumes(): Promise<number> {
@@ -827,9 +917,8 @@ export class WorkflowService {
     return mapWorkflow(data);
   }
   async update(id: string, patch: Partial<Pick<Workflow, 'name' | 'description' | 'active' | 'schedule'>>): Promise<void> {
-    const { nodes, edges, ...rest } = patch as Partial<Workflow>;
-    if (Object.keys(rest).length) {
-      const { error } = await supabase.from('workflows').update({ ...rest, updated_at: new Date().toISOString() }).eq('id', id);
+    if (Object.keys(patch).length) {
+      const { error } = await supabase.from('workflows').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
     }
   }
@@ -1185,10 +1274,8 @@ export class ExecutionService {
     };
   }
   async runWorkflow(id: string, options?: { jobId?: string; jobIds?: string[] }): Promise<Workflow['runs'][number]> {
-    const settings = await new SettingsService().get();
-    const resumeFileId = String((settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '').trim();
-    if (!resumeFileId) {
-      throw new Error('Add a Google Doc Resume ID in Settings before running a job search workflow.');
+    if (!(await new ResumeService().hasMasterResume())) {
+      throw new Error('Add a master resume on the Corpus page before running a workflow.');
     }
     const body: Record<string, unknown> = { workflowId: id };
     if (options?.jobIds?.length) {
@@ -1338,7 +1425,14 @@ export class DocumentService {
   }
   async create(name: string, type: Document['type'], size: number, folder: string): Promise<Document> {
     const userId = await requireUserId();
-    const { data, error } = await supabase.from('documents').insert({ user_id: userId, name, type, size, folder, tags: [] }).select('*, document_versions(*)').single();
+    const { data, error } = await supabase.from('documents').insert({
+      user_id: userId,
+      name: sanitizeAttachmentLabel(name),
+      type,
+      size,
+      folder: sanitizeAttachmentLabel(folder),
+      tags: [],
+    }).select('*, document_versions(*)').single();
     if (error) throw error;
     return mapDocument(data);
   }
@@ -1349,8 +1443,8 @@ export class DocumentService {
 }
 
 export class EmbeddingService {
-  async embed(_text: string): Promise<number[]> {
-    const { data, error } = await invokeAiChat({ mode: 'embed' });
+  async embed(text: string): Promise<number[]> {
+    const { data, error } = await invokeAiChat({ mode: 'embed', content: text });
     if (error) throw error;
     return (data?.embedding as number[]) || [];
   }
@@ -1450,7 +1544,7 @@ export class IntegrationService {
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
     const { data: row } = await supabase.from('integrations').select('name').eq('id', id).maybeSingle();
     if (row?.name === 'Apify') {
-      const { error } = await supabase.functions.invoke('workflow-run', { body: { test: 'apify' } }).catch(() => ({ error: null }));
+      await supabase.functions.invoke('workflow-run', { body: { test: 'apify' } }).catch(() => null);
     }
     const { error } = await supabase.from('integrations').update({ status: 'connected', last_sync: new Date().toISOString() }).eq('id', id);
     if (error) return { success: false, message: error.message };
@@ -1608,11 +1702,20 @@ export class PDFService {
 export class StorageService {
   async upload(file: File, path: string): Promise<{ url: string }> {
     const userId = await requireUserId();
-    const fullPath = `${userId}/${path}`;
-    const { error } = await supabase.storage.from('resumes').upload(fullPath, file, { upsert: true });
+    const mime = assertResumeUploadFile(file);
+    const relative = String(path || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!relative || relative.includes('..') || !/^[A-Za-z0-9._/-]+$/.test(relative)) {
+      throw new Error('Invalid upload path');
+    }
+    const fullPath = `${userId}/${relative}`;
+    const { error } = await supabase.storage.from('resumes').upload(fullPath, file, {
+      upsert: false,
+      contentType: mime,
+    });
     if (error) throw error;
-    const { data } = supabase.storage.from('resumes').getPublicUrl(fullPath);
-    return { url: data.publicUrl };
+    const { data, error: signedError } = await supabase.storage.from('resumes').createSignedUrl(fullPath, 60 * 60);
+    if (signedError || !data?.signedUrl) throw signedError || new Error('Could not create download URL');
+    return { url: data.signedUrl };
   }
 }
 
@@ -1892,17 +1995,18 @@ export class SettingsService {
     };
   }
 
-  /** Write current contact/profile into Master ATS and the 2-page template (keeps body text). */
+  /** Write current contact/profile into the master resume header. */
   async applyContactToSeededResumes(): Promise<void> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const overlay = await this.contactOverlay();
     const { data: rows } = await supabase
       .from('resumes')
-      .select('id, name, content')
+      .select('id, name, content, corpus_type')
       .eq('user_id', user.id)
-      .in('name', [MASTER_RESUME_NAME, TWO_PAGE_RESUME_NAME]);
+      .eq('is_corpus', true);
     for (const row of rows || []) {
+      if (row.corpus_type !== 'master' && row.name !== MASTER_RESUME_NAME) continue;
       const next = applyContactOverlay(String(row.content || ''), overlay);
       if (next !== row.content) {
         await supabase.from('resumes').update({ content: next, updated_at: new Date().toISOString() }).eq('id', row.id);
@@ -1957,7 +2061,6 @@ export class BootstrapService {
 
     await this.workflow.ensureDefaultPipeline();
     await this.workflow.ensureTailorPipeline();
-    await this.seedCareerCorpus(user.id);
     try {
       await supabase.functions.invoke('resume-actions', { body: { mode: 'repair_sync' } });
     } catch {
@@ -1987,76 +2090,6 @@ export class BootstrapService {
         await invokeAiChat({ mode: 'sync_google_doc_chunks', fileId: resumeFileId });
       } catch {
         // Google may not be connected yet — user can sync from Knowledge Base later
-      }
-    }
-  }
-
-  private static readonly CORPUS_PLACEHOLDER = 'Sync your master resume from Google Docs';
-
-  private async seedCareerCorpus(userId: string): Promise<void> {
-    const overlay = await this.settings.contactOverlay();
-    const { data: existingResumes } = await supabase
-      .from('resumes')
-      .select('id, name, content')
-      .eq('user_id', userId);
-    const byName = new Map((existingResumes || []).map((r) => [String(r.name), r]));
-
-    const upsertResume = async (name: string, type: Resume['type'], content: string) => {
-      const overlayed = applyContactOverlay(content, overlay);
-      const existing = byName.get(name);
-      if (!existing) {
-        await supabase.from('resumes').insert({
-          user_id: userId,
-          name,
-          type,
-          content: overlayed,
-          ats_score: 0,
-          is_corpus: true,
-        });
-      } else {
-        const current = String(existing.content || '');
-        const needsPlaceholderSeed = current.includes(BootstrapService.CORPUS_PLACEHOLDER);
-        const needsEducationFix = /\[Degree Name\]|Anna University|Bachelor of Engineering in Computer Science/i.test(current);
-        if (needsPlaceholderSeed) {
-          await supabase
-            .from('resumes')
-            .update({ content: overlayed, updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
-        } else if (needsEducationFix) {
-          const next = replaceEducationPlaceholders(applyContactOverlay(current, overlay));
-          if (next !== current) {
-            await supabase
-              .from('resumes')
-              .update({ content: next, updated_at: new Date().toISOString() })
-              .eq('id', existing.id);
-          }
-        }
-      }
-    };
-
-    await upsertResume(MASTER_RESUME_NAME, 'technical', CAREER_CORPUS.masterResume);
-    await upsertResume(TWO_PAGE_RESUME_NAME, 'general', CAREER_CORPUS.twoPageTemplate);
-
-    const { count } = await supabase
-      .from('knowledge_chunks')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('collection', 'career');
-    if (!count) {
-      const toInsert = CAREER_CORPUS.evidenceChunks.map((c) => ({
-        user_id: userId,
-        collection: 'career',
-        source_id: c.id,
-        tags: c.tags,
-        content: c.text,
-      }));
-      const { error } = await supabase.from('knowledge_chunks').insert(toInsert);
-      if (error && /tags/i.test(error.message || '')) {
-        const withoutTags = toInsert.map(({ tags: _tags, ...row }) => row);
-        const retry = await supabase.from('knowledge_chunks').insert(withoutTags);
-        if (retry.error) throw retry.error;
-      } else if (error) {
-        throw error;
       }
     }
   }

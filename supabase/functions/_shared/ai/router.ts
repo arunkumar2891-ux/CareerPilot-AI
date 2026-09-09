@@ -1,11 +1,11 @@
-import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiFallbackTimeoutMs, getGeminiMaxRetries, getGroqAtsTimeoutMs, getProviderChain, isGroqResumeFallbackEnabled } from './config.ts';
+import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiFallbackTimeoutMs, getGeminiMaxRetries, getGroqAtsTimeoutMs, getProviderChain } from './config.ts';
 import { sanitizeAiErrorMessage, shouldFallback } from './errors.ts';
-import { assembleSourceLockedResume } from '../career-corpus/assemble-source-locked-resume.ts';
 import { geminiAdapter, geminiFallbackAdapter } from './gemini.ts';
 import { groqAdapter } from './groq.ts';
 import { ProviderError, totalTokens, type GenerateRequest, type GenerateResult, type ProviderAdapter } from './types.ts';
-import { validateResumeOutput, extractAtsSection } from './validate-resume.ts';
+import { validateResumeOutput } from './validate-resume.ts';
 import { recordAiUsage } from './usage.ts';
+import { HUMANIZE_RETRY_PROMPT } from '../career-corpus/prompt.ts';
 
 const defaultAdapters: Record<string, ProviderAdapter> = {
   gemini: geminiAdapter,
@@ -36,16 +36,6 @@ function timeoutForProvider(providerName: string, operation: string, defaultTime
   return getAtsTimeoutMs();
 }
 
-function filterTailChain(
-  tailChain: string[],
-  request: GenerateRequest,
-): string[] {
-  return tailChain.filter((name) => {
-    if (name !== 'groq') return true;
-    if (!request.deterministicResume) return true;
-    return isGroqResumeFallbackEnabled();
-  });
-}
 function maxAttemptsForProvider(providerName: string): number {
   if (providerName === 'gemini' || providerName === 'gemini_fallback') {
     return getGeminiMaxRetries();
@@ -78,27 +68,13 @@ function logRejectedGeminiResponse(
   }
 }
 
-function resolveValidationGrounding(provider: string, request: GenerateRequest): string | undefined {
-  if (request.operation !== 'resume_tailoring') return request.groundingSource;
-  // Validate Groq output against the full catalog — not the TPM-truncated prompt.
-  if (provider === 'groq') return request.groundingSource;
-  return request.groundingSource;
-}
-
 function identityFromRequest(request: GenerateRequest): {
   name?: string;
   contact?: string;
   education?: string;
 } | undefined {
   if (request.operation !== 'resume_tailoring') return undefined;
-  if (request.deterministicResume) {
-    const assembled = assembleSourceLockedResume(request.deterministicResume);
-    return {
-      name: extractAtsSection(assembled, 'NAME') || undefined,
-      contact: extractAtsSection(assembled, 'CONTACT') || undefined,
-      education: extractAtsSection(assembled, 'EDUCATION') || request.educationSource || undefined,
-    };
-  }
+  if (request.identity) return request.identity;
   if (request.educationSource) return { education: request.educationSource };
   return undefined;
 }
@@ -110,11 +86,12 @@ function applyResumeValidation(
 ): string {
   if (request.operation !== 'resume_tailoring') return text;
   const checked = validateResumeOutput(text, {
-    groundingSource: resolveValidationGrounding(provider, request),
+    groundingSource: request.groundingSource,
     skillsSource: request.skillsSource,
     educationSource: request.educationSource,
     certificationSource: request.certificationSource,
     skipTwoPageShape: request.skipTwoPageShape,
+    skipHumanVoice: request.skipHumanVoice,
     allowParaphrase: true,
     identity: identityFromRequest(request),
   });
@@ -175,6 +152,19 @@ async function callAdapter(
   }
 }
 
+function withHumanizeRetry(req: GenerateRequest, err: unknown): GenerateRequest {
+  const message = err instanceof Error ? err.message : String(err);
+  if (!/ai_generated_voice/.test(message)) return req;
+  if (req.userPrompt.includes(HUMANIZE_RETRY_PROMPT)) return req;
+  return {
+    ...req,
+    userPrompt: `${req.userPrompt}\n\n${HUMANIZE_RETRY_PROMPT}`,
+    groqUserPrompt: req.groqUserPrompt
+      ? `${req.groqUserPrompt}\n\n${HUMANIZE_RETRY_PROMPT}`
+      : req.groqUserPrompt,
+  };
+}
+
 async function tryProvider(
   adapter: ProviderAdapter,
   req: GenerateRequest,
@@ -184,53 +174,27 @@ async function tryProvider(
   userId?: string,
 ): Promise<GenerateResult> {
   let lastErr: unknown;
+  let currentReq = req;
   const attempts = Math.max(1, maxAttempts);
   for (let i = 1; i <= attempts; i++) {
     try {
-      return await callAdapter(adapter, req, role, log, userId);
+      return await callAdapter(adapter, currentReq, role, log, userId);
     } catch (err) {
       lastErr = err;
-      const retryable = shouldRetrySameProvider(err);
+      currentReq = withHumanizeRetry(currentReq, err);
+      const retryable = shouldRetrySameProvider(err) || /ai_generated_voice/.test(err instanceof Error ? err.message : '');
       if (!retryable || i >= attempts) throw err;
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-function tryDeterministicResume(
-  request: GenerateRequest,
-  log: (message: string) => void,
-): string | null {
-  if (request.operation !== 'resume_tailoring' || !request.deterministicResume) return null;
-
-  const assembled = assembleSourceLockedResume(request.deterministicResume);
-  const checked = validateResumeOutput(assembled, {
-    skillsSource: request.skillsSource,
-    educationSource: request.educationSource,
-    certificationSource: request.certificationSource,
-    skipTwoPageShape: request.skipTwoPageShape,
-    skipGrounding: true,
-  });
-  if (!checked.ok) {
-    log(`[AI] deterministic resume assembly failed validation (${checked.reason})`);
-    return null;
-  }
-
-  log('[AI] deterministic resume assembly fallback success');
-  return checked.text;
-}
-
-function formatAllProvidersFailed(errors: string[], deterministicReason?: string): string {
+function formatAllProvidersFailed(errors: string[]): string {
   const joined = errors.join(' | ');
-  const deterministicNote = deterministicReason
-    ? ` Catalog assembly also failed (${deterministicReason}).`
-    : '';
-  // Always name each provider that ran and why it failed — a bare "check GEMINI_API_KEY"
-  // hides whether the fallback key was even reached.
   if (/quota exceeded|rate.?limit|free_tier|429/i.test(joined)) {
-    return `All AI providers exhausted or rate-limited — ${joined}.${deterministicNote}`;
+    return `All AI providers exhausted or rate-limited — ${joined}.`;
   }
-  return `All AI providers failed. ${joined}${deterministicNote}`;
+  return `All AI providers failed. ${joined}`;
 }
 
 function splitProviderChain(chain: string[]): { geminiChain: string[]; tailChain: string[] } {
@@ -241,7 +205,6 @@ function splitProviderChain(chain: string[]): { geminiChain: string[]; tailChain
 
 /**
  * Provider chain: paid GEMINI_API_KEY_FALLBACK only.
- * Deterministic resume assembly remains the non-LLM last resort.
  */
 export async function generateWithProviders(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
@@ -265,11 +228,7 @@ export async function generateWithProviders(
     });
   }
 
-  const { geminiChain, tailChain: rawTailChain } = splitProviderChain(chain);
-  const tailChain = filterTailChain(rawTailChain, request);
-  if (rawTailChain.includes('groq') && !tailChain.includes('groq')) {
-    log('[AI] provider=groq skipped (catalog assembly available; set AI_FORCE_GROQ=true to enable)');
-  }
+  const { geminiChain, tailChain } = splitProviderChain(chain);
 
   // A non-retryable failure (e.g. HTTP 400) means the request itself is bad — retrying it
   // on another provider only burns quota, so stop the chain instead of cascading.
@@ -302,11 +261,6 @@ export async function generateWithProviders(
     }
   }
 
-  if (request.operation === 'resume_tailoring') {
-    const deterministic = tryDeterministicResume(request, log);
-    if (deterministic) return { text: deterministic, tokensInput: 0, tokensOutput: 0 };
-  }
-
   for (let index = 0; index < tailChain.length && !requestIsUnservable; index++) {
     const providerName = tailChain[index];
     const adapter = adapters[providerName];
@@ -327,22 +281,9 @@ export async function generateWithProviders(
     }
   }
 
-  let deterministicReason: string | undefined;
-  if (request.operation === 'resume_tailoring' && request.deterministicResume) {
-    const assembled = assembleSourceLockedResume(request.deterministicResume);
-    const checked = validateResumeOutput(assembled, {
-      skillsSource: request.skillsSource,
-      educationSource: request.educationSource,
-      certificationSource: request.certificationSource,
-      skipTwoPageShape: request.skipTwoPageShape,
-      skipGrounding: true,
-    });
-    if (!checked.ok) deterministicReason = checked.reason;
-  }
-
   throw new Error(
     errors.length
-      ? formatAllProvidersFailed(errors, deterministicReason)
+      ? formatAllProvidersFailed(errors)
       : 'No AI provider is configured (set GEMINI_API_KEY_FALLBACK)',
   );
 }

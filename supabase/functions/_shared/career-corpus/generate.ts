@@ -1,19 +1,17 @@
-import type { DeterministicResumeInput } from '../ai/types.ts';
 import { loadCareerCorpus, type CareerCorpusBundle } from './load.ts';
-import { ATS_SYSTEM_PROMPT, buildGroqResumeUserPrompt, buildResumeUserPrompt } from './prompt.ts';
+import {
+  ATS_SYSTEM_PROMPT,
+  buildGroqResumeUserPrompt,
+  buildResumeUserPrompt,
+} from './prompt.ts';
 
 export interface PreparedResumeGeneration {
   corpus: CareerCorpusBundle;
   systemPrompt: string;
   userPrompt: string;
+  groqUserPrompt: string;
   groundingSource: string;
-  mandatorySections: {
-    skillsSource: string;
-    educationSource: string;
-    certificationSource: string;
-    groqUserPrompt: string;
-    deterministicResume: DeterministicResumeInput;
-  };
+  identity: { name?: string; contact?: string; education?: string };
 }
 
 /** One generation contract for workflow nodes and manual job tailoring. */
@@ -31,50 +29,32 @@ export async function prepareResumeGeneration(
     company: input.company,
   });
 
-  const shared = {
+  const userPrompt = buildResumeUserPrompt({
     jobTitle: input.jobTitle,
     company: input.company,
     jobDescription: input.jobDescription,
-    bulletCatalog: corpus.bulletCatalog,
-    retrievedEvidence: corpus.retrievedEvidence,
-    rerankedSelection: corpus.rerankedSelection,
+    sourceResume: corpus.sourceResume,
     contactBlock: corpus.contactBlock,
-    skillsSource: corpus.skillsSource,
-    educationSource: corpus.educationSource,
-    certificationSource: corpus.certificationSource,
-    summarySource: corpus.summarySource,
-  };
-
-  const userPrompt = buildResumeUserPrompt({
-    ...shared,
-    playbookTitle: corpus.playbookTitle,
-    playbookInstructions: corpus.playbookInstructions,
-    masterResume: corpus.masterResume,
-    twoPageTemplate: corpus.twoPageTemplate,
-    lexicalMatches: corpus.lexicalMatches,
     googleHeader: input.googleHeader,
   });
-  const groqUserPrompt = buildGroqResumeUserPrompt(shared);
+  const groqUserPrompt = buildGroqResumeUserPrompt({
+    jobTitle: input.jobTitle,
+    company: input.company,
+    jobDescription: input.jobDescription,
+    sourceResume: corpus.sourceResume,
+    contactBlock: corpus.contactBlock,
+  });
 
   return {
     corpus,
     systemPrompt: ATS_SYSTEM_PROMPT,
     userPrompt,
+    groqUserPrompt,
     groundingSource: corpus.groundingSource,
-    mandatorySections: {
-      skillsSource: corpus.skillsSource,
-      educationSource: corpus.educationSource,
-      certificationSource: corpus.certificationSource,
-      groqUserPrompt,
-      deterministicResume: {
-        contactBlock: corpus.contactBlock,
-        summarySource: corpus.summarySource,
-        skillsSource: corpus.skillsSource,
-        educationSource: corpus.educationSource,
-        certificationSource: corpus.certificationSource,
-        rerankedBulletIds: corpus.rerankedBulletIds,
-        catalog: corpus.catalog,
-      },
+    identity: {
+      name: corpus.contact.fullName,
+      contact: corpus.contactBlock || undefined,
+      education: corpus.educationSource || undefined,
     },
   };
 }

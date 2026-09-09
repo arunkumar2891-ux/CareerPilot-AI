@@ -157,7 +157,7 @@ export function ResumesPage() {
       />
 
       <p className="text-sm text-muted-foreground">
-        Master ATS, templates, and role banks live on the{' '}
+        Master resume and role-specific resumes live on the{' '}
         <Link to="/corpus" className="font-medium text-primary underline-offset-4 hover:underline">Corpus</Link> page.
       </p>
 
@@ -356,7 +356,7 @@ export function ResumesPage() {
             </DialogTitle>
             <DialogDescription>
               {deleteTarget === 'all'
-                ? 'This permanently deletes all tailored job resumes and their version history from the database. Corpus resumes (master ATS, templates, role banks) are kept. Linked jobs will have their resume status reset so you can regenerate them from the Job Discovery page.'
+                ? 'This permanently deletes all tailored job resumes and their version history from the database. Corpus resumes (master and role-specific) are kept. Linked jobs will have their resume status reset so you can regenerate them from the Job Discovery page.'
                 : 'This permanently deletes the selected job resume(s) and their version history. Linked jobs will have their resume status reset so you can regenerate them from the Job Discovery page.'}
             </DialogDescription>
           </DialogHeader>

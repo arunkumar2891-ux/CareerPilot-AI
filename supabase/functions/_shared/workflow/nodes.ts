@@ -39,18 +39,10 @@ async function callGemini(
   userPrompt: string,
   forAts = false,
   groundingSource?: string,
-  mandatorySections?: {
-    skillsSource?: string;
-    educationSource?: string;
+  options?: {
     groqUserPrompt?: string;
-    deterministicResume?: {
-      contactBlock: string;
-      summarySource: string;
-      skillsSource: string;
-      educationSource: string;
-      rerankedBulletIds: string[];
-      catalog: Array<{ id: string; text: string; isBullet: boolean }>;
-    };
+    educationSource?: string;
+    identity?: { name?: string; contact?: string; education?: string };
   },
 ): Promise<string> {
   if (forAts) {
@@ -59,7 +51,7 @@ async function callGemini(
       userPrompt,
       ctx.userId,
       groundingSource,
-      mandatorySections,
+      options,
     );
     return generated.text;
   }
@@ -385,8 +377,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       if (!fileId || fileId.includes('{{') || fileId.includes('YOUR_GOOGLE')) {
         return {
           output: { skipped: true, reason: 'no_google_doc' },
-          status: 'failed',
-          error: 'Google Doc Resume ID is required before job search can run.',
+          status: 'success',
         };
       }
       try {
@@ -491,11 +482,15 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         prepared.userPrompt,
         true,
         prepared.groundingSource,
-        prepared.mandatorySections,
+        {
+          groqUserPrompt: prepared.groqUserPrompt,
+          educationSource: prepared.corpus.educationSource,
+          identity: prepared.identity,
+        },
       );
       ctx.variables.lastAgentOutput = output;
-      ctx.variables.playbook = prepared.corpus.playbookTitle;
-      ctx.variables.masterResumeSource = prepared.corpus.masterResumeSource;
+      ctx.variables.resumeSource = prepared.corpus.sourceName;
+      ctx.variables.masterResumeSource = prepared.corpus.sourceKind;
 
       const tailoredContent = String(output || '').trim();
       if (tailoredContent.length > 0) {

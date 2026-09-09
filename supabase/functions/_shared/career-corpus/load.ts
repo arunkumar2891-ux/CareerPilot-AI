@@ -1,52 +1,87 @@
 import { createAdminClient } from '../supabase-admin.ts';
 import { getUserSettings } from '../credentials.ts';
-import { ROLE_PLAYBOOKS, EVIDENCE_CHUNKS } from './data.ts';
-import { selectMasterResumeForJob, extractMandatoryResumeSections } from './resume-bank.ts';
+import { generateText } from '../ai/router.ts';
+import { extractAtsSection } from '../ai/validate-resume.ts';
 import {
   applyContactOverlay,
+  buildRoleMatchUserPrompt,
   formatContact,
-  pickPlaybook,
-  playbookInstructions,
-  selectLexicalMasterMatches,
-  selectEvidence,
-  retrievalTerms,
+  pickMatchedResumeName,
+  ROLE_MATCH_SYSTEM_PROMPT,
 } from './prompt.ts';
-import {
-  buildBulletCatalog,
-  buildCatalogGroundingSource,
-  formatBulletCatalogBlock,
-  formatRetrievedEvidenceBlock,
-  formatRerankedSelection,
-  matchEvidenceToCatalog,
-  scoreRetrievalCandidates,
-  selectCatalogLines,
-  type CatalogLine,
-} from './resume-bullets.ts';
-import { rerankBulletsWithLlm } from './rerank-bullets.ts';
 
 const MASTER_NAME = 'Master ATS (bullet bank)';
-const TWO_PAGE_NAME = '2-page template';
+
+export interface CareerCorpusRow {
+  name: string;
+  content: string | null;
+  corpus_type?: string | null;
+}
 
 export interface CareerCorpusBundle {
-  masterResume: string;
-  twoPageTemplate: string;
-  playbookTitle: string;
-  playbookId: string;
-  masterResumeSource: 'role-bank' | 'generated';
-  playbookInstructions: string;
-  bulletCatalog: string;
-  retrievedEvidence: string;
-  rerankedSelection: string;
-  lexicalMatches: string;
-  groundingSource: string;
+  sourceResume: string;
+  sourceName: string;
+  sourceKind: 'master' | 'role_specific';
   contactBlock: string;
   contact: Record<string, string | undefined>;
-  rerankedBulletIds: string[];
-  skillsSource: string;
+  groundingSource: string;
   educationSource: string;
-  certificationSource: string;
-  summarySource: string;
-  catalog: CatalogLine[];
+}
+
+function isMasterRow(row: CareerCorpusRow): boolean {
+  return row.corpus_type === 'master' || row.name === MASTER_NAME;
+}
+
+const MIN_MASTER_CHARS = 80;
+
+export async function userHasMasterResume(userId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('resumes')
+    .select('name, content, corpus_type')
+    .eq('user_id', userId)
+    .eq('is_corpus', true);
+  if (error) throw error;
+  return ((data || []) as CareerCorpusRow[]).some(
+    (row) => isMasterRow(row) && String(row.content || '').trim().length >= MIN_MASTER_CHARS,
+  );
+}
+
+function isRoleSpecificRow(row: CareerCorpusRow): boolean {
+  return row.corpus_type === 'role_specific' || row.name.startsWith('ATS Bank: ');
+}
+
+function roleDisplayName(name: string): string {
+  return name.replace(/^ATS Bank:\s*/i, '').trim() || name;
+}
+
+export async function matchRoleSpecificResume(
+  rows: CareerCorpusRow[],
+  context: { jobTitle?: string; jobDescription?: string },
+  userId?: string,
+): Promise<CareerCorpusRow | null> {
+  const roleRows = rows.filter((row) => isRoleSpecificRow(row) && String(row.content || '').trim().length > 200);
+  if (!roleRows.length) return null;
+  const jobTitle = String(context.jobTitle || '').trim();
+  if (!jobTitle) return null;
+
+  const names = roleRows.map((row) => roleDisplayName(row.name));
+  try {
+    const raw = await generateText({
+      systemPrompt: ROLE_MATCH_SYSTEM_PROMPT,
+      userPrompt: buildRoleMatchUserPrompt({
+        jobTitle,
+        jobDescription: context.jobDescription,
+        resumeNames: names,
+      }),
+      operation: 'chat',
+    }, { userId });
+    const matched = pickMatchedResumeName(raw, names);
+    if (matched === 'master') return null;
+    return roleRows.find((row) => roleDisplayName(row.name) === matched) || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function loadCareerCorpus(
@@ -55,29 +90,25 @@ export async function loadCareerCorpus(
   context?: { jobTitle?: string; company?: string },
 ): Promise<CareerCorpusBundle> {
   const admin = createAdminClient();
-  const [{ data: resumes }, chunksQuery, settings] = await Promise.all([
-    admin.from('resumes').select('name, content').eq('user_id', userId),
-    admin.from('knowledge_chunks').select('source_id, tags, content').eq('user_id', userId).eq('collection', 'career'),
+  const [resumeQuery, settings] = await Promise.all([
+    admin.from('resumes')
+      .select('name, content, corpus_type')
+      .eq('user_id', userId)
+      .eq('is_corpus', true),
     getUserSettings(userId),
   ]);
+  if (resumeQuery.error) throw resumeQuery.error;
 
-  let chunks = chunksQuery.data;
-  if (chunksQuery.error && /tags/i.test(chunksQuery.error.message || '')) {
-    const fallback = await admin
-      .from('knowledge_chunks')
-      .select('source_id, content')
-      .eq('user_id', userId)
-      .eq('collection', 'career');
+  let rows = (resumeQuery.data || []) as CareerCorpusRow[];
+  if (!rows.length) {
+    const fallback = await admin.from('resumes').select('name, content, corpus_type').eq('user_id', userId);
     if (fallback.error) throw fallback.error;
-    chunks = fallback.data;
-  } else if (chunksQuery.error) {
-    throw chunksQuery.error;
+    rows = (fallback.data || []) as CareerCorpusRow[];
   }
 
-  const masterRow = (resumes || []).find((r) => r.name === MASTER_NAME);
-  const twoPageRow = (resumes || []).find((r) => r.name === TWO_PAGE_NAME);
-  if (!masterRow?.content) {
-    throw new Error('Career corpus not seeded. Open the app once while signed in so Master ATS can be created.');
+  const masterRow = rows.find(isMasterRow);
+  if (!masterRow?.content?.trim()) {
+    throw new Error('Add a master resume on the Corpus page (Google Doc sync or file upload) before generating a tailored resume.');
   }
 
   const { data: profile } = await admin.from('profiles').select('full_name, title, email').eq('user_id', userId).maybeSingle();
@@ -93,91 +124,22 @@ export async function loadCareerCorpus(
     startDate: stored.startDate,
   };
 
-  const dbChunks = (chunks || []).map((c) => ({
-    id: String(c.source_id || ''),
-    tags: (c.tags as string[]) || [],
-    text: String(c.content || ''),
-  }));
-  const pool = dbChunks.length ? dbChunks : [...EVIDENCE_CHUNKS];
-  const evidenceChunks = selectEvidence(jobDescription, pool);
-
-  const fullMaster = applyContactOverlay(String(masterRow.content), contact);
-  const twoPageTemplate = applyContactOverlay(String(twoPageRow?.content || ''), contact);
-  const { playbook } = pickPlaybook(jobDescription, [...ROLE_PLAYBOOKS]);
-  const selectedPlaybookInstructions = playbookInstructions(playbook);
-  // September 4 contract: compact summary/skills/education come from the two-page
-  // template. The Master ATS remains the factual bullet bank, never the layout.
-  const mandatorySections = extractMandatoryResumeSections(
-    twoPageTemplate || fullMaster,
-    playbook.emphasize,
-  );
-  const resumeRows = (resumes || []).map((r) => ({
-    name: String(r.name),
-    content: r.content as string | null,
-  }));
-  const selectedResume = selectMasterResumeForJob(fullMaster, playbook, resumeRows);
-  // Prefer the stored comprehensive role bank (ATS Bank: {title}) when present;
-  // otherwise fall back to a focused excerpt of the Master ATS.
-  const masterResume = applyContactOverlay(selectedResume.content, contact);
-  const lexicalMatches = selectLexicalMasterMatches(fullMaster, jobDescription);
-  const contactBlock = formatContact(contact);
-
-  const catalog = buildBulletCatalog(fullMaster);
-  const evidenceMatches = matchEvidenceToCatalog(evidenceChunks, catalog);
-  const scoredCandidates = scoreRetrievalCandidates({
-    catalog,
-    roleBankText: masterResume,
-    lexicalMatches,
-    evidenceChunks,
+  const matchedRole = await matchRoleSpecificResume(rows, {
+    jobTitle: context?.jobTitle,
     jobDescription,
-    retrievalTerms: retrievalTerms(jobDescription),
-  });
-
-  const rerankedBulletIds = await rerankBulletsWithLlm(
-    scoredCandidates,
-    {
-      jobTitle: context?.jobTitle,
-      company: context?.company,
-      playbookTitle: playbook.title,
-      jobDescription,
-    },
-    userId,
-  );
-
-  const priorityLines = selectCatalogLines(catalog, rerankedBulletIds);
-  const bulletCatalog = formatBulletCatalogBlock(priorityLines.length ? priorityLines : catalog.slice(0, 40));
-  const retrievedEvidence = formatRetrievedEvidenceBlock(evidenceMatches);
-  const rerankedSelection = formatRerankedSelection(rerankedBulletIds);
-  // Grounding must include the 2-page template — the model is instructed to use it as
-  // structure/length budget and may copy bullets that are not verbatim in the Master catalog.
-  const groundingSource = buildCatalogGroundingSource(catalog, [
-    contactBlock,
-    mandatorySections.skills,
-    mandatorySections.education,
-    mandatorySections.certification,
-    selectedPlaybookInstructions,
-    twoPageTemplate,
-  ]);
+  }, userId);
+  const selected = matchedRole || masterRow;
+  const sourceResume = applyContactOverlay(String(selected.content || ''), contact);
+  const contactBlock = formatContact(contact);
+  const educationSource = extractAtsSection(sourceResume, 'EDUCATION');
 
   return {
-    masterResume,
-    twoPageTemplate,
-    playbookTitle: playbook.title,
-    playbookId: playbook.id,
-    masterResumeSource: selectedResume.source,
-    playbookInstructions: selectedPlaybookInstructions,
-    bulletCatalog,
-    retrievedEvidence,
-    rerankedSelection,
-    lexicalMatches,
-    groundingSource,
+    sourceResume,
+    sourceName: selected.name,
+    sourceKind: matchedRole ? 'role_specific' : 'master',
     contactBlock,
     contact,
-    rerankedBulletIds,
-    skillsSource: mandatorySections.skills,
-    educationSource: mandatorySections.education,
-    certificationSource: mandatorySections.certification,
-    summarySource: mandatorySections.summary,
-    catalog,
+    groundingSource: [sourceResume, contactBlock].filter(Boolean).join('\n\n'),
+    educationSource,
   };
 }

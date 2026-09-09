@@ -3,6 +3,7 @@ import {
   buildAllowedResumeLines,
   canonicalizeAtsResumeOutput,
   normalizeResumeLine,
+  validateHumanVoice,
   validateResumeOutput,
 } from './validate-resume.ts';
 
@@ -221,227 +222,53 @@ Deno.test('normalizeResumeLine accepts middle-dot bullets and labeled contact va
   if (!allowed.has(normalizeResumeLine('- Shipped APIs used by millions of users.'))) throw new Error('bullet mismatch');
 });
 
-Deno.test('assembleSourceLockedResume builds a valid grounded resume', async () => {
-  const catalog = [
-    { id: 'B001', text: 'Jane Doe', isBullet: false, normalized: 'jane doe' },
-    { id: 'B002', text: 'Principal Engineer', isBullet: false, normalized: 'principal engineer' },
-    { id: 'B003', text: 'jane@example.com', isBullet: false, normalized: 'jane@example.com' },
-    { id: 'B004', text: 'Distributed systems engineer.', isBullet: false, normalized: 'distributed systems engineer.' },
-    { id: 'B005', text: 'Acme Corp', isBullet: false, normalized: 'acme corp' },
-    { id: 'B006', text: 'Shipped APIs used by millions of users.', isBullet: true, normalized: 'shipped apis used by millions of users.' },
-    { id: 'B007', text: 'TypeScript, Python', isBullet: false, normalized: 'typescript, python' },
-    { id: 'B008', text: 'B.S. Computer Science', isBullet: false, normalized: 'b.s. computer science' },
-  ];
-  const groundingSource = catalog.map((line) => line.isBullet ? `- ${line.text}` : line.text).join('\n');
-  const { assembleSourceLockedResume, buildDeterministicGroundingSource } = await import('../career-corpus/assemble-source-locked-resume.ts');
-  const input = {
-    contactBlock: 'Name: Jane Doe\nTitle: Principal Engineer\nEmail: jane@example.com',
-    summarySource: 'Distributed systems engineer.',
-    skillsSource: 'TypeScript, Python',
-    educationSource: 'B.S. Computer Science',
-    rerankedBulletIds: ['B006'],
-    catalog,
-  };
-  const output = assembleSourceLockedResume(input);
-  const ok = validateResumeOutput(output, {
-    groundingSource: buildDeterministicGroundingSource(input),
-    skillsSource: 'TypeScript, Python',
-    educationSource: 'B.S. Computer Science',
-    skipGrounding: true,
-  });
-  if (!ok.ok) throw new Error(`expected deterministic resume to validate: ${ok.reason}`);
+Deno.test('pickMatchedResumeName maps aliases to role resumes', async () => {
+  const { pickMatchedResumeName } = await import('../career-corpus/prompt.ts');
+  const names = ['Forward Deployment Engineer', 'Cloud Architect'];
+  if (pickMatchedResumeName('Forward Deployment Engineer', names) !== 'Forward Deployment Engineer') {
+    throw new Error('expected exact role name');
+  }
+  if (pickMatchedResumeName('master', names) !== 'master') {
+    throw new Error('expected master');
+  }
+  if (pickMatchedResumeName('"Cloud Architect"', names) !== 'Cloud Architect') {
+    throw new Error('expected quoted exact match');
+  }
+  if (pickMatchedResumeName('Solutions Engineer', names) !== 'master') {
+    throw new Error('unmatched role should fall back to master');
+  }
 });
 
-/**
- * The master resume carries its own section headers (`EDUCATION`, `TECHNICAL SKILLS`, ...),
- * so they land in the bullet catalog. Reusing one as section *content* emitted a second
- * `EDUCATION` line, which canonicalization then dropped as an empty duplicate — surfacing
- * as `missing_ats_section` and taking down the deterministic fallback.
- */
-Deno.test('assembleSourceLockedResume ignores catalog lines that are ATS headers', async () => {
-  const catalog = [
-    { id: 'B001', text: 'Jane Doe', isBullet: false, normalized: 'jane doe' },
-    { id: 'B002', text: 'PROFESSIONAL SUMMARY', isBullet: false, normalized: 'professional summary' },
-    { id: 'B003', text: 'Distributed systems engineer with a decade of platform experience.', isBullet: false, normalized: 'distributed systems engineer with a decade of platform experience.' },
-    { id: 'B004', text: 'TECHNICAL SKILLS', isBullet: false, normalized: 'technical skills' },
-    { id: 'B005', text: 'TypeScript, Python, Go', isBullet: false, normalized: 'typescript, python, go' },
-    { id: 'B006', text: 'PROFESSIONAL EXPERIENCE', isBullet: false, normalized: 'professional experience' },
-    { id: 'B007', text: 'Acme Corp', isBullet: false, normalized: 'acme corp' },
-    { id: 'B008', text: 'Shipped APIs used by millions of users.', isBullet: true, normalized: 'shipped apis used by millions of users.' },
-    { id: 'B009', text: 'EDUCATION', isBullet: false, normalized: 'education' },
-    { id: 'B010', text: 'B.Tech in Information Technology', isBullet: false, normalized: 'b.tech in information technology' },
-  ];
-
-  const { assembleSourceLockedResume } = await import('../career-corpus/assemble-source-locked-resume.ts');
-
-  // Mandatory sections come back empty when the stored master resume lacks the
-  // `==== TITLE ====` separators the extractor keys off, forcing catalog fallbacks.
-  const output = assembleSourceLockedResume({
-    contactBlock: 'Name: Jane Doe\nEmail: jane@example.com',
-    summarySource: '',
-    skillsSource: '',
-    educationSource: '',
-    rerankedBulletIds: ['B008'],
-    catalog,
-  });
-
-  for (const header of ['EDUCATION', 'TECHNICAL SKILLS', 'PROFESSIONAL SUMMARY', 'PROFESSIONAL EXPERIENCE']) {
-    const occurrences = output.split('\n').filter((line) => line.trim() === header).length;
-    const allowed = header === 'PROFESSIONAL EXPERIENCE' || header === 'EDUCATION' ? 1 : 0;
-    if (occurrences !== allowed) {
-      throw new Error(`expected ${allowed} "${header}" line(s), got ${occurrences}\n${output}`);
-    }
-  }
-
-  const ok = validateResumeOutput(output, { skipGrounding: true });
-  if (!ok.ok) throw new Error(`expected assembly to validate, got ${ok.reason}\n${output}`);
+Deno.test('validateHumanVoice rejects stacked AI cliches', () => {
+  const cliche = [
+    'NAME', 'Jane Doe', '',
+    'CONTACT', 'jane@example.com', '',
+    'SUMMARY', 'I build platforms.', '',
+    'SKILLS', 'TypeScript', '',
+    'PROFESSIONAL EXPERIENCE',
+    '- Leveraged cutting-edge tools to spearhead innovative solutions.',
+    '- Orchestrated best-in-class systems for cross-functional stakeholders.',
+    '- Utilized synergized processes and drove impactful results.',
+    '',
+    'EDUCATION', 'B.S. Computer Science',
+  ].join('\n');
+  const result = validateHumanVoice(cliche);
+  if (result.ok) throw new Error('expected ai_generated_voice');
+  if (result.reason !== 'ai_generated_voice') throw new Error(result.reason);
 });
 
-/**
- * Production dump: empty mandatory sections + scored non-bullets (title, location,
- * summary paragraph, sync stamp) produced SUMMARY=title, SKILLS=location, and
- * EXPERIENCE filled with the master summary instead of job bullets.
- */
-Deno.test('assembleSourceLockedResume maps catalog fallbacks into the correct ATS sections', async () => {
-  const summary = 'Results-driven Integration Architect and GenAI-native developer with 10+ years of experience in enterprise software engineering and customer-facing platform work.';
-  const catalog = [
-    { id: 'B001', text: 'ARUNKUMAR JS', isBullet: false, normalized: 'arunkumar js' },
-    { id: 'B002', text: 'Integration Architect | GenAI Developer | Forward Deployment Engineer', isBullet: false, normalized: 'integration architect | genai developer | forward deployment engineer' },
-    { id: 'B003', text: 'Location: Chennai, Tamil Nadu', isBullet: false, normalized: 'location: chennai, tamil nadu' },
-    { id: 'B004', text: 'arunkumar2891@gmail.com', isBullet: false, normalized: 'arunkumar2891@gmail.com' },
-    { id: 'B005', text: summary, isBullet: false, normalized: summary.toLowerCase() },
-    { id: 'B006', text: 'Forward Deployment Engineering:', isBullet: false, normalized: 'forward deployment engineering:' },
-    { id: 'B007', text: 'Customer-Facing Technical Work: Bridging business needs and engineering solutions', isBullet: true, normalized: 'customer-facing technical work: bridging business needs and engineering solutions' },
-    { id: 'B008', text: 'PALO ALTO NETWORKS', isBullet: false, normalized: 'palo alto networks' },
-    { id: 'B009', text: 'Built 2 conversational AI agents powered by Gemini 2.5 Pro with RAG corpus of 50+ pipeline metrics', isBullet: true, normalized: 'built 2 conversational ai agents powered by gemini 2.5 pro with rag corpus of 50+ pipeline metrics' },
-    { id: 'B010', text: '[CareerPilot] Last synced: Sep 7, 2026, 3:41 PM', isBullet: false, normalized: '[careerpilot] last synced: sep 7, 2026, 3:41 pm' },
-    { id: 'B011', text: 'TypeScript | JavaScript | Python | REST APIs | RAG | Pub/Sub', isBullet: true, normalized: 'typescript | javascript | python | rest apis | rag | pub/sub' },
-    { id: 'B012', text: 'B.Tech – Information Technology', isBullet: false, normalized: 'b.tech – information technology' },
-  ];
-
-  const { assembleSourceLockedResume } = await import('../career-corpus/assemble-source-locked-resume.ts');
-  const output = assembleSourceLockedResume({
-    contactBlock: [
-      'Name: ARUNKUMAR JS',
-      'Title: Integration Architect | GenAI Developer | Forward Deployment Engineer',
-      'Email: arunkumar2891@gmail.com',
-      'Phone: +91 6380069156',
-      'Location: Chennai, Tamil Nadu',
-      'LinkedIn: https://www.linkedin.com/in/arunkumar-j-s-05164393/',
-      'GitHub: https://github.com/arunkumar2891-ux/',
-      'PANW start: Jul 2024',
-    ].join('\n'),
-    summarySource: '',
-    skillsSource: '',
-    educationSource: '',
-    rerankedBulletIds: ['B002', 'B003', 'B005', 'B010', 'B009', 'B007', 'B011'],
-    catalog,
+Deno.test('buildResumeUserPrompt uses resume and JD blocks', async () => {
+  const { buildResumeUserPrompt } = await import('../career-corpus/prompt.ts');
+  const prompt = buildResumeUserPrompt({
+    jobTitle: 'FDE',
+    company: 'Acme',
+    jobDescription: 'Ship customer integrations.',
+    sourceResume: 'NAME\nJane Doe\nPROFESSIONAL EXPERIENCE\n- Shipped APIs.',
+    contactBlock: 'Name: Jane Doe',
   });
-
-  const section = (name: string) => {
-    const headers = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'CERTIFICATION', 'EDUCATION'];
-    const lines = output.split('\n');
-    const start = lines.findIndex((line) => line.trim() === name);
-    if (start < 0) return '';
-    const body: string[] = [];
-    for (let i = start + 1; i < lines.length; i++) {
-      if (headers.includes(lines[i].trim())) break;
-      body.push(lines[i]);
-    }
-    return body.join('\n').trim();
-  };
-
-  const summaryBody = section('SUMMARY');
-  const skillsBody = section('SKILLS');
-  const contactBody = section('CONTACT');
-  const experienceBody = section('PROFESSIONAL EXPERIENCE');
-
-  if (!summaryBody.includes('Results-driven Integration Architect')) {
-    throw new Error(`SUMMARY should be the professional paragraph, got:\n${summaryBody}`);
-  }
-  if (summaryBody.includes('Integration Architect |')) {
-    throw new Error(`SUMMARY should not be the title line:\n${summaryBody}`);
-  }
-  if (/location:/i.test(skillsBody)) {
-    throw new Error(`SKILLS should not be the location line:\n${skillsBody}`);
-  }
-  if (!/typescript/i.test(skillsBody) && !/python/i.test(skillsBody)) {
-    throw new Error(`SKILLS should contain skill tokens, got:\n${skillsBody}`);
-  }
-  if (/jul 2024/i.test(contactBody)) {
-    throw new Error(`CONTACT should omit employment start date:\n${contactBody}`);
-  }
-  if (!contactBody.includes('Title: Integration Architect | GenAI Developer | Forward Deployment Engineer')) {
-    throw new Error(`CONTACT should preserve the labeled professional title:\n${contactBody}`);
-  }
-  if (!experienceBody.includes('- Built 2 conversational AI agents')) {
-    throw new Error(`EXPERIENCE should include the selected bullet:\n${experienceBody}`);
-  }
-  if (experienceBody.includes('Results-driven')) {
-    throw new Error(`EXPERIENCE should not dump the summary paragraph:\n${experienceBody}`);
-  }
-  if (/last synced/i.test(experienceBody)) {
-    throw new Error(`EXPERIENCE should omit corpus sync stamps:\n${experienceBody}`);
-  }
-  if (!experienceBody.includes('PALO ALTO NETWORKS')) {
-    throw new Error(`EXPERIENCE should keep the company header above the bullet:\n${experienceBody}`);
-  }
-
-  const ok = validateResumeOutput(output, { skipGrounding: true });
-  if (!ok.ok) throw new Error(`expected assembly to validate, got ${ok.reason}\n${output}`);
-});
-
-Deno.test('extractMandatoryResumeSections works without equals banners', async () => {
-  const { extractMandatoryResumeSections } = await import('../career-corpus/resume-bank.ts');
-  const master = `ARUN KUMAR
-
-PROFESSIONAL SUMMARY
-Results-driven Integration Architect with 10+ years of experience.
-
-CORE COMPETENCIES
-Forward Deployment Engineering:
-- Customer-Facing Technical Work | APIs | TypeScript
-
-PROFESSIONAL EXPERIENCE
-PALO ALTO NETWORKS
-- Shipped integrations.
-
-EDUCATION
-B.Tech in Information Technology
-`;
-  const sections = extractMandatoryResumeSections(master);
-  if (!sections.summary.includes('Results-driven Integration Architect')) {
-    throw new Error(`expected summary body, got ${JSON.stringify(sections.summary)}`);
-  }
-  if (!sections.skills.includes('TypeScript')) {
-    throw new Error(`expected skills body, got ${JSON.stringify(sections.skills)}`);
-  }
-  if (!sections.education.includes('B.Tech')) {
-    throw new Error(`expected education body, got ${JSON.stringify(sections.education)}`);
-  }
-
-  const bannered = extractMandatoryResumeSections(`
-================================================================================
-PROFESSIONAL SUMMARY
-================================================================================
-Results-driven Integration Architect with 10+ years of experience.
-
-================================================================================
-CORE COMPETENCIES
-================================================================================
-- TypeScript | Python
-
-================================================================================
-EDUCATION
-================================================================================
-B.Tech in Information Technology
-`);
-  if (!bannered.summary.includes('Results-driven')) {
-    throw new Error(`banner extractor lost summary: ${JSON.stringify(bannered.summary)}`);
-  }
-  if (!bannered.skills.includes('TypeScript')) {
-    throw new Error(`banner extractor lost skills: ${JSON.stringify(bannered.skills)}`);
-  }
+  if (!prompt.includes('RESUME:')) throw new Error('missing RESUME block');
+  if (!prompt.includes('JOB DESCRIPTION:')) throw new Error('missing JD block');
+  if (prompt.includes('BULLET CATALOG')) throw new Error('catalog should be gone');
 });
 
 Deno.test('validateResumeOutput reports an empty supplied section as empty, not missing', () => {

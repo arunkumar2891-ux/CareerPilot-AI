@@ -9,7 +9,7 @@ The frontend is a Vite single-page application. Supabase supplies authentication
 ## What it does
 
 - Finds LinkedIn jobs through an Apify actor and filters duplicates.
-- Uses a career corpus, role playbooks, and tagged evidence to tailor resumes for a job description.
+- Uses your master resume (or a matching role-specific resume) plus the job description to tailor a human-sounding resume.
 - Produces a PDF with LaTeX, stores it in Supabase Storage, and can sync it to Google Drive from the Resume workspace.
 - Tracks jobs and applications, including status timelines, notes, and attachments.
 - Scores resumes for ATS compatibility, persists the feedback with the resume, and opens a resume-linked Copilot conversation for follow-up improvements.
@@ -71,12 +71,12 @@ Import from `@/components/motion` or use shared components (`PageHeader`, `Metri
 ### Where motion is applied
 
 - **Layout:** Sidebar active-link glow bar, Copilot nav pulse ring, topbar command-palette hover glow, notification bell pulse, refined route transitions in `AppLayout`
-- **Shared:** `StatusBadge` glow for running/generating states, `ExecutionGraph` orbital mini-loader on active nodes, `RoleBanksStatusBanner` mono status labels
+- **Shared:** `StatusBadge` glow for running/generating states, `ExecutionGraph` orbital mini-loader on active nodes
 - **Pages:** All 15 routed pages use the motion kit for loading states, list entrances, or section fades (Dashboard through Settings, including Auth)
 
 ## Job-search pipeline
 
-On first authenticated load, `BootstrapService` provisions default settings, career-corpus records, the workflow, and a daily automation. The current default workflow has 17 nodes:
+On first authenticated load, `BootstrapService` provisions default settings, the workflow, and a daily automation. Add a master resume on the Corpus page (Google Doc, upload, or paste) before tailoring. The current default workflow has 17 nodes:
 
 ```text
 Daily schedule
@@ -111,7 +111,7 @@ This flow requires migration `018_resume_ats_review_chat.sql` and the deployed `
 | Dashboard | Metrics, trends, notifications, and recent activity |
 | Job Discovery | Search results, filtering, and on-demand pipeline runs |
 | Applications | Application status, events, recruiter details, notes, and files |
-| Corpus | Seeded master resume, two-page template, and role-specific bullet banks |
+| Corpus | Master resume and optional role-specific resumes (Google Doc, upload, or paste) |
 | Resumes | Markdown editing, persisted ATS reviews, versions, PDF generation, and Google Drive sync |
 | Cover Letters and AI Copilot | Drafting, resume/JD assistance, ATS-review follow-up, interview preparation, and saved chat history |
 | Knowledge Base | Google Doc sync and tagged career-evidence retrieval |
@@ -131,7 +131,7 @@ src/
     shared/                    PageHeader, MetricCard, EmptyState, StatusBadge
     resume/ execution/ ui/     Feature and shadcn primitives
   services/index.ts            Typed Supabase-facing service layer and bootstrap logic
-  content/career-corpus/       Resume source material, role playbooks, and evidence chunks
+  content/career-corpus/       Master resume name constants and contact overlay helpers
   constants/workflow-seed.ts   Default workflows (daily pipeline + resume tailoring)
   lib/
     motion.ts                  Motion tokens and useReducedMotion
@@ -143,7 +143,7 @@ supabase/
   functions/                   Deno Edge Functions and shared workflow/AI helpers
 
 scripts/
-  sync-careerpilot-section.mjs Bundles the CareerPilot resume section for Edge Functions
+  bump-version.mjs             Increments package.json version before deploy
 ```
 
 ## Prerequisites
@@ -176,7 +176,7 @@ Then run the application:
 npm run dev        # http://localhost:5173
 npm run lint       # ESLint
 npm run typecheck  # TypeScript, no emit (run after UI/motion changes)
-npm run build      # sync corpus, type-check, then Vite production build
+npm run build      # type-check, then Vite production build
 npm run preview    # serve the production build
 
 npm run version:bump  # 1.0 -> 1.1 -> ... -> 1.999 -> 2.0; run before each deploy
@@ -198,6 +198,7 @@ Apply every SQL migration in filename order. Before `003_cron.sql`, enable the `
 | `014`–`016` | Resume-to-job links, PDF/Drive fields, and corpus classification |
 | `017` | AI usage events |
 | `018` | Persisted ATS reviews and resume-linked Copilot conversations |
+| `019` | `corpus_type` / `corpus_source` plus DOCX uploads in the resumes bucket |
 
 For exact migration and scheduler instructions, see [DEPLOY.md](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/DEPLOY.md). The deployment guide is especially important for the cron endpoint, because scheduled and waiting workflows require `workflow-scheduler` to run every minute.
 
@@ -240,28 +241,18 @@ The repository also includes a GitHub Actions workflow that deploys Edge Functio
 
 ## First-run checklist
 
-1. Sign up or sign in. The bootstrap service creates the default workflow, daily automation, corpus, and starter settings.
+1. Sign up or sign in. The bootstrap service creates the default workflow, daily automation, and starter settings.
 2. In **Settings**, add your profile/contact data and configure the search query, location, posted-within window, maximum jobs, and notification email.
 3. Connect Google in **Integrations** if you want to pull a master Google Doc or send generated PDFs to Drive.
-4. Use **Knowledge Base** to sync a Google Doc into the corpus if applicable.
+4. On **Corpus**, add your master resume (Google Doc, PDF/DOCX/MD upload, or paste). Optional role-specific resumes are matched to jobs by title.
 5. Use **Job Discovery → Run Search** to test the pipeline, then follow progress in **Execution History**.
 6. Open a resume, select **Score ATS**, and use **Discuss in Copilot** to work through its saved review.
 
 ## Career corpus
 
-`src/content/career-corpus/` is the versioned source for resume-safe seed data: the master resume, two-page template, role playbooks, ATS keywords, and evidence chunks. When the CareerPilot project block in `master-resume.md` changes, run:
+The corpus is per-user data in Supabase — not files in this repo. Google Doc sync or a direct upload is the source of truth for the master resume. Role-specific resumes are optional overrides used when the job title matches.
 
-```bash
-npm run sync:corpus
-```
-
-This regenerates `supabase/functions/_shared/career-corpus/careerpilot-section.generated.ts`, which is used by the Edge Functions and included automatically by `npm run build`.
-
-### Source-locked resume tailoring
-
-Resume tailoring uses hybrid retrieval without treating the job description as a source of candidate facts. A role playbook first selects a relevant master-resume bank, then lexical matching finds additional master-resume blocks that overlap with the job description. Evidence chunks and the posting influence selection only.
-
-The final resume is source-locked: every non-heading output line must match a line in the user's Master ATS resume, and the response must contain each required section exactly once. Outputs with unsupported lines or duplicate source lines are rejected before they are stored. This deliberately favors factual consistency over free-form rewriting; update the Master ATS resume when a fact, metric, or skill should become eligible for tailoring.
+Resume tailoring sends the selected source resume and the job description to Gemini with a 7-section output contract (NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION). Output is validated for section shape, length, source grounding of experience bullets, and human voice (banned AI cliches).
 
 ## Deployment
 

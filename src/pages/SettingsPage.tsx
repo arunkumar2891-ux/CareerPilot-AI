@@ -18,7 +18,6 @@ import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
 import { JOB_POSTED_WITHIN_OPTIONS, DEFAULT_JOB_POSTED_WITHIN } from '@/constants';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId, googleDocResumeFileId } from '@/utils/google';
-import { RoleBanksStatusBanner } from '@/components/RoleBanksStatusBanner';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -27,7 +26,7 @@ export function SettingsPage() {
   const qc = useQueryClient();
   const [name, setName] = useState(user?.fullName || '');
   const [title, setTitle] = useState(user?.title || '');
-  const [email, setEmail] = useState(user?.email || '');
+  const [email] = useState(user?.email || '');
   const [jobQuery, setJobQuery] = useState('AI Product Manager');
   const [jobLocation, setJobLocation] = useState('San Francisco, CA');
   const [maxJobs, setMaxJobs] = useState('5');
@@ -40,7 +39,6 @@ export function SettingsPage() {
   const [linkedin, setLinkedin] = useState('');
   const [github, setGithub] = useState('');
   const [startDate, setStartDate] = useState('');
-  const [syncingCareerPilot, setSyncingCareerPilot] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const settingsTab = searchParams.get('tab') || 'profile';
@@ -78,7 +76,7 @@ export function SettingsPage() {
     qc.invalidateQueries({ queryKey: ['profile'] });
     qc.invalidateQueries({ queryKey: ['settings'] });
     qc.invalidateQueries({ queryKey: ['resumes'] });
-    toast.success('Profile and contact saved — Master ATS header updated');
+    toast.success('Profile and contact saved — master resume header updated');
   };
 
   const saveContact = async () => {
@@ -86,7 +84,7 @@ export function SettingsPage() {
       contact: { phone, location, linkedin, github, startDate, email: user?.email || email },
     });
     await services.settings.applyContactToSeededResumes();
-    toast.success('Contact written into Master ATS and the 2-page template');
+    toast.success('Contact written into the master resume');
     qc.invalidateQueries({ queryKey: ['settings'] });
     qc.invalidateQueries({ queryKey: ['resumes'] });
   };
@@ -116,7 +114,7 @@ export function SettingsPage() {
     if (fileId) {
       try {
         const res = await supabase.functions.invoke('ai-chat', {
-          body: { mode: 'sync_google_doc_chunks', fileId, generateRoleBanks: fileIdChanged },
+          body: { mode: 'sync_google_doc_chunks', fileId },
         });
         if (res.error) throw new Error(res.error.message);
         qc.invalidateQueries({ queryKey: ['resumes'] });
@@ -124,8 +122,8 @@ export function SettingsPage() {
         qc.invalidateQueries({ queryKey: ['settings'] });
         toast.success(
           fileIdChanged
-            ? 'Job search saved — Google Doc synced and role banks are generating'
-            : 'Job search saved — Google Doc synced to Master ATS',
+            ? 'Job search saved — Google Doc synced to your master resume'
+            : 'Job search saved — Google Doc synced',
         );
         return;
       } catch (err) {
@@ -133,39 +131,6 @@ export function SettingsPage() {
       }
     }
     toast.success('Job search settings saved');
-  };
-
-  const syncCareerPilotProject = async () => {
-    const parsedResumeId = parseGoogleDocFileId(resumeFileId);
-    if (!parsedResumeId) {
-      toast.error('Add a Google Doc Resume ID first');
-      return;
-    }
-    setSyncingCareerPilot(true);
-    try {
-      const res = await supabase.functions.invoke('ai-chat', {
-        body: { mode: 'sync_careerpilot_project', fileId: parsedResumeId },
-      });
-      if (res.error) throw new Error(res.error.message);
-      const data = res.data as {
-        metrics?: { jobsDiscovered?: number; resumesTailored?: number };
-        strategy?: string;
-        occurrencesChanged?: number;
-        sectionFound?: boolean;
-      };
-      const jobs = data.metrics?.jobsDiscovered ?? 0;
-      const resumes = data.metrics?.resumesTailored ?? 0;
-      const changed = data.occurrencesChanged ?? 0;
-      if (changed === 0) {
-        toast.warning('Sync ran but Google Doc reported no text changes — check the CareerPilot AI section header in your Doc');
-      } else {
-        toast.success(`CareerPilot synced via ${data.strategy || 'update'} (${jobs} jobs, ${resumes} tailored resumes)`);
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Google Doc sync failed — reconnect Google Drive in Integrations');
-    } finally {
-      setSyncingCareerPilot(false);
-    }
   };
 
   return (
@@ -207,7 +172,7 @@ export function SettingsPage() {
                 <div className="space-y-1.5"><Label>GitHub URL</Label><Input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="https://github.com/…" /></div>
                 <div className="space-y-1.5"><Label>PANW start date</Label><Input value={startDate} onChange={(e) => setStartDate(e.target.value)} placeholder="e.g. Jan 2021" /></div>
               </div>
-              <p className="text-xs text-muted-foreground">Save writes these into the Master ATS and 2-page template headers (phone, location, LinkedIn, GitHub, email). Empty fields stay as placeholders.</p>
+              <p className="text-xs text-muted-foreground">Save writes these into the master resume header (phone, location, LinkedIn, GitHub, email). Empty fields stay as placeholders.</p>
               <div className="flex flex-wrap gap-2">
                 <Button onClick={saveProfile} className="gap-2"><Check className="h-4 w-4" /> Save Profile</Button>
                 <Button variant="outline" onClick={saveContact} className="gap-2"><Check className="h-4 w-4" /> Save Contact for Resumes</Button>
@@ -247,8 +212,7 @@ export function SettingsPage() {
               <div className="space-y-1.5">
                 <Label>Google Doc Resume ID</Label>
                 <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="docs.google.com/document/d/FILE_ID/edit" />
-                <p className="text-xs text-muted-foreground">Paste a Google Doc link or the file ID. Required before job search or resume tailoring. Synced before each pipeline run; changing the ID regenerates role banks.</p>
-                <RoleBanksStatusBanner />
+                <p className="text-xs text-muted-foreground">Paste a Google Doc link or the file ID to keep the master resume in sync. Optional if you already uploaded or pasted a resume on the Corpus page.</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Google Drive folder for PDFs</Label>
@@ -262,22 +226,9 @@ export function SettingsPage() {
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">
-                Searches all work types (on-site, remote, hybrid) in your location. Tailoring uses the in-app Master ATS corpus.
+                Searches all work types (on-site, remote, hybrid) in your location. Tailoring uses your master resume, or a matching role-specific resume when one exists.
               </p>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save Job Search Settings</Button>
-                <Button
-                  variant="outline"
-                  onClick={syncCareerPilotProject}
-                  disabled={syncingCareerPilot || !resumeFileId.trim()}
-                  className="gap-2"
-                >
-                  {syncingCareerPilot ? 'Syncing…' : 'Sync CareerPilot project to Google Doc'}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Pushes the full CareerPilot AI project section (features, architecture, bullets, live metrics) from the deployed corpus to your Google Doc. Auto-runs after each successful pipeline and after Edge Function deploys. Reconnect Google Drive if sync fails (documents write scope).
-              </p>
+              <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save Job Search Settings</Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -323,10 +274,9 @@ export function SettingsPage() {
                 <li><code>GROQ_MODEL</code> — optional; defaults to <code>openai/gpt-oss-120b</code></li>
                 <li><code>AI_TIMEOUT_MS</code> — optional chat timeout; default 30000</li>
                 <li><code>AI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 40000 (keep total under 150s edge limit)</li>
-                <li><code>AI_FORCE_GROQ</code> — optional; default off — skips Groq when catalog assembly is available</li>
+                <li><code>AI_FORCE_GROQ</code> — optional; default off — enables Groq as an extra resume-tailoring fallback</li>
                 <li><code>AI_MAX_RETRIES</code> — optional; only used when <code>AI_GEMINI_RETRY_ENABLED=true</code></li>
                 <li><code>AI_GEMINI_RETRY_ENABLED</code> — optional; default off — one Gemini attempt per key, then next provider</li>
-                <li><code>AI_LLM_RERANK_ENABLED</code> — optional; default off — saves Gemini quota by using scored bullet order instead of LLM rerank</li>
                 <li><code>RESEND_API_KEY</code> — Resend email API key</li>
                 <li><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> — Google OAuth</li>
                 <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — Service role key</li>

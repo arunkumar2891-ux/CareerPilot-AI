@@ -1,7 +1,7 @@
 import { createUserClient, createAdminClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
-import { getUserSettings } from '../_shared/credentials.ts';
 import { createRun, executeWorkflow, loadWorkflow } from '../_shared/workflow/executor.ts';
 import { buildMultiJobDiscoveryRunSeed, workflowHasLoadJobNode } from '../_shared/workflow/job-discovery.ts';
+import { userHasMasterResume } from '../_shared/career-corpus/load.ts';
 
 async function markRunFailed(runId: string, message: string) {
   const admin = createAdminClient();
@@ -48,12 +48,8 @@ Deno.serve(async (req) => {
     let triggerType = 'manual';
     let runContext: Record<string, unknown> | undefined;
     if (jobIds.length > 0 && requiresJob) {
-      const settings = await getUserSettings(user.id);
-      const resumeFileId = String(
-        (settings.jobSearch as Record<string, unknown> | undefined)?.resumeFileId ?? '',
-      ).trim();
-      if (!resumeFileId) {
-        return jsonResponse({ error: 'Add a Google Doc Resume ID in Settings before generating a tailored resume.' }, 400);
+      if (!(await userHasMasterResume(user.id))) {
+        return jsonResponse({ error: 'Add a master resume on the Corpus page before generating a tailored resume.' }, 400);
       }
 
       const admin = createAdminClient();

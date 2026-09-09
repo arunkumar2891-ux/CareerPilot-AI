@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  Briefcase, MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
+  MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
   Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2,
 } from 'lucide-react';
-import { FadeIn, InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
+import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
 import { transitionFast } from '@/lib/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -14,20 +14,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { services } from '@/services';
-import { JOB_BOARDS, EXPERIENCE_LEVELS } from '@/constants';
+import { EXPERIENCE_LEVELS } from '@/constants';
 import { formatCurrency, formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { hasGoogleDocResumeId } from '@/utils/google';
+import { hasUsableMasterResume } from '@/utils/resume-classification';
 import type { Job } from '@/types';
 
 export function JobsPage() {
@@ -55,7 +55,11 @@ export function JobsPage() {
   });
 
   const { data: jobs, isLoading, error: jobsError } = useQuery({ queryKey: ['jobs'], queryFn: () => services.jobSearch.list() });
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
+  const { data: corpusResumes } = useQuery({
+    queryKey: ['resumes', 'corpus'],
+    queryFn: () => services.resume.list({ kind: 'corpus' }),
+  });
+  const hasMaster = hasUsableMasterResume(corpusResumes || []);
 
   const filtered = (jobs || []).filter((j) => {
     if (search && !j.role.toLowerCase().includes(search.toLowerCase()) && !j.company.toLowerCase().includes(search.toLowerCase())) return false;
@@ -67,9 +71,9 @@ export function JobsPage() {
   });
 
   const runSearch = async () => {
-    if (!hasGoogleDocResumeId(settings)) {
-      toast.error('Add a Google Doc Resume ID in Settings before running job search');
-      navigate('/settings?tab=jobsearch');
+    if (!hasMaster) {
+      toast.error('Add a master resume on the Corpus page before running job search');
+      navigate('/corpus');
       return;
     }
     try {
@@ -128,9 +132,9 @@ export function JobsPage() {
   const bulkGenerateResumes = async () => {
     const ids = Array.from(selectedJobIds);
     if (ids.length === 0 || bulkTailoring) return;
-    if (!hasGoogleDocResumeId(settings)) {
-      toast.error('Add a Google Doc Resume ID in Settings before generating tailored resumes');
-      navigate('/settings?tab=jobsearch');
+    if (!hasMaster) {
+      toast.error('Add a master resume on the Corpus page before generating tailored resumes');
+      navigate('/corpus');
       return;
     }
     setBulkTailoring(true);
@@ -546,14 +550,17 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
+  const { data: corpusResumes } = useQuery({
+    queryKey: ['resumes', 'corpus'],
+    queryFn: () => services.resume.list({ kind: 'corpus' }),
+  });
   if (!job) return null;
 
   const generateResume = async () => {
     if (starting) return;
-    if (!hasGoogleDocResumeId(settings)) {
-      toast.error('Add a Google Doc Resume ID in Settings before generating a tailored resume');
-      navigate('/settings?tab=jobsearch');
+    if (!hasUsableMasterResume(corpusResumes || [])) {
+      toast.error('Add a master resume on the Corpus page before generating a tailored resume');
+      navigate('/corpus');
       return;
     }
     setStarting(true);

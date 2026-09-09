@@ -17,7 +17,7 @@ import { ExecutionGraph } from '@/components/executions/ExecutionGraph';
 import { ExecutionNodeDetailSheet } from '@/components/executions/ExecutionNodeDetailSheet';
 import { getActiveExecutionStep } from '@/utils/execution';
 import { toast } from 'sonner';
-import { hasGoogleDocResumeId } from '@/utils/google';
+import { hasUsableMasterResume } from '@/utils/resume-classification';
 
 export function ExecutionDetailPage() {
   const { runId } = useParams<{ runId: string }>();
@@ -26,7 +26,10 @@ export function ExecutionDetailPage() {
   const [selectedNode, setSelectedNode] = useState<GraphNodeView | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [stopping, setStopping] = useState(false);
-  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
+  const { data: corpusResumes } = useQuery({
+    queryKey: ['resumes', 'corpus'],
+    queryFn: () => services.resume.list({ kind: 'corpus' }),
+  });
 
   const { data: run, isLoading, error, refetch } = useQuery({
     queryKey: ['run-detail', runId],
@@ -93,9 +96,9 @@ export function ExecutionDetailPage() {
 
   const handleRunAgain = async () => {
     if (!run?.workflowId) return;
-    if (!hasGoogleDocResumeId(settings)) {
-      toast.error('Add a Google Doc Resume ID in Settings before running a workflow');
-      navigate('/settings?tab=jobsearch');
+    if (!hasUsableMasterResume(corpusResumes || [])) {
+      toast.error('Add a master resume on the Corpus page before running a workflow');
+      navigate('/corpus');
       return;
     }
     try {

@@ -1,6 +1,6 @@
 import { getAiTimeoutMs, getAtsTimeoutMs, getGeminiFallbackApiKey, getGeminiModel as configuredGeminiModel } from './ai/config.ts';
 import { generateText, generateWithProviders } from './ai/router.ts';
-import { totalTokens, type AiOperation, type DeterministicResumeInput } from './ai/types.ts';
+import { totalTokens, type AiOperation } from './ai/types.ts';
 
 export function getGeminiModel(): string {
   return configuredGeminiModel();
@@ -39,27 +39,21 @@ export async function callGeminiAtsGenerateContent(
   userPrompt: string,
   userId?: string,
   groundingSource?: string,
-  mandatorySections?: {
-    skillsSource?: string;
-    educationSource?: string;
-    certificationSource?: string;
+  options?: {
     groqUserPrompt?: string;
-    skipTwoPageShape?: boolean;
-    deterministicResume?: DeterministicResumeInput;
+    educationSource?: string;
+    identity?: { name?: string; contact?: string; education?: string };
   },
 ): Promise<{ text: string; tokensTotal: number }> {
   const result = await generateWithProviders({
     systemPrompt,
     userPrompt,
-    groqUserPrompt: mandatorySections?.groqUserPrompt,
+    groqUserPrompt: options?.groqUserPrompt,
     operation: 'resume_tailoring',
     timeoutMs: getGeminiAtsTimeoutMs(),
     groundingSource,
-    skillsSource: mandatorySections?.skillsSource,
-    educationSource: mandatorySections?.educationSource,
-    certificationSource: mandatorySections?.certificationSource,
-    skipTwoPageShape: mandatorySections?.skipTwoPageShape,
-    deterministicResume: mandatorySections?.deterministicResume,
+    educationSource: options?.educationSource,
+    identity: options?.identity,
   }, { userId });
   return { text: result.text, tokensTotal: totalTokens(result) };
 }

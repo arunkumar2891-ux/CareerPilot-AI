@@ -1,3 +1,4 @@
+import { sanitizeExtractedResumeText } from './resume-parse.ts';
 import { createAdminClient } from './supabase-admin.ts';
 import { refreshGoogleToken } from './credentials.ts';
 import { fetchWithTimeout } from './fetch-timeout.ts';
@@ -76,9 +77,12 @@ export function extractChunksFromDoc(docContent: string): { id: string; tags: st
 }
 
 export async function fetchGoogleDocText(userId: string, fileId: string): Promise<string> {
+  if (!/^[a-zA-Z0-9_-]{20,128}$/.test(fileId)) {
+    throw new Error('Invalid Google Doc ID');
+  }
   const accessToken = await refreshGoogleToken(userId);
   const res = await fetchWithTimeout(
-    `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=text/plain`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
     30000,
     'Google Doc export',
@@ -93,7 +97,8 @@ export async function fetchGoogleDocText(userId: string, fileId: string): Promis
 }
 
 export async function syncGoogleDocToCorpus(userId: string, fileId: string, options?: {
-  generateRoleBanks?: boolean;
+  corpusType?: 'master' | 'role_specific';
+  name?: string;
 }): Promise<{
   docContent: string;
   resumeContent: string;
@@ -101,48 +106,66 @@ export async function syncGoogleDocToCorpus(userId: string, fileId: string, opti
   newChunksAdded: number;
   totalExisting: number;
   resumeUpdated: boolean;
-  roleBanksScheduled: boolean;
 }> {
-  const docContent = await fetchGoogleDocText(userId, fileId);
-  const resumeContent = parseGoogleDocResume(docContent);
-  const chunks = extractChunksFromDoc(docContent);
+  const docContent = sanitizeExtractedResumeText(await fetchGoogleDocText(userId, fileId));
+  const resumeContent = sanitizeExtractedResumeText(parseGoogleDocResume(docContent));
+  const corpusType = options?.corpusType || 'master';
+  const resumeName = options?.name?.trim() || (corpusType === 'master' ? MASTER_RESUME_NAME : '');
+  if (!resumeName) throw new Error('Role resume name is required');
+
   const admin = createAdminClient();
+  let chunksExtracted = 0;
+  let newChunksAdded = 0;
+  let totalExisting = 0;
 
-  const { data: existing } = await admin
-    .from('knowledge_chunks')
-    .select('content')
-    .eq('user_id', userId)
-    .eq('collection', 'career');
-  const existingTexts = new Set(
-    (existing || []).map((c) => String(c.content || '').toLowerCase().replace(/\s+/g, ' ')),
-  );
+  if (corpusType === 'master') {
+    const chunks = extractChunksFromDoc(docContent);
+    chunksExtracted = chunks.length;
+    const { data: existing } = await admin
+      .from('knowledge_chunks')
+      .select('content')
+      .eq('user_id', userId)
+      .eq('collection', 'career');
+    const existingTexts = new Set(
+      (existing || []).map((c) => String(c.content || '').toLowerCase().replace(/\s+/g, ' ')),
+    );
+    totalExisting = (existing || []).length;
 
-  const toInsert = chunks
-    .filter((c) => !existingTexts.has(c.text.toLowerCase().replace(/\s+/g, ' ')))
-    .map((c) => ({
-      user_id: userId,
-      collection: 'career',
-      source_id: c.id,
-      tags: c.tags,
-      content: c.text,
-    }));
+    const toInsert = chunks
+      .filter((c) => !existingTexts.has(c.text.toLowerCase().replace(/\s+/g, ' ')))
+      .map((c) => ({
+        user_id: userId,
+        collection: 'career',
+        source_id: c.id,
+        tags: c.tags,
+        content: c.text,
+      }));
 
-  if (toInsert.length > 0) {
-    const { error } = await admin.from('knowledge_chunks').insert(toInsert);
-    if (error && /tags/i.test(error.message || '')) {
-      const withoutTags = toInsert.map(({ tags: _tags, ...row }) => row);
-      const retry = await admin.from('knowledge_chunks').insert(withoutTags);
-      if (retry.error) throw retry.error;
-    } else if (error) {
-      throw error;
+    if (toInsert.length > 0) {
+      const { error } = await admin.from('knowledge_chunks').insert(toInsert);
+      if (error && /tags/i.test(error.message || '')) {
+        const withoutTags = toInsert.map(({ tags: _tags, ...row }) => row);
+        const retry = await admin.from('knowledge_chunks').insert(withoutTags);
+        if (retry.error) throw retry.error;
+      } else if (error) {
+        throw error;
+      }
     }
+    newChunksAdded = toInsert.length;
+    totalExisting += toInsert.length;
   }
 
   const { data: updated } = await admin
     .from('resumes')
-    .update({ content: resumeContent, updated_at: new Date().toISOString() })
+    .update({
+      content: resumeContent,
+      is_corpus: true,
+      corpus_type: corpusType,
+      corpus_source: 'google_doc',
+      updated_at: new Date().toISOString(),
+    })
     .eq('user_id', userId)
-    .eq('name', MASTER_RESUME_NAME)
+    .eq('name', resumeName)
     .select('id');
 
   let resumeUpdated = Boolean(updated?.length);
@@ -151,30 +174,24 @@ export async function syncGoogleDocToCorpus(userId: string, fileId: string, opti
       .from('resumes')
       .insert({
         user_id: userId,
-        name: MASTER_RESUME_NAME,
+        name: resumeName,
         type: 'technical',
         content: resumeContent,
         ats_score: 0,
+        is_corpus: true,
+        corpus_type: corpusType,
+        corpus_source: 'google_doc',
       })
       .select('id');
     resumeUpdated = Boolean(inserted?.length);
   }
 
-  let roleBanksScheduled = false;
-  if (options?.generateRoleBanks && (resumeUpdated || resumeContent.length > 500)) {
-    const { setRoleBanksStatus, scheduleRoleBankGeneration } = await import('./career-corpus/generate-role-banks.ts');
-    await setRoleBanksStatus(userId, 'generating', { roleBanksError: '' });
-    scheduleRoleBankGeneration(userId);
-    roleBanksScheduled = true;
-  }
-
   return {
     docContent,
     resumeContent,
-    chunksExtracted: chunks.length,
-    newChunksAdded: toInsert.length,
-    totalExisting: (existing || []).length + toInsert.length,
-    resumeUpdated: Boolean(updated?.length),
-    roleBanksScheduled,
+    chunksExtracted,
+    newChunksAdded,
+    totalExisting,
+    resumeUpdated,
   };
 }

@@ -91,6 +91,8 @@ export interface Resume {
   storagePath?: string;
   pdfUrl?: string;
   isCorpus?: boolean;
+  corpusType?: 'master' | 'role_specific' | null;
+  corpusSource?: 'google_doc' | 'upload' | 'paste' | null;
   createdAt: string;
   updatedAt: string;
 }

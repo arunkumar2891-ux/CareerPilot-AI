@@ -357,10 +357,38 @@ function validateGrounding(
   return { ok: true };
 }
 
+const AI_CLICHE_RE = /\b(leveraged|utilized|spearheaded|orchestrated|synergized|cutting-edge|best-in-class|innovative solutions|cross-functional stakeholders|drove impactful results|results-driven|proven track record|highly skilled|robust ecosystem)\b/gi;
+const FILLER_QUALIFIER_RE = /\b(successfully|effectively|proactively)\s+/gi;
+
+function leadingVerb(line: string): string {
+  const cleaned = line.replace(/^\s*[-•]\s*/, '').trim().toLowerCase();
+  return cleaned.split(/[^a-z]+/)[0] || '';
+}
+
+export function validateHumanVoice(text: string): { ok: true } | { ok: false; reason: string } {
+  const experience = extractSectionBody(text, 'PROFESSIONAL EXPERIENCE');
+  const bullets = experience.split('\n').map((line) => line.trim()).filter((line) => /^\s*[-•]\s+/.test(line));
+  const cliches = text.match(AI_CLICHE_RE) || [];
+  if (cliches.length >= 3) return { ok: false, reason: 'ai_generated_voice' };
+  if ((text.match(FILLER_QUALIFIER_RE) || []).length >= 4) return { ok: false, reason: 'ai_generated_voice' };
+
+  if (bullets.length >= 6) {
+    const verbs = bullets.map(leadingVerb).filter(Boolean);
+    const counts = new Map<string, number>();
+    for (const verb of verbs) counts.set(verb, (counts.get(verb) || 0) + 1);
+    const top = Math.max(0, ...counts.values());
+    if (top >= 5 && top / verbs.length >= 0.6) return { ok: false, reason: 'ai_generated_voice' };
+
+    const lengths = bullets.map((line) => line.length);
+    const min = Math.min(...lengths);
+    const max = Math.max(...lengths);
+    if (max - min <= 12) return { ok: false, reason: 'ai_generated_voice' };
+  }
+  return { ok: true };
+}
+
 function validateTwoPageShape(text: string): { ok: true } | { ok: false; reason: string } {
-  // The September 4 resume contract is intentionally compact. These bounds reject
-  // Master ATS/category dumps while leaving room for normal two-page variation.
-  if (text.length > 9500) return { ok: false, reason: 'exceeds_two_page_budget' };
+  if (text.length > 10000) return { ok: false, reason: 'exceeds_two_page_budget' };
   if (/RECTIFICATION\s*&\s*ITERATION|ATS keyword reference|tailoring guide/i.test(text)) {
     return { ok: false, reason: 'master_bank_artifact' };
   }
@@ -387,6 +415,7 @@ export function validateResumeOutput(
     certificationSource?: string;
     skipGrounding?: boolean;
     skipTwoPageShape?: boolean;
+    skipHumanVoice?: boolean;
     allowParaphrase?: boolean;
     identity?: { name?: string; contact?: string; education?: string };
   },
@@ -433,9 +462,14 @@ export function validateResumeOutput(
 
   if (options?.groundingSource && !options?.skipGrounding) {
     const grounding = validateGrounding(text, options.groundingSource, {
-      allowParaphrase: options.allowParaphrase,
+      allowParaphrase: options.allowParaphrase ?? true,
     });
     if (!grounding.ok) return grounding;
+  }
+
+  if (!options?.skipHumanVoice) {
+    const voice = validateHumanVoice(text);
+    if (!voice.ok) return voice;
   }
 
   return { ok: true, text };

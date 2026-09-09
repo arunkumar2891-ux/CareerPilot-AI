@@ -26,7 +26,7 @@ export function getGroqAtsTimeoutMs(): number {
   return parsePositiveInt(Deno.env.get('AI_GROQ_ATS_TIMEOUT_MS'), 25000, 60000);
 }
 
-/** Skip Groq when catalog assembly is available (saves ~25s on quota-hit paths). Set AI_FORCE_GROQ=true to keep Groq. */
+/** Skip Groq unless explicitly enabled. Set AI_FORCE_GROQ=true to keep Groq in the chain. */
 export function isGroqResumeFallbackEnabled(): boolean {
   return Deno.env.get('AI_FORCE_GROQ')?.trim().toLowerCase() === 'true';
 }

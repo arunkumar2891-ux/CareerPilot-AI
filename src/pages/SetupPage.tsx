@@ -22,37 +22,36 @@ const ACCOUNT_STEPS: SetupStep[] = [
   {
     title: 'Sign in',
     time: '1 min',
-    description: 'Create an account or log in. CareerPilot provisions your pipeline and automation automatically — resume content comes from your Google Doc.',
+    description: 'Create an account or log in. CareerPilot provisions your pipeline and automation automatically — add your resume on the Corpus page.',
     details: [
       'Go to /auth and sign up with email/password, Google, or a magic link.',
       'Wait until the dashboard loads. In the background we create: Daily Job Search Pipeline and Daily 7 AM automation.',
-      'Empty "Master ATS (bullet bank)" and "2-page template" placeholders are created on the Corpus page — you populate them by syncing your Google Doc.',
+      'Add your master resume on the Corpus page by syncing a Google Doc, uploading a file, or pasting text.',
     ],
     action: { label: 'Go to Dashboard', path: '/' },
   },
   {
     title: 'Name, title, and contact for resumes',
     time: '2 min',
-    description: 'These values are written into the Master ATS and 2-page template headers. Do this before generating a PDF.',
+    description: 'These values are written into the master resume header. Do this before generating a PDF.',
     details: [
       'Settings → Profile → Full Name and Title (e.g. Integration Architect).',
       'On the same page fill Phone, Location, LinkedIn URL, GitHub URL, and PANW start date.',
-      'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Corpus — Master ATS should show real phone/LinkedIn/GitHub, not [Phone Number].',
+      'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Corpus — the master resume should show real phone/LinkedIn/GitHub, not [Phone Number].',
       'Skip any field you do not want on the resume; blank fields stay as placeholders.',
     ],
     action: { label: 'Open Profile & Contact', path: '/settings' },
   },
   {
-    title: 'Confirm the Master ATS corpus',
-    time: '1 min',
-    description: 'After syncing your Google Doc, confirm chunks appear. The optimizer selects from your real bullets.',
+    title: 'Add your master resume',
+    time: '2 min',
+    description: 'Tailoring uses the resume you add on the Corpus page. Role-specific resumes are optional.',
     details: [
-      'Open Knowledge Base → Google Doc Sync tab. Paste your Google Doc ID and click Sync Now.',
-      'After sync completes, switch to the Search tab — search "66%" or any metric to confirm evidence chunks loaded.',
-      'Open Corpus → Master ATS (bullet bank) should now show your full resume content.',
-      'The ATS optimizer picks 4–6 bullets per project from your synced bullet bank when tailoring.',
+      'Open Corpus and add a master resume via Google Doc sync, file upload (PDF/DOCX/MD), or paste.',
+      'Optionally add a role-specific resume (for example Forward Deployment Engineer) for jobs in that family.',
+      'Confirm the content looks right in the editor. Contact from Settings overlays the header.',
     ],
-    action: { label: 'Open Knowledge Base', path: '/knowledge' },
+    action: { label: 'Open Corpus', path: '/corpus' },
   },
   {
     title: 'Set what to search for',
@@ -71,7 +70,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
   {
     title: 'Connect Google',
     time: '3 min',
-    description: 'Required to sync your master resume from Google Docs and generate knowledge chunks for tailoring.',
+    description: 'Optional. Used to sync your master resume from Google Docs and generate knowledge chunks.',
     details: [
       'Integrations → Connect Google. Use the Gmail that owns the resume Google Doc.',
       'If you see 403 access_denied, an admin must add your Gmail as an OAuth test user (Google Cloud Console → OAuth consent screen).',
@@ -87,7 +86,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
     details: [
       'The "Daily Job Search Pipeline" workflow is auto-provisioned on first login.',
       'The "Daily 7 AM Job Search" automation is created with an active status.',
-      'ATS Optimizer uses the corpus even if Google Docs is skipped.',
+      'ATS Optimizer uses the master resume (and a matching role-specific resume when one exists).',
       'Use Jobs → Run Search when you want an immediate pipeline run (needs Apify + Gemini secrets on the server).',
     ],
     action: { label: 'View Executions', path: '/executions' },
@@ -99,14 +98,14 @@ const ACCOUNT_STEPS: SetupStep[] = [
     details: [
       'Fast path (no scrape): if a job is already on the Jobs board, open it → Generate tailored resume. A new resume named "Tailored: Company Role" appears on Resumes.',
       'Full path: Jobs → Run Search. Execution History shows Apify scrape → ATS optimizer → PDF. First scrape can take several minutes.',
-      'Sanity-check the tailored text: lead project should match the JD type (e.g. FW-Flex for Integration Architect, Portal for FDE). Numbers like 66% / 278 to 94 must still appear — never invented.',
-      'If tailoring fails with "Career corpus not seeded", refresh the app once while signed in, then retry.',
+      'Sanity-check the tailored text: it should match the job, keep the candidate\'s voice, and keep source metrics unchanged.',
+      'If tailoring fails because no master resume was found, add one on Corpus, then retry.',
     ],
     action: { label: 'Open Jobs', path: '/jobs' },
   },
 ];
 
-function StepAccordion({ step, index }: { step: SetupStep; index: number }) {
+function StepAccordion({ step }: { step: SetupStep }) {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -198,7 +197,7 @@ export function SetupPage() {
         <Card>
           <CardContent className="p-0">
             {ACCOUNT_STEPS.map((step, i) => (
-              <StepAccordion key={i} step={step} index={i} />
+              <StepAccordion key={i} step={step} />
             ))}
           </CardContent>
         </Card>

@@ -1,18 +1,11 @@
-import masterResume from './master-resume.md?raw';
-import twoPageTemplate from './two-page-template.md?raw';
-import experienceBullets from './experience-bullets.md?raw';
-import atsKeywords from './ats-keywords.md?raw';
-import rolePlaybooks from './role-playbooks.json';
-import evidenceChunks from './evidence-chunks.json';
-
 export const MASTER_RESUME_NAME = 'Master ATS (bullet bank)';
 export const TWO_PAGE_RESUME_NAME = '2-page template';
 
-/** Canonical education block used in all resume templates and generations. */
+/** Canonical education block used when a source resume has none. */
 export const DEFAULT_EDUCATION = `B.Tech in Information Technology
 SASTRA University | Thanjavur`;
 
-/** Replace placeholder or known-wrong education text in seeded resume content. */
+/** Replace placeholder or known-wrong education text in resume content. */
 export function replaceEducationPlaceholders(text: string): string {
   let out = text;
   out = out.replace(
@@ -25,31 +18,6 @@ export function replaceEducationPlaceholders(text: string): string {
   );
   return out;
 }
-
-export interface RolePlaybook {
-  id: string;
-  title: string;
-  matchKeywords: string[];
-  leadWith: string[];
-  emphasize: string[];
-  highlight: string[];
-  deemphasize: string;
-}
-
-export interface EvidenceChunk {
-  id: string;
-  tags: string[];
-  text: string;
-}
-
-export const CAREER_CORPUS = {
-  masterResume,
-  twoPageTemplate,
-  experienceBullets,
-  atsKeywords,
-  rolePlaybooks: rolePlaybooks as unknown as RolePlaybook[],
-  evidenceChunks: evidenceChunks as EvidenceChunk[],
-};
 
 export function applyContactOverlay(
   text: string,
@@ -77,7 +45,6 @@ export function applyContactOverlay(
   for (const [token, value] of replacements) {
     if (value) out = out.split(token).join(value);
   }
-  // Header lines (Master ATS is one field per line). Re-apply even after first seed.
   const headerLines: [string, string | undefined][] = [
     ['Location', contact.location],
     ['Phone', contact.phone],

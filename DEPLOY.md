@@ -131,22 +131,6 @@ Merges to `main` that touch `supabase/functions/**` or `supabase/config.toml` tr
 
 After saving secrets, either merge a backend change to `main` or run the workflow manually from **Actions** → **Deploy Supabase Edge Functions** → **Run workflow**.
 
-### CareerPilot project → Google Doc sync
-
-The **CareerPilot AI** block in `src/content/career-corpus/master-resume.md` is bundled into Edge Functions (`npm run sync:corpus`) and written to your configured Google Doc (Settings → Google Doc Resume ID):
-
-- **On deploy** — GitHub Actions calls `careerpilot-doc-sync` after functions deploy (requires `DEPLOY_SYNC_SECRET`; reuses `SUPABASE_PROJECT_REF` for the API URL).
-- **After each successful pipeline run** — automatic.
-- **Manual** — Settings → **Sync CareerPilot project to Google Doc**.
-
-Set the deploy secret on Supabase (Dashboard → **Edge Functions** → **Secrets** or CLI):
-
-```bash
-supabase secrets set DEPLOY_SYNC_SECRET=your_random_secret_string
-```
-
-Reconnect Google Drive in Integrations after deploy if Docs write scope was added (`documents` scope).
-
 Frontend deploys (Vercel/Render) are unchanged — this workflow only updates Supabase Edge Functions.
 
 ### Google OAuth (Supabase Auth + Drive/Docs)
@@ -237,11 +221,12 @@ After signing up or logging in, the app **automatically provisions**:
 
 No import or manual setup is required. Then:
 
-1. **Settings → Job Search** — set search query, location, Google Doc resume ID, notification email
-2. **Integrations** — connect Google; verify Apify (uses `APIFY_TOKEN` secret if not stored per-user)
-3. **Jobs → Run Search** — run the pipeline immediately
-4. **Executions** — watch per-node progress
-5. **Automations** — confirm daily schedule; use **Run Now** anytime
+1. **Corpus** — add a master resume via Google Doc, PDF/DOCX/MD upload, or paste. Role-specific resumes are optional.
+2. **Settings → Job Search** — set search query, location, optional Google Doc resume ID, notification email
+3. **Integrations** — connect Google; verify Apify (uses `APIFY_TOKEN` secret if not stored per-user)
+4. **Jobs → Run Search** — run the pipeline immediately
+5. **Executions** — watch per-node progress
+6. **Automations** — confirm daily schedule; use **Run Now** anytime
 
 ### Optional: customize the pipeline
 

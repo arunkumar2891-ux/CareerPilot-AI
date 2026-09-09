@@ -16,7 +16,6 @@ import { services } from '@/services';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
-import { RoleBanksStatusBanner } from '@/components/RoleBanksStatusBanner';
 
 export function KnowledgeBasePage() {
   const qc = useQueryClient();
@@ -37,7 +36,7 @@ export function KnowledgeBasePage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
       const res = await supabase.functions.invoke('ai-chat', {
-        body: { mode: 'sync_google_doc_chunks', fileId, generateRoleBanks: true },
+        body: { mode: 'sync_google_doc_chunks', fileId },
       });
       if (res.error) throw new Error(res.error.message);
       return res.data as {
@@ -45,15 +44,12 @@ export function KnowledgeBasePage() {
         newChunksAdded: number;
         totalExisting: number;
         resumeUpdated: boolean;
-        roleBanksScheduled?: boolean;
       };
     },
     onSuccess: (data) => {
       toast({
         title: 'Google Doc synced',
-        description: data.roleBanksScheduled
-          ? `${data.newChunksAdded} new chunks added. Master ATS updated; role banks are generating in the background.`
-          : `${data.newChunksAdded} new chunks added (${data.totalExisting} total). Master ATS resume updated.`,
+        description: `${data.newChunksAdded} new chunks added (${data.totalExisting} total). Master resume updated.`,
       });
       refetchCollections();
       qc.invalidateQueries({ queryKey: ['settings'] });
@@ -79,7 +75,7 @@ export function KnowledgeBasePage() {
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Knowledge Base"
-        description="Resume-safe career evidence used when tailoring resumes (metrics, architecture, achievements)"
+        description="Search quantified bullets extracted from your Google Doc resume"
       />
 
       <Tabs defaultValue="search">
@@ -117,7 +113,7 @@ export function KnowledgeBasePage() {
           {results && (
             <div className="space-y-3">
               {results.length === 0 ? (
-                <Card><CardContent><EmptyState icon={SearchX} title="No results found" description="Try a different search query or wait for the career corpus to seed on login." /></CardContent></Card>
+                <Card><CardContent><EmptyState icon={SearchX} title="No results found" description="Try a different query, or sync a Google Doc to add evidence chunks." /></CardContent></Card>
               ) : (
               <StaggerList className="space-y-3">
               {results.map((r, i) => (
@@ -142,7 +138,7 @@ export function KnowledgeBasePage() {
 
         <TabsContent value="collections" className="space-y-4">
           {(!collections || collections.length === 0) ? (
-            <Card><CardContent><EmptyState icon={BookOpen} title="Corpus seeding" description="Sign in and wait a moment — evidence chunks seed automatically from your Master ATS." /></CardContent></Card>
+                <Card><CardContent><EmptyState icon={BookOpen} title="No evidence yet" description="Sync a Google Doc from this page to extract quantified bullets into the knowledge base." /></CardContent></Card>
           ) : (
             <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {collections.map((c) => (
@@ -169,7 +165,8 @@ export function KnowledgeBasePage() {
                 <h3 className="font-semibold text-sm">Sync Master Resume from Google Docs</h3>
                 <p className="text-xs text-muted-foreground mt-1">
                   Fetch your master resume from a Google Doc, extract quantified achievement bullets as knowledge chunks,
-                  and update the Master ATS bullet bank in one click. Requires Google OAuth connection (Integrations → Connect Google).
+                  and update the master resume in one click. Requires Google OAuth (Integrations → Connect Google).
+                  You can also upload or paste a resume on the Corpus page.
                 </p>
               </div>
               <div className="flex gap-3 items-end">
@@ -193,7 +190,6 @@ export function KnowledgeBasePage() {
                   {syncMutation.isPending ? 'Syncing…' : 'Sync Now'}
                 </Button>
               </div>
-              <RoleBanksStatusBanner />
 
               {syncMutation.isSuccess && syncMutation.data && (
                 <FadeIn className="rounded-md border border-primary/30 bg-primary/5 p-4 glow-border">
@@ -202,8 +198,7 @@ export function KnowledgeBasePage() {
                     <li>Chunks extracted from doc: <strong>{syncMutation.data.chunksExtracted}</strong></li>
                     <li>New chunks added: <strong>{syncMutation.data.newChunksAdded}</strong></li>
                     <li>Total chunks in knowledge base: <strong>{syncMutation.data.totalExisting}</strong></li>
-                    <li>Master ATS resume content: <strong>{syncMutation.data.resumeUpdated ? 'Updated' : 'Unchanged'}</strong></li>
-                    <li>Role banks: <strong>{syncMutation.data.roleBanksScheduled ? 'Generating in background' : 'Not scheduled'}</strong></li>
+                    <li>Master resume content: <strong>{syncMutation.data.resumeUpdated ? 'Updated' : 'Unchanged'}</strong></li>
                   </ul>
                 </FadeIn>
               )}
@@ -218,9 +213,8 @@ export function KnowledgeBasePage() {
                 <li>Bullet points (lines starting with - or •) with quantifiable metrics and achievement verbs are extracted.</li>
                 <li>Each bullet is tagged automatically based on keywords (e.g. SnapLogic, BigQuery, performance, security).</li>
                 <li>Only <em>new</em> bullets are inserted — existing chunks are never duplicated.</li>
-                <li>The Master ATS resume content in the database is updated to match the Google Doc.</li>
-                <li>Role-bank resumes for each job family are generated in the background from the Master ATS.</li>
-                <li>Next time you tailor a resume, the ATS Optimizer uses the matching role bank.</li>
+                <li>The master resume in the database is updated to match the Google Doc.</li>
+                <li>Next time you tailor a resume, the ATS Optimizer uses the master resume, or a matching role-specific resume if you added one on the Corpus page.</li>
               </ol>
             </CardContent>
           </Card>

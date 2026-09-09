@@ -1,7 +1,7 @@
 import { refreshGoogleToken, getUserSettings } from './credentials.ts';
 import { createAdminClient } from './supabase-admin.ts';
 import { fetchWithTimeout } from './fetch-timeout.ts';
-import { buildResumePdfFileName, parseGoogleDriveFolderId } from './google-drive.ts';
+import { buildResumePdfFileName, parseGoogleDocFileId, parseGoogleDriveFolderId } from './google-drive.ts';
 
 export interface DriveSyncResult {
   fileId: string;
@@ -12,7 +12,7 @@ export interface DriveSyncResult {
 async function setAnyoneReader(accessToken: string, fileId: string): Promise<void> {
   try {
     await fetchWithTimeout(
-      `https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`,
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions?supportsAllDrives=true`,
       {
         method: 'POST',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -41,9 +41,10 @@ export async function uploadOrUpdateDrivePdf(
     throw new Error('Google Drive folder is not set. Paste a folder link in Settings → Job Search, then retry.');
   }
 
-  if (options.existingFileId) {
+  const existingId = parseGoogleDocFileId(String(options.existingFileId || ''));
+  if (existingId) {
     const mediaRes = await fetchWithTimeout(
-      `https://www.googleapis.com/upload/drive/v3/files/${options.existingFileId}?uploadType=media&supportsAllDrives=true`,
+      `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(existingId)}?uploadType=media&supportsAllDrives=true`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/pdf' },
@@ -58,7 +59,7 @@ export async function uploadOrUpdateDrivePdf(
     }
 
     await fetchWithTimeout(
-      `https://www.googleapis.com/drive/v3/files/${options.existingFileId}?supportsAllDrives=true`,
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(existingId)}?supportsAllDrives=true`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -68,10 +69,10 @@ export async function uploadOrUpdateDrivePdf(
       'Google Drive metadata update',
     );
 
-    await setAnyoneReader(accessToken, options.existingFileId);
+    await setAnyoneReader(accessToken, existingId);
     return {
-      fileId: options.existingFileId,
-      pdfLink: `https://drive.google.com/file/d/${options.existingFileId}/view`,
+      fileId: existingId,
+      pdfLink: `https://drive.google.com/file/d/${existingId}/view`,
       fileName: options.fileName,
     };
   }

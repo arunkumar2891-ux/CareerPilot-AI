@@ -3,6 +3,7 @@ import { ATS_SYSTEM_PROMPT } from '../_shared/career-corpus/prompt.ts';
 import { prepareResumeGeneration } from '../_shared/career-corpus/generate.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../_shared/gemini.ts';
 import { sanitizeAiErrorMessage } from '../_shared/ai/errors.ts';
+import { parseGoogleDocFileId } from '../_shared/google-drive.ts';
 
 async function callGemini(
   userId: string,
@@ -48,34 +49,19 @@ Deno.serve(async (req) => {
     if (mode === 'sync_google_doc_chunks') {
       const { syncGoogleDocToCorpus } = await import('../_shared/google-doc-sync.ts');
 
-      const fileId = String(body.fileId || '').trim();
+      const fileId = parseGoogleDocFileId(String(body.fileId || ''));
       if (!fileId) return jsonResponse({ error: 'fileId is required' }, 400);
 
-      const generateRoleBanks = Boolean(body.generateRoleBanks);
-      const sync = await syncGoogleDocToCorpus(user.id, fileId, { generateRoleBanks });
+      const corpusType = body.corpusType === 'role_specific' ? 'role_specific' : 'master';
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : undefined;
+      const sync = await syncGoogleDocToCorpus(user.id, fileId, { corpusType, name });
 
       return jsonResponse({
         chunksExtracted: sync.chunksExtracted,
         newChunksAdded: sync.newChunksAdded,
         totalExisting: sync.totalExisting,
         resumeUpdated: sync.resumeUpdated,
-        roleBanksScheduled: sync.roleBanksScheduled,
       });
-    }
-
-    if (mode === 'sync_careerpilot_project' || mode === 'sync_careerpilot_metrics') {
-      const { createAdminClient } = await import('../_shared/supabase-admin.ts');
-      const { syncCareerPilotProjectToGoogleDoc } = await import('../_shared/google-doc-careerpilot-sync.ts');
-      const { getUserSettings } = await import('../_shared/credentials.ts');
-
-      const settings = await getUserSettings(user.id);
-      const jobSearch = settings.jobSearch as Record<string, unknown> | undefined;
-      const fileId = String(body.fileId || '').trim() || String(jobSearch?.resumeFileId || '').trim();
-      if (!fileId) return jsonResponse({ error: 'fileId or Settings → Google Doc ID is required' }, 400);
-
-      const admin = createAdminClient();
-      const result = await syncCareerPilotProjectToGoogleDoc(admin, user.id, fileId);
-      return jsonResponse(result);
     }
 
     if (mode === 'resume') {
@@ -90,11 +76,15 @@ Deno.serve(async (req) => {
         prepared.userPrompt,
         user.id,
         prepared.groundingSource,
-        prepared.mandatorySections,
+        {
+          groqUserPrompt: prepared.groqUserPrompt,
+          educationSource: prepared.corpus.educationSource,
+          identity: prepared.identity,
+        },
       );
       return jsonResponse({
         reply: generated.text,
-        playbook: prepared.corpus.playbookTitle,
+        source: prepared.corpus.sourceName,
         tokens: generated.tokensTotal,
       });
     }

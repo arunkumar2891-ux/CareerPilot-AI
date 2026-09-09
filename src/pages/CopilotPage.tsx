@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Sparkles, Send, Plus, Pin, MessageSquare, Trash2, Paperclip,
+  Sparkles, Send, Plus, Pin, MessageSquare, Paperclip,
   FileText, Mail, Briefcase, Code, TrendingUp, Star, PanelLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { LogoMark } from '@/components/brand/LogoMark';
 import { FadeIn, InlineLoader } from '@/components/motion';
 import { services } from '@/services';
-import { uid, timeAgo } from '@/utils';
+import { uid } from '@/utils';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/types';
@@ -239,7 +239,16 @@ export function CopilotPage() {
         <div className="border-t border-border p-3 sm:p-4">
           <div className="mx-auto max-w-3xl">
             <div className="glass-card flex items-end gap-2 p-2">
-              <Button variant="ghost" size="icon" className="shrink-0" aria-label="Attach file"><Paperclip className="h-4 w-4" /></Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0"
+                aria-label="File attachments are disabled"
+                title="File attachments are disabled. Paste text instead."
+                disabled
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
               <Textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

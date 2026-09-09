@@ -4,6 +4,12 @@ import { linkResumePdf, markResumeDriveSync } from '../_shared/resume-store.ts';
 import { resolveDriveFolderId, resolveResumePdfFileName, uploadOrUpdateDrivePdf } from '../_shared/resume-drive.ts';
 import { repairResumeSync } from '../_shared/resume-repair.ts';
 import { GoogleAuthError } from '../_shared/credentials.ts';
+import {
+  assertSafeUploadStoragePath,
+  extractResumeTextFromBytes,
+  MAX_UPLOAD_BYTES,
+  resolveUploadMime,
+} from '../_shared/resume-parse.ts';
 
 function actionErrorResponse(err: unknown, status = 500) {
   const message = err instanceof Error ? err.message : String(err);
@@ -229,6 +235,39 @@ Deno.serve(async (req) => {
         driveFileId: results[0]?.driveFileId,
         pdfLink: results[0]?.pdfLink,
       });
+    }
+
+    if (mode === 'parse_uploaded_resume') {
+      const storagePath = String(body.storagePath || '').trim();
+      const fileName = String(body.fileName || storagePath.split('/').pop() || '');
+      try {
+        assertSafeUploadStoragePath(user.id, storagePath);
+      } catch {
+        return jsonResponse({ error: 'Invalid upload path' }, 400);
+      }
+      const mimeType = resolveUploadMime(fileName);
+      if (!mimeType) return jsonResponse({ error: 'Unsupported file type. Use PDF, DOCX, MD, or TXT.' }, 400);
+
+      try {
+        const { data: blob, error: downloadError } = await admin.storage.from('resumes').download(storagePath);
+        if (downloadError || !blob) {
+          return jsonResponse({ error: 'Upload not found' }, 404);
+        }
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        if (bytes.length > MAX_UPLOAD_BYTES) {
+          return jsonResponse({ error: 'File is too large (max 10 MB)' }, 400);
+        }
+        const text = await extractResumeTextFromBytes(bytes, mimeType);
+        return jsonResponse({ text, mimeType });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Could not read this file';
+        const safe = /too large|not a valid|not valid resume|empty|Unsupported|timed out/i.test(message)
+          ? message
+          : 'Could not read this file';
+        return jsonResponse({ error: safe }, 400);
+      } finally {
+        await admin.storage.from('resumes').remove([storagePath]).catch(() => undefined);
+      }
     }
 
     if (mode === 'repair_sync') {
