@@ -208,7 +208,11 @@ async function enqueueNextPipelineSlice(runId: string, userId: string, nodeId: s
 
   const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
   if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(next);
-  else await next;
+  // Flush the HTTP request without waiting for the next job (it has its own 150s budget).
+  await Promise.race([
+    next,
+    new Promise((resolve) => setTimeout(resolve, 1500)),
+  ]);
 }
 
 async function runDurationMs(admin: ReturnType<typeof createAdminClient>, runId: string): Promise<number> {

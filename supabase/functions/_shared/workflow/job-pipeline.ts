@@ -16,8 +16,10 @@ import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 import type { createAdminClient } from '../supabase-admin.ts';
 
 import { formatUnknownError, isJobPipelineStart } from './job-discovery.ts';
+import { shouldYieldForNextJob } from './job-pipeline-slice.ts';
 
 export { isJobPipelineStart };
+export { shouldYieldForNextJob, PIPELINE_SLICE_BUDGET_MS } from './job-pipeline-slice.ts';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -282,6 +284,10 @@ export async function executePerJobPipeline(
     });
   }
 
+  if (typeof ctx.variables.pipelineSliceStartedAt !== 'number') {
+    ctx.variables.pipelineSliceStartedAt = jobStart;
+  }
+
   const remaining = queue.slice(1);
   const idQueue = (ctx.variables.pendingJobExecutionIds as string[] | undefined) || [];
   if (idQueue.length) ctx.variables.pendingJobExecutionIds = idQueue.slice(1);
@@ -291,14 +297,31 @@ export async function executePerJobPipeline(
   await helpers.touchRunDuration(admin, runId);
 
   if (remaining.length > 0) {
+    const sliceElapsedMs = Date.now() - Number(ctx.variables.pipelineSliceStartedAt);
+    const yieldForNext = shouldYieldForNextJob({
+      remainingCount: remaining.length,
+      jobFailed,
+      sliceElapsedMs,
+    });
+    if (yieldForNext) {
+      delete ctx.variables.pipelineSliceStartedAt;
+      await helpers.saveRunContext(runId, ctx);
+      await helpers.logStep(
+        runId, userId, chain[0].id, 'info',
+        `Checkpoint: ${remaining.length} job(s) left. Starting next slice to stay under the Edge Function time limit.`,
+        { jobIndex, attempt },
+      );
+      return { results: pipelineResults, yieldForNext: true };
+    }
     await helpers.logStep(
       runId, userId, chain[0].id, 'info',
-      `Checkpoint: ${remaining.length} job(s) left. Starting next slice to stay under the Edge Function time limit.`,
+      `Job ${jobIndex}/${total} failed — starting next job in this slice (${remaining.length} left).`,
       { jobIndex, attempt },
     );
-    return { results: pipelineResults, yieldForNext: true };
+    return executePerJobPipeline(runId, userId, ctx, chain, items, edges, admin, helpers);
   }
 
+  delete ctx.variables.pipelineSliceStartedAt;
   ctx.variables.pendingJobItems = [];
   return { results: pipelineResults, yieldForNext: false };
 }

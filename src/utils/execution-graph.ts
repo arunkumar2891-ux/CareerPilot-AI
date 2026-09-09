@@ -6,6 +6,7 @@ import type {
   WorkflowSnapshot,
   WorkflowSnapshotNode,
 } from '@/types';
+import { resolveScopedNodeStatus } from '@/utils/job-branch-status';
 
 export interface GraphNodeView {
   key: string;
@@ -399,26 +400,22 @@ function resolveNodeStatus(
     workflowNodeId: string;
     currentNodeId?: string;
     runStatus?: WorkflowRunStatus;
+    jobExecutionId?: string;
+    activeJobExecutionId?: string;
+    jobStatus?: WorkflowRunStatus | 'pending';
   },
 ): WorkflowRunStatus | 'pending' {
-  if (exec?.status) {
-    const runFinished = options.runStatus
-      && options.runStatus !== 'running'
-      && options.runStatus !== 'queued';
-    if (exec.status === 'running' && runFinished && !exec.completedAt) {
-      return result?.status ?? 'skipped';
-    }
-    return exec.status;
-  }
-  if (result?.status) return result.status;
-  if (
-    options.runStatus === 'running'
-    && options.currentNodeId
-    && options.currentNodeId === options.workflowNodeId
-  ) {
-    return 'running';
-  }
-  return 'pending';
+  return resolveScopedNodeStatus({
+    execStatus: exec?.status,
+    execCompletedAt: exec?.completedAt,
+    sharedResultStatus: result?.status,
+    runStatus: options.runStatus,
+    currentNodeId: options.currentNodeId,
+    workflowNodeId: options.workflowNodeId,
+    jobExecutionId: options.jobExecutionId,
+    activeJobExecutionId: options.activeJobExecutionId,
+    jobStatus: options.jobStatus,
+  }) as WorkflowRunStatus | 'pending';
 }
 
 function latestCommonExecution(
@@ -433,10 +430,19 @@ function latestCommonExecution(
 function toGraphNode(
   template: WorkflowSnapshotNode,
   exec: NodeExecution | undefined,
-  scope: { jobIndex?: number; attempt?: number; jobExecutionId?: string },
+  scope: {
+    jobIndex?: number;
+    attempt?: number;
+    jobExecutionId?: string;
+    jobStatus?: WorkflowRunStatus | 'pending';
+  },
   result: { status: WorkflowRunStatus; duration: number } | undefined,
   triggerType: string,
-  runMeta: { currentNodeId?: string; runStatus?: WorkflowRunStatus },
+  runMeta: {
+    currentNodeId?: string;
+    runStatus?: WorkflowRunStatus;
+    activeJobExecutionId?: string;
+  },
 ): GraphNodeView {
   return {
     key: `${template.id}-${scope.jobIndex ?? 'common'}-${scope.attempt ?? 1}`,
@@ -447,12 +453,15 @@ function toGraphNode(
       workflowNodeId: template.id,
       currentNodeId: runMeta.currentNodeId,
       runStatus: runMeta.runStatus,
+      jobExecutionId: scope.jobExecutionId,
+      activeJobExecutionId: runMeta.activeJobExecutionId,
+      jobStatus: scope.jobStatus,
     }),
     jobIndex: scope.jobIndex,
     attempt: scope.attempt ?? exec?.attempt,
     nodeExecutionId: exec?.id,
     jobExecutionId: scope.jobExecutionId ?? exec?.jobExecutionId,
-    durationMs: exec?.durationMs ?? result?.duration,
+    durationMs: exec?.durationMs ?? (scope.jobExecutionId ? undefined : result?.duration),
     errorType: exec?.errorType,
     errorCode: exec?.errorCode,
     errorMessage: exec?.errorMessage,
@@ -488,7 +497,12 @@ export function buildExecutionGraph(input: {
   const jobsSkipped = input.run.jobsSkipped ?? latestJobs.filter((j) => j.status === 'skipped').length;
   const usedPersistedSnapshot = Boolean(input.snapshot?.nodes?.length);
   const isLegacy = !usedPersistedSnapshot;
-  const runMeta = { currentNodeId: input.run.currentNodeId, runStatus: input.run.status };
+  const activeJobExecutionId = latestJobs.find((j) => j.status === 'running' || j.status === 'queued')?.id;
+  const runMeta = {
+    currentNodeId: input.run.currentNodeId,
+    runStatus: input.run.status,
+    activeJobExecutionId,
+  };
 
   const nameLookup = buildNodeNameLookup({
     workflowNodes: input.workflowNodes,
@@ -586,8 +600,9 @@ export function buildExecutionGraph(input: {
           jobIndex: job.jobIndex,
           attempt: job.attempt,
           jobExecutionId: job.id,
+          jobStatus: job.status,
         },
-        resultMap.get(template.id),
+        exec ? resultMap.get(template.id) : undefined,
         triggerType,
         runMeta,
       );

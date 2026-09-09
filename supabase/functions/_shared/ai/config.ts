@@ -19,7 +19,7 @@ export function getAtsTimeoutMs(): number {
 }
 
 export function getGeminiFallbackTimeoutMs(): number {
-  return parsePositiveInt(Deno.env.get('AI_GEMINI_FALLBACK_TIMEOUT_MS'), 30000, 60000);
+  return parsePositiveInt(Deno.env.get('AI_GEMINI_FALLBACK_TIMEOUT_MS'), 40000, 90000);
 }
 
 export function getGroqAtsTimeoutMs(): number {
