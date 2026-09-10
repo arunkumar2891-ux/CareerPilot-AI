@@ -46,19 +46,55 @@ function fail(kind: string, retryable: boolean, status?: number, message = 'boom
   return new ProviderError({ provider: 'gemini', message, retryable, kind, status });
 }
 
-Deno.test('default provider chain uses only the paid Gemini fallback key', async () => {
+function withEnv(vars: Record<string, string | null>, fn: () => void) {
+  const previous: Record<string, string | undefined> = {};
+  for (const key of Object.keys(vars)) previous[key] = Deno.env.get(key);
+  try {
+    for (const [key, value] of Object.entries(vars)) {
+      if (value === null) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+    fn();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) Deno.env.delete(key);
+      else Deno.env.set(key, value);
+    }
+  }
+}
+
+Deno.test('provider chain is Gemini primary + paid fallback, then Groq when forced', async () => {
   const { getProviderChain, getRerankProviderChain } = await import('./config.ts');
-  Deno.env.set('GEMINI_API_KEY', 'free-key');
-  Deno.env.set('GEMINI_API_KEY_FALLBACK', 'paid-key');
-  Deno.env.set('GROQ_API_KEY', 'groq-key');
-  const chain = getProviderChain();
-  const rerankChain = getRerankProviderChain();
-  if (JSON.stringify(chain) !== JSON.stringify(['gemini_fallback'])) {
-    throw new Error(`unexpected provider chain: ${chain.join(' → ')}`);
-  }
-  if (JSON.stringify(rerankChain) !== JSON.stringify(['gemini_fallback'])) {
-    throw new Error(`unexpected rerank chain: ${rerankChain.join(' → ')}`);
-  }
+  withEnv({
+    GEMINI_API_KEY: 'free-key',
+    GEMINI_API_KEY_FALLBACK: 'paid-key',
+    GROQ_API_KEY: 'groq-key',
+    AI_FORCE_GROQ: 'true',
+  }, () => {
+    const chain = getProviderChain();
+    if (JSON.stringify(chain) !== JSON.stringify(['gemini', 'gemini_fallback', 'groq'])) {
+      throw new Error(`unexpected provider chain: ${chain.join(' → ')}`);
+    }
+    const rerankChain = getRerankProviderChain();
+    if (JSON.stringify(rerankChain) !== JSON.stringify(['gemini_fallback'])) {
+      throw new Error(`unexpected rerank chain: ${rerankChain.join(' → ')}`);
+    }
+  });
+});
+
+Deno.test('Groq stays off the chain unless AI_FORCE_GROQ=true', async () => {
+  const { getProviderChain } = await import('./config.ts');
+  withEnv({
+    GEMINI_API_KEY: 'free-key',
+    GEMINI_API_KEY_FALLBACK: 'paid-key',
+    GROQ_API_KEY: 'groq-key',
+    AI_FORCE_GROQ: null,
+  }, () => {
+    const chain = getProviderChain();
+    if (JSON.stringify(chain) !== JSON.stringify(['gemini', 'gemini_fallback'])) {
+      throw new Error(`unexpected provider chain: ${chain.join(' → ')}`);
+    }
+  });
 });
 
 Deno.test('rejected Gemini resume response is logged before validation', async () => {
@@ -242,6 +278,73 @@ Deno.test('both providers fail with combined error', async () => {
   }
   if (!message.includes('All AI providers failed')) throw new Error(message);
   if (!message.includes('gemini') || !message.includes('groq')) throw new Error(message);
+});
+
+Deno.test('resume tailoring falls back to the source resume after Gemini and Groq fail', async () => {
+  const { generateWithProviders } = await import('./router.ts');
+  const gemini = mockAdapter('gemini', {
+    generate: async () => {
+      throw fail('timeout', true, undefined, 'gemini down');
+    },
+  });
+  const fallback = mockAdapter('gemini_fallback', {
+    generate: async () => {
+      throw fail('http_429', true, 429, 'quota');
+    },
+  });
+  const groq = mockAdapter('groq', {
+    generate: async () => {
+      throw new ProviderError({
+        provider: 'groq',
+        message: 'groq down',
+        retryable: true,
+        kind: 'http_503',
+        status: 503,
+      });
+    },
+  });
+  const logs: string[] = [];
+  const result = await generateWithProviders(
+    {
+      systemPrompt: 's',
+      userPrompt: 'u',
+      operation: 'resume_tailoring',
+      groundingSource: VALID_ATS,
+    },
+    {
+      adapters: { gemini, gemini_fallback: fallback, groq },
+      providerChain: ['gemini', 'gemini_fallback', 'groq'],
+      log: (m) => logs.push(m),
+    },
+  );
+  if (gemini.calls !== 1) throw new Error(`gemini calls ${gemini.calls}`);
+  if (fallback.calls !== 1) throw new Error(`fallback calls ${fallback.calls}`);
+  if (groq.calls !== 1) throw new Error(`groq calls ${groq.calls}`);
+  if (!result.text.includes('PROFESSIONAL EXPERIENCE')) throw new Error('expected source resume');
+  if (!logs.some((line) => line.includes('provider=deterministic'))) {
+    throw new Error(`expected deterministic fallback log:\n${logs.join('\n')}`);
+  }
+});
+
+Deno.test('HTTP 400 skips Groq but still uses the deterministic resume fallback', async () => {
+  const { generateWithProviders } = await import('./router.ts');
+  const gemini = mockAdapter('gemini', {
+    generate: async () => {
+      throw fail('http_400', false, 400, 'invalid argument');
+    },
+  });
+  const groq = mockAdapter('groq', {});
+  const result = await generateWithProviders(
+    {
+      systemPrompt: 's',
+      userPrompt: 'u',
+      operation: 'resume_tailoring',
+      groundingSource: VALID_ATS,
+    },
+    { adapters: { gemini, groq }, providerChain: ['gemini', 'groq'], log: () => {} },
+  );
+  if (groq.calls !== 0) throw new Error('must not fallback to Groq on 400');
+  if (!result.text.includes('PROFESSIONAL EXPERIENCE')) throw new Error('expected source resume');
 });
 
 Deno.test('logs never contain API keys', async () => {

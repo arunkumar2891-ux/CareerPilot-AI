@@ -274,7 +274,7 @@ export function SettingsPage() {
                 <li><code>GROQ_MODEL</code> — optional; defaults to <code>openai/gpt-oss-120b</code></li>
                 <li><code>AI_TIMEOUT_MS</code> — optional chat timeout; default 30000</li>
                 <li><code>AI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 40000 (keep total under 150s edge limit)</li>
-                <li><code>AI_FORCE_GROQ</code> — optional; default off — enables Groq as an extra resume-tailoring fallback</li>
+                <li><code>AI_FORCE_GROQ</code> — set to <code>true</code> to use Groq after both Gemini keys (timeout / 429 / 5xx). Requires <code>GROQ_API_KEY</code></li>
                 <li><code>AI_MAX_RETRIES</code> — optional; only used when <code>AI_GEMINI_RETRY_ENABLED=true</code></li>
                 <li><code>AI_GEMINI_RETRY_ENABLED</code> — optional; default off — one Gemini attempt per key, then next provider</li>
                 <li><code>RESEND_API_KEY</code> — Resend email API key</li>

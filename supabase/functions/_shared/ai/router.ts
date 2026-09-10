@@ -203,8 +203,40 @@ function splitProviderChain(chain: string[]): { geminiChain: string[]; tailChain
   return { geminiChain, tailChain };
 }
 
+function missingProviderMessage(): string {
+  return 'No AI provider is configured (set GEMINI_API_KEY or GEMINI_API_KEY_FALLBACK)';
+}
+
+function tryDeterministicResume(
+  request: GenerateRequest,
+  log: (message: string) => void,
+): GenerateResult | null {
+  if (request.operation !== 'resume_tailoring') return null;
+  const source = request.groundingSource?.trim();
+  if (!source) return null;
+
+  log('[AI] fallback provider=deterministic operation=resume_tailoring started');
+  const checked = validateResumeOutput(source, {
+    groundingSource: source,
+    educationSource: request.educationSource,
+    identity: identityFromRequest(request),
+    skipHumanVoice: true,
+    skipTwoPageShape: true,
+    allowParaphrase: true,
+  });
+  if (!checked.ok) {
+    log(
+      `[AI] fallback provider=deterministic operation=resume_tailoring failed kind=invalid_output ${checked.reason}`,
+    );
+    return null;
+  }
+  log('[AI] fallback provider=deterministic operation=resume_tailoring success tokens=0');
+  return { text: checked.text, tokensInput: 0, tokensOutput: 0 };
+}
+
 /**
- * Provider chain: paid GEMINI_API_KEY_FALLBACK only.
+ * Provider chain: primary Gemini → paid Gemini fallback → Groq (when AI_FORCE_GROQ=true)
+ * → deterministic source resume for tailoring.
  */
 export async function generateWithProviders(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
@@ -222,7 +254,7 @@ export async function generateWithProviders(
   if (!chain.length) {
     throw new ProviderError({
       provider: 'gemini_fallback',
-      message: 'No AI provider is configured (set GEMINI_API_KEY_FALLBACK)',
+      message: missingProviderMessage(),
       retryable: false,
       kind: 'missing_key',
     });
@@ -281,10 +313,13 @@ export async function generateWithProviders(
     }
   }
 
+  const deterministic = tryDeterministicResume(request, log);
+  if (deterministic) return deterministic;
+
   throw new Error(
     errors.length
       ? formatAllProvidersFailed(errors)
-      : 'No AI provider is configured (set GEMINI_API_KEY_FALLBACK)',
+      : missingProviderMessage(),
   );
 }
 
