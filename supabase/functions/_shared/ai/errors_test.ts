@@ -426,4 +426,83 @@ Deno.test('validateResumeOutput still rejects experience padded far beyond a sho
   if (result.reason !== 'too_many_experience_bullets') throw new Error(result.reason);
 });
 
+Deno.test('normalizeResumeLine folds unicode dashes, times, arrows, and narrow spaces', () => {
+  const folded = normalizeResumeLine(
+    '- Migrated state, eliminating a 15‑day retention risk; improved 4‑10× (2‑5 s → < 500 ms) and cost dropped 10‑80×.',
+  );
+  const ascii = normalizeResumeLine(
+    '- Migrated state, eliminating a 15-day retention risk; improved 4-10x (2-5 s -> < 500 ms) and cost dropped 10-80x.',
+  );
+  if (folded !== ascii) throw new Error(`unicode fold mismatch:\n${folded}\n${ascii}`);
+});
+
+Deno.test('validateResumeOutput accepts Groq unicode copies of a source achievement', () => {
+  const ascii =
+    '- Migrated critical integration state from Datadog to BigQuery, eliminating a 15-day retention risk; query latency improved 4-10x (2-5s -> < 500 ms) and cost dropped 10-80x.';
+  const groq =
+    '- Migrated critical integration state from Datadog to BigQuery, eliminating a 15‑day retention risk; query latency improved 4‑10× (2‑5 s → < 500 ms) and cost dropped 10‑80×.';
+  const result = validateResumeOutput(skeletonResume(groq), {
+    groundingSource: skeletonResume(ascii),
+    skipHumanVoice: true,
+  });
+  if (!result.ok) throw new Error(`expected unicode achievement to validate: ${result.reason}`);
+});
+
+Deno.test('validateResumeOutput accepts wrapped skill lists and slight category rewrites', () => {
+  const sourceSkills = `AI & Agentic Workflows: AI agents, tool calling, RAG architecture, Gemini 2.5/3.6
+Flash/Pro, prompt engineering, token optimization, context management, error
+recovery, retry strategy
+Vertex AI, RAG architecture, AI agents, tool calling`;
+  const geminiSkills =
+    'AI & GenAI: Gemini 2.5/3.6, Vertex AI, RAG architecture, AI agents, tool calling, prompt engineering, context management, token optimization, error recovery';
+  const truncatedSkills =
+    'AI & Agentic Workflows: AI agents, tool calling, RAG architecture, Gemini 2.5/3.6 Flash/Pro, prompt engineering, token optimization, context management, error recovery, retry strat';
+  const source = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+I build AI platforms.
+
+SKILLS
+${sourceSkills}
+
+PROFESSIONAL EXPERIENCE
+Acme
+- Shipped APIs used by millions of users.
+
+EDUCATION
+B.S. Computer Science`;
+  const asResume = (skills: string) => `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+I build AI platforms.
+
+SKILLS
+${skills}
+
+PROFESSIONAL EXPERIENCE
+Acme
+- Shipped APIs used by millions of users.
+
+EDUCATION
+B.S. Computer Science`;
+  const gemini = validateResumeOutput(asResume(geminiSkills), {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (!gemini.ok) throw new Error(`expected rewritten skill line to validate: ${gemini.reason}`);
+  const truncated = validateResumeOutput(asResume(truncatedSkills), {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (!truncated.ok) throw new Error(`expected truncated skill line to validate: ${truncated.reason}`);
+});
+
 

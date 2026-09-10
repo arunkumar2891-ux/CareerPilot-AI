@@ -21,13 +21,21 @@ const LABEL_PREFIX_RE = /^(?:name|title|email|phone|location|linkedin|github|pan
 const SECTION_MARKER_RE = /^={5,}$/;
 const PROJECT_MARKER_RE = /^---\s+/;
 
+/** Fold publisher punctuation so Groq/Gemini copies of the same bullet still match. */
+export function foldResumeGlyphs(text: string): string {
+  return String(text || '')
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212\uFE58\uFE63\uFF0D]/g, '-')
+    .replace(/[×✕✖]/g, 'x')
+    .replace(/[→➔➜⟶]/g, '->')
+    .replace(/[\u00A0\u202F\u2007\u2009\u200A\u2060]/g, ' ');
+}
+
 export function normalizeResumeLine(text: string): string {
-  return text
+  return foldResumeGlyphs(text)
     .replace(/\\/g, '')
     .replace(/^\s*[-·•*]\s*/, '')
     .replace(LABEL_PREFIX_RE, '')
     .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u2013\u2014]/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
@@ -259,9 +267,22 @@ function significantTokens(normalized: string): string[] {
 
 function extractNumericFacts(text: string): string[] {
   const facts: string[] = [];
-  const matches = text.toLowerCase().match(/\d+(?:\.\d+)?(?:\s*[-/]\s*\d+(?:\.\d+)?)?(?:\+|x|%)?/g) || [];
+  const matches = foldResumeGlyphs(text).toLowerCase().match(/\d+(?:\.\d+)?(?:\s*[-/]\s*\d+(?:\.\d+)?)?(?:\+|x|%)?/g) || [];
   for (const match of matches) facts.push(match.replace(/\s+/g, ''));
   return facts;
+}
+
+function expandNumericFacts(facts: Iterable<string>): Set<string> {
+  const allowed = new Set<string>();
+  for (const fact of facts) {
+    const collapsed = fact.replace(/[x%+]+$/gi, '');
+    allowed.add(fact);
+    allowed.add(collapsed);
+    for (const part of collapsed.split(/[-/]/)) {
+      if (part) allowed.add(part);
+    }
+  }
+  return allowed;
 }
 
 function isParaphraseOf(normalized: string, allowed: Iterable<string>): boolean {
@@ -289,8 +310,14 @@ function isParaphraseOf(normalized: string, allowed: Iterable<string>): boolean 
 }
 
 function hasInventedNumericFact(normalized: string, sourceText: string): boolean {
-  const allowed = new Set(extractNumericFacts(sourceText));
-  return extractNumericFacts(normalized).some((fact) => !allowed.has(fact));
+  const allowed = expandNumericFacts(extractNumericFacts(sourceText));
+  return extractNumericFacts(normalized).some((fact) => {
+    if (allowed.has(fact)) return false;
+    const collapsed = fact.replace(/[x%+]+$/gi, '');
+    if (allowed.has(collapsed)) return false;
+    const parts = collapsed.split(/[-/]/).filter(Boolean);
+    return parts.length < 2 || parts.some((part) => !allowed.has(part));
+  });
 }
 
 function isAggregateParaphraseOf(normalized: string, sourceText: string): boolean {
