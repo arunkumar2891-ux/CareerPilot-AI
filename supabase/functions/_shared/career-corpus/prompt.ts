@@ -19,7 +19,8 @@ CONTENT CONTRACT:
 - The RESUME block is the only factual source. Do not invent companies, titles, tools, skills, metrics, dates, certifications, education, or contact details.
 - Keep metrics and numbers exactly as they appear in the source. Do not round, inflate, or embellish.
 - Reorder and emphasize experience that matches the job. Drop or shorten less relevant projects.
-- Target TWO PAGES.
+- Target TWO PAGES. Keep experience at or below the source bullet count. Do not invent extra bullets.
+- Company, role, and date lines are headers: do not start them with "- ". Only achievement lines use "- ".
 - Fill NAME and CONTACT from the supplied contact block. Keep contact labels.
 - SUMMARY: first-person professional tone (I / my), 2-3 sentences, no buzzword stacking, no opening slogan of the target title.
 - SKILLS: list actual technologies and tools from the source resume. Do not pad with generic soft skills unless they appear in the source.

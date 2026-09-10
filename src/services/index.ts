@@ -14,7 +14,8 @@ import {
   MASTER_RESUME_NAME,
   applyContactOverlay,
 } from '@/content/career-corpus';
-import { hasUsableMasterResume, isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import { corpusGroup, hasUsableMasterResume, isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import { parseGoogleDocFileId } from '@/utils/google';
 import {
   assertResumeUploadFile,
   sanitizeAttachmentLabel,
@@ -568,17 +569,34 @@ export class ResumeService {
     fileId: string;
     corpusType?: 'master' | 'role_specific';
     name?: string;
-  }): Promise<void> {
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: {
-        mode: 'sync_google_doc_chunks',
-        fileId: input.fileId,
-        corpusType: input.corpusType || 'master',
-        name: input.name,
-      },
+  }): Promise<{
+    chunksExtracted: number;
+    newChunksAdded: number;
+    totalExisting: number;
+    resumeUpdated: boolean;
+  }> {
+    const fileId = parseGoogleDocFileId(input.fileId);
+    if (!fileId) throw new Error('Paste a Google Doc link or file ID');
+    const corpusType = input.corpusType || 'master';
+    const { data, error } = await invokeAiChat({
+      mode: 'sync_google_doc_chunks',
+      fileId,
+      corpusType,
+      name: input.name,
     });
     if (error) throw error;
-    if (data?.error) throw new Error(String(data.error));
+    if ((data as { error?: unknown } | null)?.error) {
+      throw new Error(String((data as { error: unknown }).error));
+    }
+    if (corpusType === 'master') {
+      await new SettingsService().mergeJobSearch({ resumeFileId: fileId });
+    }
+    return {
+      chunksExtracted: Number((data as { chunksExtracted?: number } | null)?.chunksExtracted || 0),
+      newChunksAdded: Number((data as { newChunksAdded?: number } | null)?.newChunksAdded || 0),
+      totalExisting: Number((data as { totalExisting?: number } | null)?.totalExisting || 0),
+      resumeUpdated: Boolean((data as { resumeUpdated?: boolean } | null)?.resumeUpdated),
+    };
   }
   async create(name: string, type: Resume['type'], content: string): Promise<Resume> {
     const userId = await requireUserId();
@@ -799,11 +817,35 @@ export class ResumeService {
       if (resumeError) throw resumeError;
     }
 
+    const deletedMaster = corpusResumes.some((resume) => corpusGroup(resume) === 'master');
+    if (deletedMaster) {
+      const { error: chunkError } = await supabase
+        .from('knowledge_chunks')
+        .delete()
+        .eq('user_id', userId)
+        .eq('collection', 'career');
+      if (chunkError) throw chunkError;
+    }
+
+    const remaining = await this.list({ kind: 'corpus' });
+    if (!remaining.some((resume) => corpusGroup(resume) === 'master')) {
+      await new SettingsService().mergeJobSearch({ resumeFileId: '' });
+    }
+
     return ownedIds.length;
   }
   async deleteAllCorpusResumes(): Promise<number> {
     const corpusResumes = await this.list({ kind: 'corpus' });
-    return this.deleteCorpusResumes(corpusResumes.map((resume) => resume.id));
+    const count = await this.deleteCorpusResumes(corpusResumes.map((resume) => resume.id));
+    const userId = await requireUserId();
+    const { error: chunkError } = await supabase
+      .from('knowledge_chunks')
+      .delete()
+      .eq('user_id', userId)
+      .eq('collection', 'career');
+    if (chunkError) throw chunkError;
+    await new SettingsService().mergeJobSearch({ resumeFileId: '' });
+    return count;
   }
   async repairSync(): Promise<{
     resumesLinkedToJobs: number;
@@ -2041,6 +2083,12 @@ export class SettingsService {
     return (data as Record<string, unknown>) || {};
   }
 
+  async mergeJobSearch(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const current = await this.get();
+    const jobSearch = (current.jobSearch as Record<string, unknown> | undefined) || {};
+    return this.update({ jobSearch: { ...jobSearch, ...patch } });
+  }
+
   async contactOverlay(): Promise<{
     fullName?: string;
     title?: string;
@@ -2162,14 +2210,6 @@ export class BootstrapService {
       });
     }
 
-    const resumeFileId = String(jobSearch?.resumeFileId ?? '').trim();
-    if (resumeFileId) {
-      try {
-        await invokeAiChat({ mode: 'sync_google_doc_chunks', fileId: resumeFileId });
-      } catch {
-        // Google may not be connected yet — user can sync from Knowledge Base later
-      }
-    }
   }
 }
 

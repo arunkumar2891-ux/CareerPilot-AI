@@ -64,6 +64,7 @@ export function CorpusPage() {
         : await services.resume.deleteCorpusResumes(deleteTarget.ids);
       await qc.invalidateQueries({ queryKey: ['resumes'] });
       await qc.invalidateQueries({ queryKey: ['settings'] });
+      await qc.invalidateQueries({ queryKey: ['knowledge-collections'] });
       const deletedIds = deleteTarget === 'all'
         ? new Set(resumes?.map((resume) => resume.id) ?? [])
         : new Set(deleteTarget.ids);
@@ -189,6 +190,8 @@ export function CorpusPage() {
         onClose={() => setAddOpen(null)}
         onSaved={async () => {
           await qc.invalidateQueries({ queryKey: ['resumes'] });
+          await qc.invalidateQueries({ queryKey: ['settings'] });
+          await qc.invalidateQueries({ queryKey: ['knowledge-collections'] });
           setAddOpen(null);
         }}
       />
@@ -203,8 +206,8 @@ export function CorpusPage() {
             </DialogTitle>
             <DialogDescription>
               {deleteTarget === 'all'
-                ? 'This permanently deletes your master resume, role-specific resumes, and their version history. Job-tailored resumes are kept.'
-                : 'This permanently deletes this corpus document and its version history. Job-tailored resumes are kept.'}
+                ? 'This permanently deletes your master resume, role-specific resumes, career evidence chunks, and the Google Doc ID in Settings. Job-tailored resumes are kept.'
+                : 'This permanently deletes this corpus document and its version history. Deleting the master resume also clears career evidence chunks. Job-tailored resumes are kept.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -362,6 +365,9 @@ function AddCorpusDialog({
                 onChange={(e) => setGoogleDocId(e.target.value)}
                 placeholder="docs.google.com/document/d/FILE_ID/edit"
               />
+              <p className="text-xs text-muted-foreground">
+                Paste a Google Docs or Drive file link. Native Docs work best; PDF and Word files on Drive are also accepted.
+              </p>
               <Button onClick={syncDoc} disabled={saving} className="gap-2">
                 {saving ? <InlineLoader /> : null}
                 Sync Google Doc

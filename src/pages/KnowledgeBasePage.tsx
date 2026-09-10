@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { services } from '@/services';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { supabase } from '@/lib/supabase';
+import { parseGoogleDocFileId } from '@/utils/google';
 import { useToast } from '@/hooks/use-toast';
 
 export function KnowledgeBasePage() {
@@ -32,24 +32,15 @@ export function KnowledgeBasePage() {
   });
 
   const syncMutation = useMutation({
-    mutationFn: async (fileId: string) => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Not authenticated');
-      const res = await supabase.functions.invoke('ai-chat', {
-        body: { mode: 'sync_google_doc_chunks', fileId },
-      });
-      if (res.error) throw new Error(res.error.message);
-      return res.data as {
-        chunksExtracted: number;
-        newChunksAdded: number;
-        totalExisting: number;
-        resumeUpdated: boolean;
-      };
+    mutationFn: async (rawFileId: string) => {
+      const fileId = parseGoogleDocFileId(rawFileId);
+      if (!fileId) throw new Error('Paste a Google Doc link or file ID');
+      return services.resume.syncGoogleDocCorpus({ fileId });
     },
     onSuccess: (data) => {
       toast({
         title: 'Google Doc synced',
-        description: `${data.newChunksAdded} new chunks added (${data.totalExisting} total). Master resume updated.`,
+        description: `${data.totalExisting} career evidence chunks now match this resume.`,
       });
       refetchCollections();
       qc.invalidateQueries({ queryKey: ['settings'] });
@@ -196,8 +187,7 @@ export function KnowledgeBasePage() {
                   <p className="text-sm font-medium text-primary">Sync Complete</p>
                   <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                     <li>Chunks extracted from doc: <strong>{syncMutation.data.chunksExtracted}</strong></li>
-                    <li>New chunks added: <strong>{syncMutation.data.newChunksAdded}</strong></li>
-                    <li>Total chunks in knowledge base: <strong>{syncMutation.data.totalExisting}</strong></li>
+                    <li>Career evidence chunks stored: <strong>{syncMutation.data.totalExisting}</strong></li>
                     <li>Master resume content: <strong>{syncMutation.data.resumeUpdated ? 'Updated' : 'Unchanged'}</strong></li>
                   </ul>
                 </FadeIn>
@@ -212,7 +202,7 @@ export function KnowledgeBasePage() {
                 <li>Your Google Doc is fetched via the Google Drive API (uses your connected OAuth token).</li>
                 <li>Bullet points (lines starting with - or •) with quantifiable metrics and achievement verbs are extracted.</li>
                 <li>Each bullet is tagged automatically based on keywords (e.g. SnapLogic, BigQuery, performance, security).</li>
-                <li>Only <em>new</em> bullets are inserted — existing chunks are never duplicated.</li>
+                <li>Quantified bullets replace the previous career evidence — leftover bullets from an old resume are not kept.</li>
                 <li>The master resume in the database is updated to match the Google Doc.</li>
                 <li>Next time you tailor a resume, the ATS Optimizer uses the master resume, or a matching role-specific resume if you added one on the Corpus page.</li>
               </ol>

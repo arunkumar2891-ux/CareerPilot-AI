@@ -113,10 +113,7 @@ export function SettingsPage() {
     const fileId = parsedResumeId;
     if (fileId) {
       try {
-        const res = await supabase.functions.invoke('ai-chat', {
-          body: { mode: 'sync_google_doc_chunks', fileId },
-        });
-        if (res.error) throw new Error(res.error.message);
+        await services.resume.syncGoogleDocCorpus({ fileId });
         qc.invalidateQueries({ queryKey: ['resumes'] });
         qc.invalidateQueries({ queryKey: ['knowledge-collections'] });
         qc.invalidateQueries({ queryKey: ['settings'] });
@@ -127,7 +124,10 @@ export function SettingsPage() {
         );
         return;
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Google Doc sync failed — check Integrations');
+        toast.error(
+          `${err instanceof Error ? err.message : 'Google Doc sync failed — check Integrations'} Job search settings were still saved.`,
+        );
+        return;
       }
     }
     toast.success('Job search settings saved');
@@ -212,7 +212,7 @@ export function SettingsPage() {
               <div className="space-y-1.5">
                 <Label>Google Doc Resume ID</Label>
                 <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="docs.google.com/document/d/FILE_ID/edit" />
-                <p className="text-xs text-muted-foreground">Paste a Google Doc link or the file ID to keep the master resume in sync. Optional if you already uploaded or pasted a resume on the Corpus page.</p>
+                <p className="text-xs text-muted-foreground">Paste a Google Docs link (docs.google.com/document/d/…), a Drive file link, or the file ID. Native Docs work best. A Drive PDF or Word file is also accepted. Saving replaces your master resume and career evidence chunks.</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Google Drive folder for PDFs</Label>

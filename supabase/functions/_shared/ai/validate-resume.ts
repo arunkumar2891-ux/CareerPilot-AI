@@ -387,7 +387,32 @@ export function validateHumanVoice(text: string): { ok: true } | { ok: false; re
   return { ok: true };
 }
 
-function validateTwoPageShape(text: string): { ok: true } | { ok: false; reason: string } {
+function countExperienceAchievementBullets(text: string): number {
+  const experience = extractSectionBody(text, 'PROFESSIONAL EXPERIENCE');
+  return experience.split('\n').filter((line) => isExperienceAchievementBullet(line)).length;
+}
+
+/** Role/date headers are not achievement bullets, even when the model prefixes them with "- ". */
+function isRoleOrDateHeader(line: string): boolean {
+  const body = line.replace(/^\s*[-•*]\s+/, '').trim();
+  if (!body || body.length > 140) return false;
+  if (/[.!?]\s*$/.test(body)) return false;
+  const hasYear = /\b(19|20)\d{2}\b/.test(body);
+  if (!hasYear) return false;
+  const hasJobSep = /\s\|\s/.test(body) || /\s+[–—-]\s+/.test(body) || /\s+at\s+/i.test(body);
+  const dateRange = /\b(19|20)\d{2}\s*[-–—]\s*(?:(?:19|20)\d{2}|present|current|now)\b/i;
+  return dateRange.test(body) || hasJobSep;
+}
+
+function isExperienceAchievementBullet(line: string): boolean {
+  if (!/^\s*[-•]\s+/.test(line)) return false;
+  return !isRoleOrDateHeader(line);
+}
+
+function validateTwoPageShape(
+  text: string,
+  groundingSource?: string,
+): { ok: true } | { ok: false; reason: string } {
   if (text.length > 10000) return { ok: false, reason: 'exceeds_two_page_budget' };
   if (/RECTIFICATION\s*&\s*ITERATION|ATS keyword reference|tailoring guide/i.test(text)) {
     return { ok: false, reason: 'master_bank_artifact' };
@@ -395,13 +420,14 @@ function validateTwoPageShape(text: string): { ok: true } | { ok: false; reason:
 
   const summary = extractSectionBody(text, 'SUMMARY');
   const skills = extractSectionBody(text, 'SKILLS');
-  const experience = extractSectionBody(text, 'PROFESSIONAL EXPERIENCE');
   const skillLines = skills.split('\n').map((line) => line.trim()).filter(Boolean);
-  const experienceBullets = experience.split('\n').filter((line) => /^\s*[-•]\s+/.test(line));
+  const experienceBullets = countExperienceAchievementBullets(text);
+  const sourceBullets = groundingSource ? countExperienceAchievementBullets(groundingSource) : 0;
+  const maxBullets = Math.max(22, sourceBullets);
 
   if (summary.length > 1400) return { ok: false, reason: 'summary_too_long' };
   if (skills.length > 2500 || skillLines.length > 10) return { ok: false, reason: 'skills_too_long' };
-  if (experienceBullets.length > 22) return { ok: false, reason: 'too_many_experience_bullets' };
+  if (experienceBullets > maxBullets) return { ok: false, reason: 'too_many_experience_bullets' };
   return { ok: true };
 }
 
@@ -456,7 +482,7 @@ export function validateResumeOutput(
   }
 
   if (!options?.skipTwoPageShape) {
-    const shape = validateTwoPageShape(text);
+    const shape = validateTwoPageShape(text, options?.groundingSource);
     if (!shape.ok) return shape;
   }
 

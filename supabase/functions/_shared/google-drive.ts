@@ -60,3 +60,46 @@ export function buildResumePdfFileName(input: {
   const date = formatResumePdfDate(input.now);
   return `${company}_${person}_${role}_${date}.pdf`;
 }
+
+export const GOOGLE_DOC_EDITORS_HINT =
+  'This Drive file is not a Google Doc. Open it in Drive, choose File → Save as Google Docs, then paste that document link. Or upload the PDF/DOCX on the Corpus page.';
+
+export type DriveFileMeta = {
+  id: string;
+  name?: string;
+  mimeType?: string;
+  shortcutDetails?: { targetId?: string };
+};
+
+export type DriveTextPlan =
+  | { action: 'export' }
+  | { action: 'download'; mimeType: string }
+  | { action: 'follow_shortcut'; targetId: string }
+  | { action: 'reject'; reason: string };
+
+const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
+const DOWNLOADABLE_MIMES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+  'text/markdown',
+]);
+
+export function driveFileTextStrategy(meta: DriveFileMeta): DriveTextPlan {
+  const mime = String(meta.mimeType || '');
+  if (mime === 'application/vnd.google-apps.shortcut') {
+    const targetId = String(meta.shortcutDetails?.targetId || '');
+    if (!GOOGLE_FILE_ID_RE.test(targetId)) {
+      return { action: 'reject', reason: GOOGLE_DOC_EDITORS_HINT };
+    }
+    return { action: 'follow_shortcut', targetId };
+  }
+  if (mime === GOOGLE_DOC_MIME) return { action: 'export' };
+  if (DOWNLOADABLE_MIMES.has(mime)) return { action: 'download', mimeType: mime };
+  return { action: 'reject', reason: GOOGLE_DOC_EDITORS_HINT };
+}
+
+export function explainDriveExportError(raw: string): string {
+  if (/Export only supports Docs Editors files/i.test(raw)) return GOOGLE_DOC_EDITORS_HINT;
+  return raw;
+}

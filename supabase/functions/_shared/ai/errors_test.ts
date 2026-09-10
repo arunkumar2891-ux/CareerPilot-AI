@@ -364,3 +364,66 @@ Google Cloud Professional Architect
   }
 });
 
+function skeletonResume(experienceBody: string): string {
+  return `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+I build platforms for enterprise customers.
+
+SKILLS
+TypeScript, Python
+
+PROFESSIONAL EXPERIENCE
+${experienceBody}
+
+EDUCATION
+B.S. Computer Science`;
+}
+
+function uniqueBullets(count: number): string[] {
+  return Array.from({ length: count }, (_, i) => `- Shipped platform capability ${i + 1} for production traffic.`);
+}
+
+Deno.test('validateResumeOutput allows a long source resume to keep more than 22 experience bullets', () => {
+  const bullets = uniqueBullets(26).join('\n');
+  const source = skeletonResume(`Acme | Engineer | 2018-2024\n${bullets}`);
+  const output = skeletonResume(`Acme | Engineer | 2018-2024\n${bullets}`);
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (!result.ok) throw new Error(`expected source-length experience to validate: ${result.reason}`);
+});
+
+Deno.test('validateResumeOutput does not count hyphenated role/date headers as experience bullets', () => {
+  const bullets = uniqueBullets(21).join('\n');
+  const source = skeletonResume(
+    `Acme | Engineer | 2020-2022\nBeta | Architect | 2022-2024\n${bullets}`,
+  );
+  const output = skeletonResume(
+    `- Acme | Engineer | 2020-2022\n- Beta | Architect | 2022-2024\n${bullets}`,
+  );
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (!result.ok) throw new Error(`expected hyphenated role headers to be ignored: ${result.reason}`);
+});
+
+Deno.test('validateResumeOutput still rejects experience padded far beyond a short source', () => {
+  const source = skeletonResume(`Acme | Engineer | 2020-2024\n${uniqueBullets(8).join('\n')}`);
+  const output = skeletonResume(`Acme | Engineer | 2020-2024\n${uniqueBullets(24).join('\n')}`);
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    skipGrounding: true,
+    skipHumanVoice: true,
+  });
+  if (result.ok) throw new Error('expected too_many_experience_bullets');
+  if (result.reason !== 'too_many_experience_bullets') throw new Error(result.reason);
+});
+
+
