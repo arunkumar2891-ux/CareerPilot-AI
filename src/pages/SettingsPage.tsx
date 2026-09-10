@@ -267,14 +267,14 @@ export function SettingsPage() {
               <p>Configure these as Supabase Edge Function secrets (Dashboard → Edge Functions → Secrets):</p>
               <ul className="list-disc space-y-1 pl-5">
                 <li><code>APIFY_TOKEN</code> — Apify API token</li>
-                <li><code>GEMINI_API_KEY</code> — Google Gemini API key (primary account)</li>
-                <li><code>GEMINI_API_KEY_FALLBACK</code> — second Gemini key (second account; used when primary is rate-limited)</li>
+                <li><code>GEMINI_API_KEY</code> — Google Gemini API key (Copilot / chat; not used for ATS tailoring)</li>
+                <li><code>GEMINI_API_KEY_FALLBACK</code> — paid Gemini key used for ATS tailoring, then Groq, then the source resume</li>
                 <li><code>GEMINI_MODEL</code> — optional; defaults to <code>gemini-3.6-flash</code></li>
-                <li><code>GROQ_API_KEY</code> — Groq API key (third fallback after both Gemini keys)</li>
+                <li><code>GROQ_API_KEY</code> — Groq API key (ATS fallback after paid Gemini; chat uses Groq only when <code>AI_FORCE_GROQ=true</code>)</li>
                 <li><code>GROQ_MODEL</code> — optional; defaults to <code>openai/gpt-oss-120b</code></li>
                 <li><code>AI_TIMEOUT_MS</code> — optional chat timeout; default 30000</li>
                 <li><code>AI_ATS_TIMEOUT_MS</code> — optional ATS timeout; default 40000 (keep total under 150s edge limit)</li>
-                <li><code>AI_FORCE_GROQ</code> — set to <code>true</code> to use Groq after both Gemini keys (timeout / 429 / 5xx). Requires <code>GROQ_API_KEY</code></li>
+                <li><code>AI_FORCE_GROQ</code> — set to <code>true</code> to use Groq after Gemini on chat. ATS already uses Groq when this key is set</li>
                 <li><code>AI_MAX_RETRIES</code> — optional; only used when <code>AI_GEMINI_RETRY_ENABLED=true</code></li>
                 <li><code>AI_GEMINI_RETRY_ENABLED</code> — optional; default off — one Gemini attempt per key, then next provider</li>
                 <li><code>RESEND_API_KEY</code> — Resend email API key</li>

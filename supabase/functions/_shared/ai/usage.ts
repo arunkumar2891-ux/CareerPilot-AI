@@ -88,7 +88,10 @@ export async function recordAiUsage(
     .eq('user_id', userId)
     .gte('created_at', monthStart.toISOString());
 
-  const monthCredits = (monthRows || []).reduce((sum, row) => sum + Number(row.tokens_total ?? 0), 0);
+  const monthCredits = (monthRows || []).reduce(
+    (sum: number, row: { tokens_total?: number | null }) => sum + Number(row.tokens_total ?? 0),
+    0,
+  );
 
   await admin.from('profiles').update({
     ai_credits_used: monthCredits,

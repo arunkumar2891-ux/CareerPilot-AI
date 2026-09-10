@@ -482,6 +482,65 @@ function validateTwoPageShape(
   return { ok: true };
 }
 
+const MAX_GROUNDING_SALVAGE = 8;
+
+function parseUnsupportedLine(reason: string): string | null {
+  const match = reason.match(/^unsupported_source_line:\s*(.+)$/s);
+  return match?.[1]?.trim() || null;
+}
+
+function lineMatchesRejected(line: string, rejected: string): boolean {
+  const normalized = normalizeResumeLine(line);
+  const target = normalizeResumeLine(rejected);
+  if (!normalized || !target) return false;
+  return normalized === target || normalized.startsWith(target) || target.startsWith(normalized);
+}
+
+function requiredSectionsIntact(text: string): boolean {
+  for (const header of ['SKILLS', 'EDUCATION', 'SUMMARY', 'PROFESSIONAL EXPERIENCE'] as const) {
+    if (!extractSectionBody(text, header)) return false;
+  }
+  return countExperienceAchievementBullets(text) >= 1;
+}
+
+function dropUnsupportedContentLine(text: string, rejected: string): string | null {
+  const sections = parseAtsSections(text);
+  for (const header of REQUIRED_HEADERS) {
+    if (IDENTITY_HEADERS.has(header)) continue;
+    const lines = sections.get(header);
+    if (!lines) continue;
+    const idx = lines.findIndex((line) => lineMatchesRejected(line, rejected));
+    if (idx < 0) continue;
+    const nextLines = lines.slice();
+    nextLines.splice(idx, 1);
+    sections.set(header, nextLines);
+    const next = joinSections(sections);
+    if (!requiredSectionsIntact(next)) return null;
+    return next;
+  }
+  return null;
+}
+
+function salvageGrounding(
+  text: string,
+  groundingSource: string,
+  allowParaphrase: boolean,
+): { ok: true; text: string } | { ok: false; reason: string } {
+  let current = text;
+  for (let attempt = 0; attempt <= MAX_GROUNDING_SALVAGE; attempt++) {
+    const grounding = validateGrounding(current, groundingSource, { allowParaphrase });
+    if (grounding.ok) return { ok: true, text: current };
+    const rejected = parseUnsupportedLine(grounding.reason);
+    if (!rejected) return grounding;
+    const dropped = dropUnsupportedContentLine(current, rejected);
+    if (!dropped) return grounding;
+    current = dropped;
+  }
+  const last = validateGrounding(current, groundingSource, { allowParaphrase });
+  if (last.ok) return { ok: true, text: current };
+  return last;
+}
+
 /** Same contract as LaTeX builder: ATS text must include SUMMARY and PROFESSIONAL EXPERIENCE. */
 export function validateResumeOutput(
   raw: string,
@@ -539,10 +598,9 @@ export function validateResumeOutput(
   }
 
   if (options?.groundingSource && !options?.skipGrounding) {
-    const grounding = validateGrounding(text, options.groundingSource, {
-      allowParaphrase: options.allowParaphrase ?? true,
-    });
+    const grounding = salvageGrounding(text, options.groundingSource, options.allowParaphrase ?? true);
     if (!grounding.ok) return grounding;
+    text = grounding.text;
   }
 
   if (!options?.skipHumanVoice) {

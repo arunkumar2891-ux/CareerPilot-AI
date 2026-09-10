@@ -75,6 +75,10 @@ Deno.test('provider chain is Gemini primary + paid fallback, then Groq when forc
     if (JSON.stringify(chain) !== JSON.stringify(['gemini', 'gemini_fallback', 'groq'])) {
       throw new Error(`unexpected provider chain: ${chain.join(' → ')}`);
     }
+    const resumeChain = getProviderChain('resume_tailoring');
+    if (JSON.stringify(resumeChain) !== JSON.stringify(['gemini_fallback', 'groq'])) {
+      throw new Error(`unexpected resume chain: ${resumeChain.join(' → ')}`);
+    }
     const rerankChain = getRerankProviderChain();
     if (JSON.stringify(rerankChain) !== JSON.stringify(['gemini_fallback'])) {
       throw new Error(`unexpected rerank chain: ${rerankChain.join(' → ')}`);
@@ -93,6 +97,10 @@ Deno.test('Groq stays off the chain unless AI_FORCE_GROQ=true', async () => {
     const chain = getProviderChain();
     if (JSON.stringify(chain) !== JSON.stringify(['gemini', 'gemini_fallback'])) {
       throw new Error(`unexpected provider chain: ${chain.join(' → ')}`);
+    }
+    const resumeChain = getProviderChain('resume_tailoring');
+    if (JSON.stringify(resumeChain) !== JSON.stringify(['gemini_fallback', 'groq'])) {
+      throw new Error(`ATS should still use Groq: ${resumeChain.join(' → ')}`);
     }
   });
 });
@@ -364,3 +372,104 @@ Deno.test('logs never contain API keys', async () => {
   const blob = logs.join('\n') + sanitizeAiErrorMessage('Bearer gsk_LIVESECRETKEY123');
   if (/gsk_LIVE|AIzaSyFAKE/.test(blob)) throw new Error('keys leaked in logs');
 });
+
+Deno.test('resume tailoring skips free Gemini even when a free key is configured', async () => {
+  const { generateWithProviders } = await import('./router.ts');
+  const { getProviderChain } = await import('./config.ts');
+  const gemini = mockAdapter('gemini', {});
+  const fallback = mockAdapter('gemini_fallback', {});
+  let chain: string[] = [];
+  withEnv({
+    GEMINI_API_KEY: 'free-key',
+    GEMINI_API_KEY_FALLBACK: 'paid-key',
+    GROQ_API_KEY: null,
+    AI_FORCE_GROQ: null,
+  }, () => {
+    chain = getProviderChain('resume_tailoring');
+  });
+  await generateWithProviders(
+    { systemPrompt: 's', userPrompt: 'u', operation: 'resume_tailoring' },
+    { adapters: { gemini, gemini_fallback: fallback }, providerChain: chain, log: () => {} },
+  );
+  if (chain.includes('gemini')) throw new Error(`resume chain still has free Gemini: ${chain.join(' → ')}`);
+  if (gemini.calls !== 0) throw new Error(`free Gemini should not run ATS, got ${gemini.calls}`);
+  if (fallback.calls !== 1) throw new Error(`paid Gemini should run ATS, got ${fallback.calls}`);
+});
+
+Deno.test('paid Gemini retries once after unsupported_source_line with a repair prompt', async () => {
+  const { generateWithProviders } = await import('./router.ts');
+  const invented = VALID_ATS.replace(
+    'Senior engineer with distributed systems experience.',
+    'AI executive with 15 years of invented platform leadership.',
+  );
+  const prompts: string[] = [];
+  const fallback = mockAdapter('gemini_fallback', {
+    generate: async (req) => {
+      prompts.push(req.userPrompt);
+      if (prompts.length === 1) {
+        return { text: invented, tokensInput: 10, tokensOutput: 10 };
+      }
+      return { text: VALID_ATS, tokensInput: 10, tokensOutput: 10 };
+    },
+  });
+  const groq = mockAdapter('groq', {});
+  const result = await generateWithProviders(
+    {
+      systemPrompt: 's',
+      userPrompt: 'Tailor this resume',
+      operation: 'resume_tailoring',
+      groundingSource: VALID_ATS,
+    },
+    {
+      adapters: { gemini_fallback: fallback, groq },
+      providerChain: ['gemini_fallback', 'groq'],
+      log: () => {},
+    },
+  );
+  if (fallback.calls !== 2) throw new Error(`expected one repair retry, got ${fallback.calls}`);
+  if (groq.calls !== 0) throw new Error('groq should not run after a successful repair');
+  if (!prompts[1]?.includes('unsupported_source_line')) {
+    throw new Error(`repair prompt missing rejected line:\n${prompts[1]}`);
+  }
+  if (!result.text.includes('distributed systems experience')) {
+    throw new Error('expected repaired ATS text');
+  }
+});
+
+Deno.test('Groq first call receives the grounding repair hint after paid Gemini fails', async () => {
+  const { generateWithProviders } = await import('./router.ts');
+  const invented = VALID_ATS.replace(
+    'Senior engineer with distributed systems experience.',
+    'AI executive with 15 years of invented platform leadership.',
+  );
+  const fallback = mockAdapter('gemini_fallback', {
+    generate: async () => ({ text: invented, tokensInput: 10, tokensOutput: 10 }),
+  });
+  const groqPrompts: string[] = [];
+  const groq = mockAdapter('groq', {
+    generate: async (req) => {
+      groqPrompts.push(req.groqUserPrompt || req.userPrompt);
+      return { text: VALID_ATS, tokensInput: 5, tokensOutput: 5 };
+    },
+  });
+  await generateWithProviders(
+    {
+      systemPrompt: 's',
+      userPrompt: 'Tailor this resume',
+      groqUserPrompt: 'Short tailor prompt',
+      operation: 'resume_tailoring',
+      groundingSource: VALID_ATS,
+    },
+    {
+      adapters: { gemini_fallback: fallback, groq },
+      providerChain: ['gemini_fallback', 'groq'],
+      log: () => {},
+    },
+  );
+  if (fallback.calls !== 2) throw new Error(`expected paid Gemini generate+repair, got ${fallback.calls}`);
+  if (groq.calls !== 1) throw new Error(`expected groq once, got ${groq.calls}`);
+  if (!groqPrompts[0]?.includes('unsupported_source_line')) {
+    throw new Error(`groq should see the rejected line:\n${groqPrompts[0]}`);
+  }
+});
+

@@ -5,7 +5,7 @@ import { groqAdapter } from './groq.ts';
 import { ProviderError, totalTokens, type GenerateRequest, type GenerateResult, type ProviderAdapter } from './types.ts';
 import { validateResumeOutput } from './validate-resume.ts';
 import { recordAiUsage } from './usage.ts';
-import { HUMANIZE_RETRY_PROMPT } from '../career-corpus/prompt.ts';
+import { HUMANIZE_RETRY_PROMPT, groundingRetryPrompt } from '../career-corpus/prompt.ts';
 
 const defaultAdapters: Record<string, ProviderAdapter> = {
   gemini: geminiAdapter,
@@ -22,7 +22,20 @@ export type GenerateDeps = {
   log?: (message: string) => void;
 };
 
-function shouldRetrySameProvider(err: unknown): boolean {
+function isGroundingValidationError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /unsupported_source_line|duplicate_source_line/.test(message);
+}
+
+function shouldRetrySameProvider(err: unknown, providerName?: string, operation?: string): boolean {
+  if (
+    operation === 'resume_tailoring'
+    && providerName
+    && providerName !== 'gemini'
+    && isGroundingValidationError(err)
+  ) {
+    return true;
+  }
   if (!(err instanceof ProviderError) || !err.retryable) return false;
   // Never burn wall-clock on quota, validation, or timeout — fall through to the next provider.
   if (['rate_limit', 'invalid_output', 'timeout', 'http_429'].includes(err.kind)) return false;
@@ -36,7 +49,8 @@ function timeoutForProvider(providerName: string, operation: string, defaultTime
   return getAtsTimeoutMs();
 }
 
-function maxAttemptsForProvider(providerName: string): number {
+function maxAttemptsForProvider(providerName: string, operation: string): number {
+  if (operation === 'resume_tailoring' && providerName === 'gemini_fallback') return 2;
   if (providerName === 'gemini' || providerName === 'gemini_fallback') {
     return getGeminiMaxRetries();
   }
@@ -165,6 +179,21 @@ function withHumanizeRetry(req: GenerateRequest, err: unknown): GenerateRequest 
   };
 }
 
+function withValidationRetry(req: GenerateRequest, err: unknown): GenerateRequest {
+  const humanized = withHumanizeRetry(req, err);
+  if (!isGroundingValidationError(err)) return humanized;
+  const message = err instanceof Error ? err.message : String(err);
+  const hint = groundingRetryPrompt(message);
+  if (humanized.userPrompt.includes('The previous draft failed validation')) return humanized;
+  return {
+    ...humanized,
+    userPrompt: `${humanized.userPrompt}\n\n${hint}`,
+    groqUserPrompt: humanized.groqUserPrompt
+      ? `${humanized.groqUserPrompt}\n\n${hint}`
+      : `${humanized.userPrompt}\n\n${hint}`,
+  };
+}
+
 async function tryProvider(
   adapter: ProviderAdapter,
   req: GenerateRequest,
@@ -181,8 +210,9 @@ async function tryProvider(
       return await callAdapter(adapter, currentReq, role, log, userId);
     } catch (err) {
       lastErr = err;
-      currentReq = withHumanizeRetry(currentReq, err);
-      const retryable = shouldRetrySameProvider(err) || /ai_generated_voice/.test(err instanceof Error ? err.message : '');
+      currentReq = withValidationRetry(currentReq, err);
+      const retryable = shouldRetrySameProvider(err, adapter.name, req.operation)
+        || /ai_generated_voice/.test(err instanceof Error ? err.message : '');
       if (!retryable || i >= attempts) throw err;
     }
   }
@@ -235,8 +265,8 @@ function tryDeterministicResume(
 }
 
 /**
- * Provider chain: primary Gemini → paid Gemini fallback → Groq (when AI_FORCE_GROQ=true)
- * → deterministic source resume for tailoring.
+ * Provider chain: chat uses free Gemini → paid fallback → Groq.
+ * Resume tailoring skips free Gemini: paid fallback → Groq → deterministic source resume.
  */
 export async function generateWithProviders(
   req: Omit<GenerateRequest, 'timeoutMs'> & { timeoutMs?: number },
@@ -245,13 +275,15 @@ export async function generateWithProviders(
   const log = (message: string) => (deps.log ?? console.log)(sanitizeAiErrorMessage(message));
   const defaultTimeout = req.operation === 'resume_tailoring' ? getAtsTimeoutMs() : getAiTimeoutMs();
   const timeoutMs = req.timeoutMs ?? deps.timeoutMs ?? defaultTimeout;
-  const request: GenerateRequest = { ...req, timeoutMs };
+  let request: GenerateRequest = { ...req, timeoutMs };
   const adapters = deps.adapters ?? defaultAdapters;
-  const chain = deps.providerChain ?? getProviderChain();
+  const chain = deps.providerChain ?? getProviderChain(req.operation);
   const errors: string[] = [];
   log(`[AI] provider chain: ${chain.map(providerLabel).join(' → ') || '(none)'}`);
 
   if (!chain.length) {
+    const deterministic = tryDeterministicResume(request, log);
+    if (deterministic) return deterministic;
     throw new ProviderError({
       provider: 'gemini_fallback',
       message: missingProviderMessage(),
@@ -275,7 +307,7 @@ export async function generateWithProviders(
     }
 
     const role = index === 0 ? 'primary' : 'fallback';
-    const attempts = deps.maxAttempts ?? maxAttemptsForProvider(providerName);
+    const attempts = deps.maxAttempts ?? maxAttemptsForProvider(providerName, request.operation);
 
     const providerTimeout = timeoutForProvider(providerName, request.operation, timeoutMs);
 
@@ -284,6 +316,7 @@ export async function generateWithProviders(
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${providerLabel(providerName)}: ${message}`);
+      request = withValidationRetry(request, err);
       if (!shouldFallback(err)) {
         requestIsUnservable = true;
         break;
@@ -308,6 +341,7 @@ export async function generateWithProviders(
     } catch (err) {
       const message = err instanceof Error ? sanitizeAiErrorMessage(err.message) : String(err);
       errors.push(`${providerLabel(providerName)}: ${message}`);
+      request = withValidationRetry(request, err);
       const hasNext = tailChain.slice(index + 1).some((name) => adapters[name]?.isConfigured());
       if (!shouldFallback(err) || !hasNext) break;
     }

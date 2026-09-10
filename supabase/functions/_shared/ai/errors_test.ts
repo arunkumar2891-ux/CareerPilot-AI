@@ -547,4 +547,45 @@ B.S. Computer Science`;
   if (!result.ok) throw new Error(`summary restating a bullet must validate: ${result.reason}`);
 });
 
+Deno.test('validateResumeOutput drops an extra unsupported experience bullet instead of failing', () => {
+  const grounded = '- Shipped APIs used by millions of users.';
+  const invented = '- Processed over 530,000 AI tokens in a single month across 24 pipeline runs.';
+  const source = skeletonResume(`Acme\n${grounded}`);
+  const output = skeletonResume(`Acme\n${grounded}\n${invented}`);
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (!result.ok) throw new Error(`expected salvage to drop invented bullet: ${result.reason}`);
+  if (result.text.includes('530,000')) throw new Error(`invented metric should be removed:\n${result.text}`);
+  if (!result.text.includes('Shipped APIs')) throw new Error(`grounded bullet should remain:\n${result.text}`);
+});
+
+Deno.test('validateResumeOutput does not salvage the last experience bullet', () => {
+  const source = skeletonResume('Acme\n- Shipped APIs used by millions of users.');
+  const output = skeletonResume('Acme\n- Processed over 530,000 AI tokens in a single month.');
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (result.ok) throw new Error('last unsupported bullet must stay a validation error so a provider can repair it');
+  if (!result.reason.startsWith('unsupported_source_line')) {
+    throw new Error(`expected unsupported_source_line, got ${result.reason}`);
+  }
+});
+
+Deno.test('ATS prompt forbids merging bullets and inventing metrics', async () => {
+  const { ATS_SYSTEM_PROMPT, groundingRetryPrompt } = await import('../career-corpus/prompt.ts');
+  if (!ATS_SYSTEM_PROMPT.includes('exactly one source bullet')) {
+    throw new Error('system prompt must require one-to-one source bullets');
+  }
+  if (!ATS_SYSTEM_PROMPT.includes('Do not merge')) {
+    throw new Error('system prompt must forbid merging source bullets');
+  }
+  const retry = groundingRetryPrompt('unsupported_source_line: - invented');
+  if (!retry.includes('unsupported_source_line') || !retry.includes('near-verbatim')) {
+    throw new Error(`repair prompt too weak: ${retry}`);
+  }
+});
+
 

@@ -18,6 +18,11 @@ VOICE (must read as human):
 CONTENT CONTRACT:
 - The RESUME block is the only factual source. Do not invent companies, titles, tools, skills, metrics, dates, certifications, education, or contact details.
 - Keep metrics and numbers exactly as they appear in the source. Do not round, inflate, or embellish.
+- Each PROFESSIONAL EXPERIENCE bullet must be a light edit of exactly one source bullet. Do not merge two source bullets into a new sentence.
+- Do not add tools, products, companies, or metrics that are not on that source line. Do not invent product usage stats (tokens processed, pipeline runs, latency) even if they seem true of the candidate's work.
+- Prefer dropping or shortening a bullet over synthesizing a new one.
+- SUMMARY may rephrase source sentences but must not introduce a new accomplishment or any number that is not in the source.
+- Do not repeat the same achievement in SUMMARY and PROFESSIONAL EXPERIENCE.
 - Reorder and emphasize experience that matches the job. Drop or shorten less relevant projects.
 - Target TWO PAGES. Keep experience at or below the source bullet count. Do not invent extra bullets.
 - Company, role, and date lines are headers: do not start them with "- ". Only achievement lines use "- ".
@@ -58,6 +63,10 @@ EDUCATION
 <education from the source resume>`;
 
 export const HUMANIZE_RETRY_PROMPT = `The previous draft sounded AI-generated. Rewrite it more naturally in the candidate's original voice. Keep the 7-section format. Do not use banned cliche verbs. Vary bullet openings. Keep every fact and metric from the source resume.`;
+
+export function groundingRetryPrompt(reason: string): string {
+  return `The previous draft failed validation (${reason}). Delete the rejected line, or replace it with a near-verbatim copy of one source resume bullet. Do not add facts, tools, or metrics. Do not merge two source bullets. Do not repeat the same achievement in SUMMARY and PROFESSIONAL EXPERIENCE. Keep the 7-section format.`;
+}
 
 export function buildResumeUserPrompt(input: {
   jobTitle?: string;

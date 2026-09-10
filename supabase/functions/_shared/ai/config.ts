@@ -83,11 +83,13 @@ export function getRerankProviderChain(): string[] {
   return [];
 }
 
-/** Provider order: primary Gemini → paid Gemini fallback → Groq when AI_FORCE_GROQ=true. */
-export function getProviderChain(): string[] {
+/** Provider order: chat uses free Gemini then paid fallback; ATS skips free Gemini. */
+export function getProviderChain(operation?: string): string[] {
   const chain: string[] = [];
-  if (getGeminiApiKey()) chain.push('gemini');
+  const skipFreeGemini = operation === 'resume_tailoring';
+  if (!skipFreeGemini && getGeminiApiKey()) chain.push('gemini');
   if (getGeminiFallbackApiKey()) chain.push('gemini_fallback');
-  if (isGroqResumeFallbackEnabled() && getGroqApiKey()) chain.push('groq');
+  const groqForResume = operation === 'resume_tailoring' && Boolean(getGroqApiKey());
+  if ((groqForResume || isGroqResumeFallbackEnabled()) && getGroqApiKey()) chain.push('groq');
   return chain;
 }
