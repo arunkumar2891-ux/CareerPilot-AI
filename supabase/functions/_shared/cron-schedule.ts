@@ -45,24 +45,50 @@ export function isCronDueNow(cronExpr: string, now: Date = new Date()): boolean 
   return now.getUTCHours() === fields.hour && now.getUTCMinutes() === fields.minute;
 }
 
+export function startOfUtcDay(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+export function ranOnUtcDay(lastRunAt: Date | null, now: Date): boolean {
+  if (!lastRunAt) return false;
+  const last = new Date(lastRunAt);
+  return last.getUTCFullYear() === now.getUTCFullYear()
+    && last.getUTCMonth() === now.getUTCMonth()
+    && last.getUTCDate() === now.getUTCDate();
+}
+
+/**
+ * Optimistic lock: a scheduler tick may claim only if last_run is still the
+ * value it read. Concurrent ticks that already wrote last_run lose.
+ */
+export function canClaimScheduledSlot(
+  currentLastRun: string | null | undefined,
+  expectedLastRun: string | null | undefined,
+): boolean {
+  const current = currentLastRun ?? null;
+  const expected = expectedLastRun ?? null;
+  return current === expected;
+}
+
+export function shouldStartScheduledAutomation(
+  schedule: string,
+  nextRunAt: Date | null,
+  lastRunAt: Date | null,
+  now: Date = new Date(),
+  options?: { hasActiveScheduledRunToday?: boolean },
+): boolean {
+  if (options?.hasActiveScheduledRunToday) return false;
+  return isAutomationDue(schedule, nextRunAt, lastRunAt, now);
+}
+
 export function isAutomationDue(
   schedule: string,
   nextRunAt: Date | null,
   lastRunAt: Date | null = null,
   now: Date = new Date(),
 ): boolean {
-  if (isCronDueNow(schedule, now)) {
-    if (lastRunAt) {
-      const last = new Date(lastRunAt);
-      const sameMinute = last.getUTCFullYear() === now.getUTCFullYear()
-        && last.getUTCMonth() === now.getUTCMonth()
-        && last.getUTCDate() === now.getUTCDate()
-        && last.getUTCHours() === now.getUTCHours()
-        && last.getUTCMinutes() === now.getUTCMinutes();
-      if (sameMinute) return false;
-    }
-    return true;
-  }
+  if (ranOnUtcDay(lastRunAt, now)) return false;
+  if (isCronDueNow(schedule, now)) return true;
   if (nextRunAt && nextRunAt.getTime() <= now.getTime()) return true;
   return false;
 }

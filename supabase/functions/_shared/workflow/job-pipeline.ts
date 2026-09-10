@@ -16,7 +16,7 @@ import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 import type { createAdminClient } from '../supabase-admin.ts';
 
 import { formatUnknownError, isJobPipelineStart } from './job-discovery.ts';
-import { shouldYieldForNextJob } from './job-pipeline-slice.ts';
+import { shouldYieldForNextJob, shouldYieldMidChain } from './job-pipeline-slice.ts';
 
 export { isJobPipelineStart };
 export { shouldYieldForNextJob, PIPELINE_SLICE_BUDGET_MS } from './job-pipeline-slice.ts';
@@ -235,6 +235,27 @@ export async function executePerJobPipeline(
         failed_node_id: null,
         updated_at: new Date().toISOString(),
       }).eq('id', jobExecutionId);
+
+      const remainingChain = chain.length - ci - 1;
+      const sliceElapsedMs = Date.now() - Number(ctx.variables.pipelineSliceStartedAt || jobStart);
+      if (shouldYieldMidChain({ remainingChainCount: remainingChain, sliceElapsedMs })) {
+        const nextNode = chain[ci + 1];
+        await admin.from('workflow_job_executions').update({
+          checkpoint_data: itemData,
+          failed_node_id: nextNode.id,
+          updated_at: new Date().toISOString(),
+        }).eq('id', jobExecutionId);
+        delete ctx.variables.pipelineSliceStartedAt;
+        ctx.variables.pendingJobItems = queue;
+        ctx.variables.jobPipelineResults = pipelineResults;
+        await helpers.saveRunContext(runId, ctx);
+        await helpers.logStep(
+          runId, userId, chainNode.id, 'info',
+          `Checkpoint after ${chainNode.name}: ${remainingChain} step(s) left for job ${jobIndex}/${total}. Starting next slice so storage is not cut off.`,
+          { jobExecutionId, nodeExecutionId, jobIndex, attempt },
+        );
+        return { results: pipelineResults, yieldForNext: true };
+      }
     } catch (err) {
       if (err instanceof RunCancelledError) throw err;
       const message = formatUnknownError(err);

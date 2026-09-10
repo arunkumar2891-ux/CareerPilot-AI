@@ -235,6 +235,29 @@ function overlayIdentitySections(
   return joinSections(sections);
 }
 
+function dedupeSectionLines(text: string): string {
+  const sections = parseAtsSections(text);
+  for (const header of REQUIRED_HEADERS) {
+    const lines = sections.get(header);
+    if (!lines || header === 'NAME' || header === 'CONTACT' || header === 'EDUCATION') continue;
+    const seen = new Set<string>();
+    const kept: string[] = [];
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const normalized = normalizeResumeLine(line);
+      if (!normalized) {
+        kept.push(line);
+        continue;
+      }
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      kept.push(line);
+    }
+    sections.set(header, kept);
+  }
+  return joinSections(sections);
+}
+
 export function buildAllowedResumeLines(groundingSource: string): Set<string> {
   const allowed = new Set<string>();
 
@@ -378,8 +401,9 @@ function validateGrounding(
     })) {
       return { ok: false, reason: `unsupported_source_line: ${line.trim().slice(0, 180)}` };
     }
-    if (emittedLines.has(normalized)) return { ok: false, reason: 'duplicate_source_line' };
-    emittedLines.add(normalized);
+    const emittedKey = `${current}::${normalized}`;
+    if (emittedLines.has(emittedKey)) continue;
+    emittedLines.add(emittedKey);
   }
   return { ok: true };
 }
@@ -480,6 +504,7 @@ export function validateResumeOutput(
     educationSource: options?.educationSource || options?.identity?.education,
     certificationSource: options?.certificationSource,
   });
+  text = dedupeSectionLines(text);
   if (!text || text.length < 40) {
     return { ok: false, reason: 'empty_or_too_short' };
   }

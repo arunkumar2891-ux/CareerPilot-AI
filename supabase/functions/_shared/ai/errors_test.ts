@@ -505,4 +505,46 @@ B.S. Computer Science`;
   if (!truncated.ok) throw new Error(`expected truncated skill line to validate: ${truncated.reason}`);
 });
 
+Deno.test('validateResumeOutput drops a repeated experience bullet instead of failing', () => {
+  const bullet = '- Shipped APIs used by millions of users.';
+  const source = skeletonResume(`Acme\n${bullet}`);
+  const output = skeletonResume(`Acme\n${bullet}\n${bullet}`);
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (!result.ok) throw new Error(`expected duplicate bullet to be dropped: ${result.reason}`);
+  const experience = result.text.split('PROFESSIONAL EXPERIENCE')[1] || '';
+  const copies = experience.split('\n').filter((line) => line.includes('Shipped APIs')).length;
+  if (copies !== 1) throw new Error(`expected one copy, got ${copies}:\n${result.text}`);
+});
+
+Deno.test('validateResumeOutput allows a summary that restates an experience bullet', () => {
+  const bullet = '- Built CareerPilot AI with Gemini 3.6 Flash and Groq fallback.';
+  const source = skeletonResume(`CareerPilot AI\n${bullet}`);
+  const output = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Built CareerPilot AI with Gemini 3.6 Flash and Groq fallback.
+
+SKILLS
+TypeScript, Python
+
+PROFESSIONAL EXPERIENCE
+CareerPilot AI
+${bullet}
+
+EDUCATION
+B.S. Computer Science`;
+  const result = validateResumeOutput(output, {
+    groundingSource: source,
+    skipHumanVoice: true,
+  });
+  if (!result.ok) throw new Error(`summary restating a bullet must validate: ${result.reason}`);
+});
+
 

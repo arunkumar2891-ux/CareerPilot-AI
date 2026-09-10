@@ -18,7 +18,7 @@ import {
   startNodeExecution,
 } from './execution-persistence.ts';
 import { deriveRunStatus } from './execution-status.ts';
-import { computeNextCronRun, isAutomationDue } from '../cron-schedule.ts';
+import { computeNextCronRun, shouldStartScheduledAutomation, startOfUtcDay } from '../cron-schedule.ts';
 import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
 import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 
@@ -577,6 +577,44 @@ export async function processDueSteps(): Promise<number> {
   return steps.length;
 }
 
+async function hasActiveScheduledRunToday(
+  admin: ReturnType<typeof createAdminClient>,
+  workflowId: string,
+  userId: string,
+  now: Date,
+): Promise<boolean> {
+  const dayStart = startOfUtcDay(now).toISOString();
+  const { data } = await admin
+    .from('workflow_runs')
+    .select('id')
+    .eq('workflow_id', workflowId)
+    .eq('user_id', userId)
+    .eq('trigger_type', 'schedule')
+    .in('status', ['running', 'queued'])
+    .gte('started_at', dayStart)
+    .limit(1)
+    .maybeSingle();
+  return Boolean(data?.id);
+}
+
+async function claimScheduledAutomation(
+  admin: ReturnType<typeof createAdminClient>,
+  auto: { id: string; last_run: string | null },
+  nowIso: string,
+  nextRunIso: string,
+): Promise<boolean> {
+  let query = admin
+    .from('automations')
+    .update({ last_run: nowIso, next_run: nextRunIso })
+    .eq('id', auto.id)
+    .eq('status', 'active');
+  query = auto.last_run
+    ? query.eq('last_run', auto.last_run)
+    : query.is('last_run', null);
+  const { data } = await query.select('id').maybeSingle();
+  return Boolean(data?.id);
+}
+
 export async function processScheduledAutomations(): Promise<number> {
   const admin = createAdminClient();
   const now = new Date();
@@ -601,14 +639,21 @@ export async function processScheduledAutomations(): Promise<number> {
         await admin.from('automations').update({ next_run: nextRunAt.toISOString() }).eq('id', auto.id);
       }
 
-      if (!isAutomationDue(schedule, nextRunAt, lastRunAt, now)) continue;
+      const hasActive = await hasActiveScheduledRunToday(admin, auto.workflow_id, auto.user_id, now);
+      if (!shouldStartScheduledAutomation(schedule, nextRunAt, lastRunAt, now, {
+        hasActiveScheduledRunToday: hasActive,
+      })) continue;
+
+      const nextRun = computeNextCronRun(schedule, now);
+      const claimed = await claimScheduledAutomation(
+        admin,
+        { id: auto.id, last_run: (auto.last_run as string | null) ?? null },
+        nowIso,
+        nextRun.toISOString(),
+      );
+      if (!claimed) continue;
 
       await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
-      const nextRun = computeNextCronRun(schedule, now);
-      await admin.from('automations').update({
-        last_run: nowIso,
-        next_run: nextRun.toISOString(),
-      }).eq('id', auto.id);
       ran++;
     } catch (err) {
       console.error(`Scheduled automation ${auto.id} failed:`, err);
