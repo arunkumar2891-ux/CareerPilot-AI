@@ -15,6 +15,11 @@ Deno.test('deriveRunStatus returns success for zero-job runs when still running'
   if (status !== 'success') throw new Error(`expected success, got ${status}`);
 });
 
+Deno.test('deriveRunStatus returns success when every job is a skipped duplicate', () => {
+  const status = deriveRunStatus('success', { total: 7, successful: 0, failed: 0, skipped: 7 }, false);
+  if (status !== 'success') throw new Error(`duplicate-only runs must succeed, got ${status}`);
+});
+
 Deno.test('classifyExecutionError detects timeout', () => {
   const err = classifyExecutionError('Request timed out after 75s');
   if (err.errorCode !== 'REQUEST_TIMEOUT') throw new Error(err.errorCode);

@@ -323,6 +323,33 @@ export async function executeWorkflow(
       if (Array.isArray(inputData) && isJobPipelineStart(node)) {
         const chain = buildPerJobPipelineChain(node.id, nodes, edges);
         const items = inputData.filter((item) => item != null);
+        if (chain.length > 0 && items.length === 0) {
+          ctx.nodeOutputs[node.id] = [];
+          const tail = chain[chain.length - 1];
+          ctx.nodeOutputs[tail.id] = [];
+          const duration = Date.now() - start;
+          await completeNodeExecution(admin, commonNodeExecutionId, 'skipped', {
+            durationMs: duration,
+            output: [],
+          });
+          await recordNodeRun(admin, runId, userId, node.id, 'skipped', duration, []);
+          await touchRunDuration(admin, runId);
+          await logStep(
+            runId,
+            userId,
+            node.id,
+            'info',
+            'No new jobs to process.',
+          );
+          await saveRunContext(runId, ctx);
+          for (const chainNode of chain) visited.add(chainNode.id);
+          const nextId = getNextNodeId(tail.id, edges);
+          if (nextId) {
+            const nextNode = nodes.find((n) => n.id === nextId);
+            if (nextNode) queue.push(nextNode);
+          }
+          continue;
+        }
         if (chain.length > 0 && items.length > 0) {
           await ensureJobExecutionsInitialized(admin, runId, userId, ctx, items);
           const pipelineHelpers = {

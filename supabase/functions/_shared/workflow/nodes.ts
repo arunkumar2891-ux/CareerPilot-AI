@@ -5,7 +5,15 @@ import { createAdminClient } from '../supabase-admin.ts';
 import { buildEmailSummaryBlock } from './execution-persistence.ts';
 import { prepareResumeGeneration } from '../career-corpus/generate.ts';
 import { syncGoogleDocToCorpus } from '../google-doc-sync.ts';
-import { flattenJobItems, normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
+import { normalizeLinkedInJobUrl, buildApifyJobSearchInput, expandJobSearchQuery, inferJobWorkplace, postedWithinCutoffIso, jobMatchesSearchQuery } from '../job-url.ts';
+import {
+  collectJobDedupeKeys,
+  emptyJobRunDetail,
+  filterDuplicateJobs,
+  jobContentFingerprint,
+  jobUrlKey,
+  resolveJobInsertConflict,
+} from '../job-dedupe.ts';
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 import { buildLatexFromAtsText } from '../resume-latex.ts';
 import { compileLatexToPdf } from '../resume-pdf.ts';
@@ -31,6 +39,46 @@ function stripHtml(html: string): string {
     .replace(/&nbsp;/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function recordInsertDuplicateSkip(ctx: RunContext): void {
+  ctx.variables.jobsSkippedInsertDuplicate = Number(ctx.variables.jobsSkippedInsertDuplicate ?? 0) + 1;
+}
+
+async function findStoredJob(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  url: string,
+  fingerprint: string,
+): Promise<{ id: string } | null> {
+  const firstId = (data: { id?: string }[] | null | undefined): string | null => {
+    const id = data?.[0]?.id;
+    return id ? String(id) : null;
+  };
+
+  if (url) {
+    const { data } = await admin
+      .from('jobs')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('url', url)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    const id = firstId(data as { id?: string }[] | null);
+    if (id) return { id };
+  }
+  if (fingerprint) {
+    const { data } = await admin
+      .from('jobs')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('content_fingerprint', fingerprint)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    const id = firstId(data as { id?: string }[] | null);
+    if (id) return { id };
+  }
+  return null;
 }
 
 async function callGemini(
@@ -127,7 +175,6 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           }
         }
         const jobs: Record<string, unknown>[] = [];
-        const seen = new Set<string>();
         const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
         const searchQuery = expandJobSearchQuery(jobSearch.query || '');
         const postedCutoff = postedWithinCutoffIso(jobSearch.postedWithin);
@@ -135,7 +182,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         let skippedQuery = 0;
         for (const j of rawItems) {
           const jobLink = normalizeLinkedInJobUrl(String(j.link || j.jobUrl || j.url || ''));
-          if (seen.has(jobLink) || !jobLink) continue;
+          if (!jobLink) continue;
           const postedAt = String(j.postedAt || '');
           if (postedCutoff && /^\d{4}-\d{2}-\d{2}/.test(postedAt) && postedAt < postedCutoff) continue;
           let jobDescription = j.descriptionHtml
@@ -173,15 +220,17 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             jobLink,
             jobDescription,
           });
-          seen.add(jobLink);
-          if (jobs.length >= 20) break;
+          if (jobs.length >= 40) break;
         }
+        const { kept, skippedDuplicate } = filterDuplicateJobs(jobs);
         ctx.variables.jobsSkippedQueryMismatch = skippedQuery;
-        ctx.variables.jobsParsed = jobs.length;
-        return { output: jobs, status: 'success' };
+        ctx.variables.jobsSkippedParseDuplicate = skippedDuplicate;
+        ctx.variables.jobsParsed = kept.length;
+        return { output: kept, status: 'success' };
       }
       if (fn === 'build_latex') {
         const data = input as Record<string, unknown>;
+        if (data?.skipped) return { output: data, status: 'success' };
         const raw = String(data.output ?? '').trim();
         const latex = buildLatexFromAtsText(raw, {
           targetRole: String(data.title || data.role || ''),
@@ -200,21 +249,16 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         if (items.length === 0) {
           const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
           const today = new Date().toISOString().slice(0, 10);
-          let detail = 'No new resumes were generated today.';
-          if (scraped === 0) {
-            detail = 'Apify returned no job listings for your LinkedIn search URL. Try broadening location or keywords in Settings.';
-          } else if (parsed === 0) {
-            const skippedQuery = Number(ctx.variables.jobsSkippedQueryMismatch ?? 0);
-            detail = skippedQuery > 0
-              ? `Apify returned ${scraped} listings but ${skippedQuery} did not match your search query — try a more specific title in Settings.`
-              : `Apify returned ${scraped} listings but none could be parsed into jobs (missing descriptions or links).`;
-          } else if (afterDedupe === 0 && skippedDuplicate > 0) {
-            detail = `All ${skippedDuplicate} new job(s) were already in your jobs table — no new listings to process.`;
-          } else if (afterDedupe === 0 && skippedNoLink > 0) {
-            detail = `${skippedNoLink} parsed job(s) could not be processed because the job URL was missing.`;
-          } else if (afterDedupe === 0) {
-            detail = `${parsed} job(s) were parsed but none were queued for tailoring.`;
-          }
+          const detail = emptyJobRunDetail({
+            scraped,
+            parsed,
+            afterDedupe,
+            skippedDuplicate,
+            skippedNoLink,
+            skippedInsertDuplicate: Number(ctx.variables.jobsSkippedInsertDuplicate ?? 0),
+            skippedParseDuplicate: Number(ctx.variables.jobsSkippedParseDuplicate ?? 0),
+            skippedQueryMismatch: Number(ctx.variables.jobsSkippedQueryMismatch ?? 0),
+          });
           return {
             output: {
               subject: `No New Jobs Found — ${today}`,
@@ -345,30 +389,22 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   duplicate_checker: {
     async execute(ctx, _node, input) {
-      const items = flattenJobItems(input);
       const admin = createAdminClient();
-      const newItems: unknown[] = [];
-      let skippedNoLink = 0;
-      let skippedDuplicate = 0;
-      for (const item of items) {
-        const row = item as Record<string, unknown>;
-        const jobLink = normalizeLinkedInJobUrl(String(row.jobLink || row.link || row.url || row.jobUrl || ''));
-        if (!jobLink) {
-          skippedNoLink++;
-          continue;
+      const { data: existingRows } = await admin
+        .from('jobs')
+        .select('url, company, role, location, description')
+        .eq('user_id', ctx.userId);
+      const existingKeys = new Set<string>();
+      for (const row of existingRows || []) {
+        for (const key of collectJobDedupeKeys(row as Record<string, unknown>)) {
+          existingKeys.add(key);
         }
-        row.jobLink = jobLink;
-        const { data } = await admin.from('jobs').select('id').eq('user_id', ctx.userId).eq('url', jobLink).maybeSingle();
-        if (data) {
-          skippedDuplicate++;
-          continue;
-        }
-        newItems.push(row);
       }
-      ctx.variables.jobsAfterDedupe = newItems.length;
+      const { kept, skippedDuplicate, skippedNoIdentity } = filterDuplicateJobs(input, existingKeys);
+      ctx.variables.jobsAfterDedupe = kept.length;
       ctx.variables.jobsSkippedDuplicate = skippedDuplicate;
-      ctx.variables.jobsSkippedNoLink = skippedNoLink;
-      return { output: newItems, status: 'success' };
+      ctx.variables.jobsSkippedNoLink = skippedNoIdentity;
+      return { output: kept, status: 'success' };
     },
   },
   gdocs: {
@@ -404,12 +440,14 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(ctx, node, input) {
       const action = node.config.action as string || 'download';
       if (action === 'upload') {
+        const incoming = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+        if (incoming.skipped) return { output: incoming, status: 'success' };
         const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
         if (jobSearch.autoUploadDrive !== true) {
-          return { output: { ...(input as Record<string, unknown>), skipped: true, reason: 'drive_manual_only' }, status: 'success' };
+          return { output: { ...incoming, skipped: true, reason: 'drive_manual_only' }, status: 'success' };
         }
 
-        const data = input as Record<string, unknown>;
+        const data = incoming;
         const rawPdf = data.pdfBytes;
         const pdfBytes = rawPdf instanceof Uint8Array
           ? rawPdf
@@ -468,6 +506,9 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const job = (input && typeof input === 'object' ? input : ctx.variables.currentItem) as Record<string, unknown> | undefined;
       if (!job) {
         return { output: { skipped: true, reason: 'no_job_input' }, status: 'success' };
+      }
+      if (job.skipped) {
+        return { output: job, status: 'success' };
       }
       const jd = String(job.jobDescription || job.description || '');
       const prepared = await prepareResumeGeneration(ctx.userId, {
@@ -574,6 +615,23 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           String(job.employmentType || ''),
           String(job.workplaceType || ''),
         );
+        const url = jobUrlKey(job);
+        const fingerprint = jobContentFingerprint({
+          ...job,
+          url,
+          company: job.company ?? job.companyName,
+          role: job.title ?? job.role,
+          description: job.jobDescription ?? job.description,
+        });
+        const existing = await findStoredJob(admin, ctx.userId, url, fingerprint);
+        if (existing) {
+          recordInsertDuplicateSkip(ctx);
+          ctx.variables.lastJobId = existing.id;
+          return {
+            output: { ...job, jobId: existing.id, skipped: true, reason: 'duplicate' },
+            status: 'success',
+          };
+        }
         const row = {
           user_id: ctx.userId,
           company: String(job.company ?? job.companyName ?? ''),
@@ -591,10 +649,23 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           resume_status: 'generating',
           application_status: 'draft',
           status: 'queued',
-          url: normalizeLinkedInJobUrl(String(job.jobLink || job.url || job.link || '')),
+          url,
+          content_fingerprint: fingerprint || null,
         };
         const { data, error } = await admin.from('jobs').insert(row).select().single();
-        if (error) throw error;
+        if (error) {
+          const raced = await findStoredJob(admin, ctx.userId, url, fingerprint);
+          const conflict = resolveJobInsertConflict(error, raced?.id);
+          if (conflict) {
+            recordInsertDuplicateSkip(ctx);
+            if (raced?.id) ctx.variables.lastJobId = raced.id;
+            return {
+              output: { ...job, ...conflict },
+              status: 'success',
+            };
+          }
+          throw error;
+        }
         ctx.variables.lastJobId = data.id;
         const resumeId = String(job.resumeId || '');
         if (resumeId) {
@@ -608,6 +679,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   pdf: {
     async execute(_ctx, node, input) {
       const data = input as Record<string, unknown>;
+      if (data?.skipped) return { output: data, status: 'success' };
       const latex = String(data.latex || '');
       const pdfBytes = await compileLatexToPdf(latex);
       return { output: { ...data, pdfBytes, docTitle: data.title || data.role }, status: 'success' };
@@ -616,6 +688,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   storage: {
     async execute(ctx, node, input) {
       const data = input as Record<string, unknown>;
+      if (data?.skipped) return { output: data, status: 'success' };
       const pdfBytes = data.pdfBytes as Uint8Array;
       if (!pdfBytes) return { output: data, status: 'success' };
       const admin = createAdminClient();
@@ -683,19 +756,16 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       );
       let body = String(data.body || data.message || '');
       if (!body && processed.length === 0) {
-        if (scraped === 0) {
-          body = '<p>Apify returned no job listings for your LinkedIn search URL. Try broadening location or keywords in Settings.</p>';
-        } else if (parsed === 0) {
-          body = `<p>Apify returned ${scraped} listings but none could be parsed into jobs.</p>`;
-        } else if (afterDedupe === 0 && skippedDuplicate > 0) {
-          body = `<p>All ${skippedDuplicate} new job(s) were already in your jobs table.</p>`;
-        } else if (afterDedupe === 0 && skippedNoLink > 0) {
-          body = `<p>${skippedNoLink} parsed job(s) could not be processed because the job URL was missing.</p>`;
-        } else if (afterDedupe === 0) {
-          body = `<p>${parsed} job(s) were parsed but none were queued for tailoring.</p>`;
-        } else {
-          body = '<p>No new resumes were generated today.</p>';
-        }
+        body = `<p>${emptyJobRunDetail({
+          scraped,
+          parsed,
+          afterDedupe,
+          skippedDuplicate,
+          skippedNoLink,
+          skippedInsertDuplicate: Number(ctx.variables.jobsSkippedInsertDuplicate ?? 0),
+          skippedParseDuplicate: Number(ctx.variables.jobsSkippedParseDuplicate ?? 0),
+          skippedQueryMismatch: Number(ctx.variables.jobsSkippedQueryMismatch ?? 0),
+        })}</p>`;
       }
       const resendKey = Deno.env.get('RESEND_API_KEY');
       if (resendKey && to && body) {

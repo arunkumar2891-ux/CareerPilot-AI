@@ -1,3 +1,4 @@
+import { isDuplicateSkipOutput } from '../job-dedupe.ts';
 import {
   buildJobDiscoveryRunSeed,
   buildMultiJobDiscoveryRunSeed,
@@ -187,6 +188,12 @@ Deno.test('resolveLoadJobOutput falls back to the seeded job item', () => {
   });
   if (item.jobId !== 'job-4') throw new Error(String(item.jobId));
   if (item.title !== 'FDE') throw new Error(String(item.title));
+});
+
+Deno.test('duplicate skip output means remaining ATS/PDF nodes must not run', () => {
+  if (!isDuplicateSkipOutput({ skipped: true, reason: 'duplicate', jobId: 'job-1' })) {
+    throw new Error('insert_job duplicate skip must halt the rest of that job chain');
+  }
 });
 
 Deno.test('shouldSaveWorkflowSnapshot is true when a pre-created run has none', () => {

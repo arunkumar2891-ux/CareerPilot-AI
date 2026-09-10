@@ -17,6 +17,7 @@ import type { createAdminClient } from '../supabase-admin.ts';
 
 import { formatUnknownError, isJobPipelineStart } from './job-discovery.ts';
 import { shouldYieldForNextJob, shouldYieldMidChain } from './job-pipeline-slice.ts';
+import { isDuplicateSkipOutput } from '../job-dedupe.ts';
 
 export { isJobPipelineStart };
 export { shouldYieldForNextJob, PIPELINE_SLICE_BUDGET_MS } from './job-pipeline-slice.ts';
@@ -171,6 +172,7 @@ export async function executePerJobPipeline(
   const jobStart = Date.now();
   let itemData: unknown = jobExecution.checkpoint_data ?? item;
   let jobFailed = false;
+  let jobSkippedDuplicate = false;
   let failedNodeId: string | undefined;
   let failedMessage: string | undefined;
 
@@ -236,6 +238,14 @@ export async function executePerJobPipeline(
         updated_at: new Date().toISOString(),
       }).eq('id', jobExecutionId);
 
+      if (isDuplicateSkipOutput(itemData)) {
+        await skipRemainingJobNodes(
+          admin, runId, jobExecutionId, jobIndex, attempt, chain, chainNode.id, userId,
+        );
+        jobSkippedDuplicate = true;
+        break;
+      }
+
       const remainingChain = chain.length - ci - 1;
       const sliceElapsedMs = Date.now() - Number(ctx.variables.pipelineSliceStartedAt || jobStart);
       if (shouldYieldMidChain({ remainingChainCount: remainingChain, sliceElapsedMs })) {
@@ -283,7 +293,19 @@ export async function executePerJobPipeline(
 
   const jobStartedAt = jobExecution.started_at || new Date(jobStart).toISOString();
 
-  if (!jobFailed && itemData != null) {
+  if (jobSkippedDuplicate) {
+    const jobId = (itemData as Record<string, unknown>)?.jobId as string | undefined;
+    await completeJobExecution(admin, runId, jobExecutionId, 'skipped', {
+      jobId,
+      checkpointData: itemData,
+      startedAt: jobStartedAt,
+    });
+    await helpers.logStep(
+      runId, userId, chain[0].id, 'info',
+      `Skipped job ${jobIndex}/${total}: identical URL already stored`,
+      { jobExecutionId, jobIndex, attempt },
+    );
+  } else if (!jobFailed && itemData != null) {
     pipelineResults.push(itemData);
     const jobId = (itemData as Record<string, unknown>)?.jobId as string | undefined;
     await completeJobExecution(admin, runId, jobExecutionId, 'success', {
@@ -321,7 +343,7 @@ export async function executePerJobPipeline(
     const sliceElapsedMs = Date.now() - Number(ctx.variables.pipelineSliceStartedAt);
     const yieldForNext = shouldYieldForNextJob({
       remainingCount: remaining.length,
-      jobFailed,
+      jobFailed: jobFailed || jobSkippedDuplicate,
       sliceElapsedMs,
     });
     if (yieldForNext) {
@@ -334,9 +356,14 @@ export async function executePerJobPipeline(
       );
       return { results: pipelineResults, yieldForNext: true };
     }
+    const outcome = jobFailed
+      ? 'failed'
+      : jobSkippedDuplicate
+        ? 'skipped (duplicate)'
+        : 'finished';
     await helpers.logStep(
       runId, userId, chain[0].id, 'info',
-      `Job ${jobIndex}/${total} failed — starting next job in this slice (${remaining.length} left).`,
+      `Job ${jobIndex}/${total} ${outcome} — starting next job in this slice (${remaining.length} left).`,
       { jobIndex, attempt },
     );
     return executePerJobPipeline(runId, userId, ctx, chain, items, edges, admin, helpers);

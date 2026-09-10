@@ -141,6 +141,43 @@ function mapJob(row: Record<string, unknown>): Job {
   };
 }
 
+const JOB_STATUS_RANK: Record<string, number> = {
+  offer: 70,
+  interview: 60,
+  applied: 50,
+  resume_ready: 40,
+  queued: 20,
+  discovered: 10,
+  rejected: 5,
+  withdrawn: 1,
+};
+
+/** Job Discovery must not show the same LinkedIn posting twice. */
+function collapseJobsByUrl(jobs: Job[]): Job[] {
+  const best = new Map<string, Job>();
+  const noUrl: Job[] = [];
+  const score = (job: Job) =>
+    (JOB_STATUS_RANK[job.status] || 0) + (job.resumeStatus === 'ready' ? 15 : 0) + (job.pdfUrl ? 5 : 0);
+
+  for (const job of jobs) {
+    const url = String(job.url || '').trim();
+    if (!url) {
+      noUrl.push(job);
+      continue;
+    }
+    const prev = best.get(url);
+    if (!prev) {
+      best.set(url, job);
+      continue;
+    }
+    const nextScore = score(job);
+    const prevScore = score(prev);
+    if (nextScore > prevScore) best.set(url, job);
+    else if (nextScore === prevScore && job.createdAt < prev.createdAt) best.set(url, job);
+  }
+  return [...best.values(), ...noUrl];
+}
+
 function mapResume(row: Record<string, unknown>): Resume {
   const resume: Resume = {
     id: String(row.id),
@@ -418,7 +455,7 @@ export class JobSearchService {
       (resumeRows || []).map((row) => [String(row.job_id), row]),
     );
 
-    return (jobRows || []).map((row) => {
+    return collapseJobsByUrl((jobRows || []).map((row) => {
       const linked = resumeByJob.get(String(row.id));
       return mapJob({
         ...row,
@@ -426,7 +463,7 @@ export class JobSearchService {
         _drive_file_id: linked?.drive_file_id,
         _pdf_url: linked?.pdf_url || row.pdf_url,
       });
-    });
+    }));
   }
   async search(config: Partial<JobSearchConfig>): Promise<Job[]> {
     let q = supabase.from('jobs').select('*');
@@ -435,7 +472,7 @@ export class JobSearchService {
     if (config.salaryMin) q = q.gte('salary_min', config.salaryMin);
     const { data, error } = await q.order('match_score', { ascending: false }).limit(config.maxJobs || 30);
     if (error) throw error;
-    let results = (data || []).map(mapJob);
+    let results = collapseJobsByUrl((data || []).map(mapJob));
     if (config.keywords?.length) {
       results = results.filter((j) =>
         config.keywords!.some((k) =>
