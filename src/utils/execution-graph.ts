@@ -32,13 +32,26 @@ export interface JobBranchView {
   status: WorkflowRunStatus | 'pending';
   attempt: number;
   jobExecutionId: string;
+  searchRole?: string;
   nodes: GraphNodeView[];
+}
+
+export interface RoleGroupView {
+  role: string;
+  status: WorkflowRunStatus | 'pending';
+  jobsTotal: number;
+  jobsSuccessful: number;
+  jobsFailed: number;
+  jobsSkipped: number;
+  commonNodes: GraphNodeView[];
+  jobBranches: JobBranchView[];
 }
 
 export interface ExecutionGraphView {
   commonNodes: GraphNodeView[];
   jobBranches: JobBranchView[];
   fanInNodes: GraphNodeView[];
+  roleGroups: RoleGroupView[];
   isLegacy: boolean;
   jobsTotal: number;
   jobsSuccessful: number;
@@ -163,8 +176,40 @@ function snapshotFromWorkflow(
   };
 }
 
+function isRoleLoopStartNode(node: WorkflowSnapshotNode): boolean {
+  return node.type === 'transform' && node.config?.action === 'build_linkedin_url';
+}
+
 function isPipelineStart(node: WorkflowSnapshotNode): boolean {
   return node.type === 'supabase' && (node.config.action as string || 'insert_job') === 'insert_job';
+}
+
+function aggregateRoleStatus(
+  statuses: Array<WorkflowRunStatus | 'pending'>,
+): WorkflowRunStatus | 'pending' {
+  if (statuses.some((status) => status === 'running' || status === 'queued')) return 'running';
+  if (statuses.some((status) => status === 'failed')) return 'failed';
+  if (statuses.some((status) => status === 'cancelled')) return 'cancelled';
+  if (statuses.some((status) => status === 'waiting')) return 'waiting';
+  if (statuses.length && statuses.every((status) => status === 'skipped')) return 'skipped';
+  if (statuses.length && statuses.every((status) => status === 'success' || status === 'skipped')) {
+    return 'success';
+  }
+  return 'pending';
+}
+
+function uniqueSearchRoles(jobs: JobExecution[], nodeExecutions: NodeExecution[]): string[] {
+  const roles: string[] = [];
+  const seen = new Set<string>();
+  const push = (value?: string) => {
+    const role = String(value || '').trim();
+    if (!role || seen.has(role)) return;
+    seen.add(role);
+    roles.push(role);
+  };
+  for (const job of jobs) push(job.searchRole);
+  for (const exec of nodeExecutions) push(exec.searchRole);
+  return roles;
 }
 
 function isAggregateNode(node: WorkflowSnapshotNode): boolean {
@@ -421,10 +466,13 @@ function resolveNodeStatus(
 function latestCommonExecution(
   nodeExecutions: NodeExecution[],
   workflowNodeId: string,
+  searchRole?: string,
 ): NodeExecution | undefined {
-  return nodeExecutions
+  const forNode = nodeExecutions
     .filter((n) => n.workflowNodeId === workflowNodeId && !n.jobExecutionId)
-    .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime())[0];
+    .sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime());
+  if (!searchRole) return forNode[0];
+  return forNode.find((n) => n.searchRole === searchRole) || forNode[0];
 }
 
 function toGraphNode(
@@ -543,25 +591,33 @@ export function buildExecutionGraph(input: {
   );
   const pipelineStart = findPipelineStartNode(nodes);
   const aggregate = findAggregateNode(nodes);
+  const roleStart = nodes.find(isRoleLoopStartNode);
+  const searchRoles = uniqueSearchRoles(latestJobs, input.nodeExecutions);
+
+  const prefixTemplates = pipelineStart
+    ? nodesBeforePipeline(nodes, pipelineStart, aggregate)
+    : (() => {
+      const entry = findEntryNode(nodes, edges);
+      const chain = entry ? buildChainFrom(entry.id, nodes, edges) : sortNodesByLayout(nodes);
+      return chain.filter((n) => !isAggregateNode(n));
+    })();
+
+  const sharedTemplates = roleStart && searchRoles.length
+    ? prefixTemplates.filter((n) => n.id !== roleStart.id && (
+      n.positionX < roleStart.positionX
+      || ['schedule', 'trigger', 'webhook', 'gdocs'].includes(n.type)
+    ))
+    : prefixTemplates;
+  const roleCommonTemplates = roleStart && searchRoles.length
+    ? prefixTemplates.filter((n) => !sharedTemplates.some((shared) => shared.id === n.id))
+    : [];
 
   const commonNodes: GraphNodeView[] = [];
-  if (pipelineStart) {
-    const prefixNodes = nodesBeforePipeline(nodes, pipelineStart, aggregate);
-    for (const node of prefixNodes) {
-      const exec = latestCommonExecution(input.nodeExecutions, node.id);
-      commonNodes.push(
-        toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
-      );
-    }
-  } else {
-    const entry = findEntryNode(nodes, edges);
-    const chain = entry ? buildChainFrom(entry.id, nodes, edges) : sortNodesByLayout(nodes);
-    for (const node of chain.filter((n) => !isAggregateNode(n))) {
-      const exec = latestCommonExecution(input.nodeExecutions, node.id);
-      commonNodes.push(
-        toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
-      );
-    }
+  for (const node of sharedTemplates) {
+    const exec = latestCommonExecution(input.nodeExecutions, node.id);
+    commonNodes.push(
+      toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta),
+    );
   }
 
   const jobChain = pipelineStart ? buildChainFrom(pipelineStart.id, nodes, edges) : [];
@@ -613,7 +669,31 @@ export function buildExecutionGraph(input: {
       status: job.status,
       attempt: job.attempt,
       jobExecutionId: job.id,
+      searchRole: job.searchRole,
       nodes: branchNodes,
+    };
+  });
+
+  const roleGroups: RoleGroupView[] = searchRoles.map((role) => {
+    const branches = jobBranches.filter((branch) => branch.searchRole === role);
+    const common = roleCommonTemplates.map((node) => {
+      const exec = latestCommonExecution(input.nodeExecutions, node.id, role);
+      const view = toGraphNode(node, exec, {}, resultMap.get(node.id), triggerType, runMeta);
+      return { ...view, key: `${view.key}-${role}` };
+    });
+    const statuses = [
+      ...common.map((node) => node.status),
+      ...branches.map((branch) => branch.status),
+    ];
+    return {
+      role,
+      status: aggregateRoleStatus(statuses),
+      jobsTotal: branches.length,
+      jobsSuccessful: branches.filter((branch) => branch.status === 'success').length,
+      jobsFailed: branches.filter((branch) => branch.status === 'failed').length,
+      jobsSkipped: branches.filter((branch) => branch.status === 'skipped').length,
+      commonNodes: common,
+      jobBranches: branches,
     };
   });
 
@@ -621,6 +701,7 @@ export function buildExecutionGraph(input: {
     commonNodes,
     jobBranches,
     fanInNodes,
+    roleGroups,
     isLegacy,
     jobsTotal,
     jobsSuccessful,
@@ -749,6 +830,7 @@ function buildLegacyGraph(
     commonNodes,
     jobBranches,
     fanInNodes,
+    roleGroups: [],
     isLegacy: true,
     ...counters,
   };

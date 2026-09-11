@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
-  Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2,
+  Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2, Gauge,
 } from 'lucide-react';
 import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
 import { transitionFast } from '@/lib/motion';
@@ -550,11 +550,16 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
+  const [scoring, setScoring] = useState(false);
+  const [scoreOverride, setScoreOverride] = useState<{ jobId: string; score: number; source?: string } | null>(null);
   const { data: corpusResumes } = useQuery({
     queryKey: ['resumes', 'corpus'],
     queryFn: () => services.resume.list({ kind: 'corpus' }),
   });
   if (!job) return null;
+
+  const matchScore = scoreOverride?.jobId === job.id ? scoreOverride.score : job.matchScore;
+  const matchSource = scoreOverride?.jobId === job.id ? scoreOverride.source : job.matchScoreSource;
 
   const generateResume = async () => {
     if (starting) return;
@@ -580,6 +585,21 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
     }
   };
 
+  const scoreMatch = async () => {
+    if (scoring) return;
+    setScoring(true);
+    try {
+      const result = await services.jobSearch.scoreMatch(job.id);
+      setScoreOverride({ jobId: job.id, score: result.score, source: result.source });
+      toast.success(`Match score ${result.score} using ${result.source || 'your resume'}`);
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Match scoring failed');
+    } finally {
+      setScoring(false);
+    }
+  };
+
   return (
     <Dialog open={!!job} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden">
@@ -589,8 +609,8 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               <DialogTitle className="text-xl">{job.role}</DialogTitle>
               <p className="mt-1 text-sm text-muted-foreground">{job.company} · {job.location}</p>
             </div>
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
-              {job.matchScore}
+            <div className="flex h-14 w-14 flex-col items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
+              {matchScore}
             </div>
           </div>
         </DialogHeader>
@@ -620,12 +640,16 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span>Posted: {formatDate(job.postingDate)}</span>
               <span>Experience: {job.experience || 'Any'}</span>
+              {matchSource && <span>Scored with: {matchSource}</span>}
             </div>
           </div>
         </ScrollArea>
         <div className="flex items-center gap-2 border-t border-border pt-4">
-          <Button onClick={generateResume} disabled={starting} className="gap-2">
+          <Button onClick={generateResume} disabled={starting || scoring} className="gap-2">
             <FileText className="h-4 w-4" /> {starting ? 'Starting…' : 'Generate Resume'}
+          </Button>
+          <Button variant="outline" onClick={scoreMatch} disabled={scoring || starting} className="gap-2">
+            <Gauge className="h-4 w-4" /> {scoring ? 'Scoring…' : 'Score match'}
           </Button>
           <Button variant="outline" className="gap-2"><Star className="h-4 w-4" /> Save</Button>
           <Button variant="ghost" className="ml-auto gap-2" onClick={() => window.open(job.url, '_blank')}>

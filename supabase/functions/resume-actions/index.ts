@@ -10,6 +10,8 @@ import {
   MAX_UPLOAD_BYTES,
   resolveUploadMime,
 } from '../_shared/resume-parse.ts';
+import { loadMasterResumeText } from '../_shared/career-corpus/load.ts';
+import { scoreJobMatch } from '../_shared/career-corpus/score.ts';
 
 function actionErrorResponse(err: unknown, status = 500) {
   const message = err instanceof Error ? err.message : String(err);
@@ -279,6 +281,71 @@ Deno.serve(async (req) => {
       }
       const result = await repairResumeSync(admin, user.id, folderId);
       return jsonResponse(result);
+    }
+
+    if (mode === 'score_job') {
+      const jobId = String(body.jobId || '').trim();
+      if (!jobId) return jsonResponse({ error: 'jobId required' }, 400);
+
+      const { data: job, error: jobError } = await admin
+        .from('jobs')
+        .select('id, description, role, company')
+        .eq('id', jobId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (jobError) throw jobError;
+      if (!job) return jsonResponse({ error: 'Job not found' }, 404);
+
+      const { data: tailored } = await admin
+        .from('resumes')
+        .select('name, content')
+        .eq('user_id', user.id)
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const tailoredText = String(tailored?.content || '').trim();
+      let resumeText = tailoredText;
+      let resumeName = String(tailored?.name || '').trim();
+      if (resumeText.length < 80) {
+        const master = await loadMasterResumeText(user.id);
+        resumeText = master.text;
+        resumeName = master.name;
+      }
+
+      const result = await scoreJobMatch({
+        jobDescription: String(job.description || ''),
+        jobTitle: String(job.role || ''),
+        company: String(job.company || ''),
+        resumeText,
+        resumeName,
+        userId: user.id,
+      });
+
+      const { error: updateError } = await admin
+        .from('jobs')
+        .update({
+          match_score: result.score,
+          match_score_source: result.source,
+        })
+        .eq('id', jobId)
+        .eq('user_id', user.id);
+      if (updateError && /match_score_source/.test(String(updateError.message))) {
+        const { error: fallbackError } = await admin
+          .from('jobs')
+          .update({ match_score: result.score })
+          .eq('id', jobId)
+          .eq('user_id', user.id);
+        if (fallbackError) throw fallbackError;
+      } else if (updateError) {
+        throw updateError;
+      }
+
+      return jsonResponse({
+        score: result.score,
+        source: result.source,
+        method: result.method,
+      });
     }
 
     return jsonResponse({ error: 'Unknown mode' }, 400);

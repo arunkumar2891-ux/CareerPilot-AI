@@ -17,7 +17,7 @@ import {
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 import { buildLatexFromAtsText } from '../resume-latex.ts';
 import { compileLatexToPdf } from '../resume-pdf.ts';
-import { upsertTailoredResume, linkResumePdf } from '../resume-store.ts';
+import { upsertTailoredResume, linkResumePdf, resumeStorageObjectPath } from '../resume-store.ts';
 import {
   formatUnknownError,
   loadExistingJobForPipeline,
@@ -27,6 +27,10 @@ import {
 import { uploadOrUpdateDrivePdf, resolveResumePdfFileName } from '../resume-drive.ts';
 import { fetchWithTimeout } from '../fetch-timeout.ts';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
+import { currentSearchRole } from './role-loop.ts';
+import { loadMasterResumeText } from '../career-corpus/load.ts';
+import { scoreJobsAgainstResume } from '../career-corpus/score.ts';
+import { maxJobsPerRole } from '../job-search-roles.ts';
 
 function stripHtml(html: string): string {
   return html
@@ -126,10 +130,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
     async execute(ctx, node, input) {
       const action = node.config.action as string;
       if (action === 'build_linkedin_url') {
-        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
-        const query = expandJobSearchQuery(node.config.query as string || jobSearch.query || 'Software Engineer');
-        const location = node.config.location as string || jobSearch.location || 'United States';
-        const apifyInput = buildApifyJobSearchInput(query, location, jobSearch.postedWithin);
+        const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
+        const query = expandJobSearchQuery(
+          String(node.config.query || currentSearchRole(ctx.variables, jobSearch) || 'Software Engineer'),
+        );
+        const location = String(node.config.location || jobSearch.location || 'United States');
+        const apifyInput = buildApifyJobSearchInput(query, location, String(jobSearch.postedWithin || ''));
         return {
           output: {
             linkedinUrl: apifyInput.linkedinUrl,
@@ -137,15 +143,39 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             location,
             datePosted: apifyInput.datePosted,
             postedWithin: jobSearch.postedWithin || '1d',
+            searchRole: query,
           },
           status: 'success',
         };
       }
       if (action === 'limit') {
         const items = Array.isArray(input) ? input : (Array.isArray(ctx.items) ? ctx.items : [input]);
-        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
-        const max = Number(jobSearch.maxJobs || node.config.max || 5);
+        const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
+        const max = maxJobsPerRole(jobSearch);
         return { output: items.slice(0, max), status: 'success' };
+      }
+      if (action === 'match_score') {
+        const items = (Array.isArray(input) ? input : (Array.isArray(ctx.items) ? ctx.items : [input]))
+          .filter((item) => item && typeof item === 'object') as Record<string, unknown>[];
+        if (!items.length) return { output: [], status: 'success' };
+        const master = await loadMasterResumeText(ctx.userId);
+        const scored = await scoreJobsAgainstResume({
+          jobs: items.map((job) => ({
+            jobDescription: String(job.jobDescription || job.description || ''),
+            jobTitle: String(job.title || job.role || ''),
+            company: String(job.company || job.companyName || ''),
+          })),
+          resumeText: master.text,
+          resumeName: master.name,
+          userId: ctx.userId,
+        });
+        const output = items.map((job, index) => ({
+          ...job,
+          matchScore: scored[index]?.score ?? 0,
+          matchScoreSource: scored[index]?.source || master.name,
+        }));
+        ctx.items = output;
+        return { output, status: 'success' };
       }
       if (action === 'merge_job_data') {
         const jobData = input as Record<string, unknown>;
@@ -175,9 +205,9 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           }
         }
         const jobs: Record<string, unknown>[] = [];
-        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
-        const searchQuery = expandJobSearchQuery(jobSearch.query || '');
-        const postedCutoff = postedWithinCutoffIso(jobSearch.postedWithin);
+        const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
+        const searchQuery = expandJobSearchQuery(currentSearchRole(ctx.variables, jobSearch));
+        const postedCutoff = postedWithinCutoffIso(String(jobSearch.postedWithin || ''));
         ctx.variables.jobsScraped = rawItems.length;
         let skippedQuery = 0;
         for (const j of rawItems) {
@@ -219,6 +249,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             workplaceType: j.workplaceType || j.workType || j.jobBenefits || '',
             jobLink,
             jobDescription,
+            searchRole: searchQuery,
           });
           if (jobs.length >= 40) break;
         }
@@ -310,14 +341,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             if (o?.location && !location) location = String(o.location);
           }
         }
-        const jobSearch = (ctx.settings.jobSearch as Record<string, string>) || {};
-        const scrapeLimit = Number(
-          jobSearch.maxJobs || (node.config.limitPerSource ?? node.config.count ?? 10),
-        );
+        const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
+        const scrapeLimit = maxJobsPerRole(jobSearch);
         const apifyInput = buildApifyJobSearchInput(
-          query || jobSearch.query || 'Software Engineer',
-          location || jobSearch.location || 'United States',
-          jobSearch.postedWithin,
+          query || currentSearchRole(ctx.variables, jobSearch),
+          location || String(jobSearch.location || 'United States'),
+          String(jobSearch.postedWithin || ''),
           scrapeLimit,
         );
         ctx.variables.jobSearchQuery = apifyInput.keywords;
@@ -637,7 +666,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           company: String(job.company ?? job.companyName ?? ''),
           role: String(job.title ?? job.role ?? ''),
           description: String(job.jobDescription ?? job.description ?? ''),
-          match_score: 0,
+          match_score: Number(job.matchScore ?? job.match_score ?? 0),
+          match_score_source: String(job.matchScoreSource || job.match_score_source || '') || null,
           skills: [],
           posting_date: job.postedAt || new Date().toISOString(),
           source: 'linkedin/apify',
@@ -693,16 +723,18 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       if (!pdfBytes) return { output: data, status: 'success' };
       const admin = createAdminClient();
       const resumeId = String(data.resumeId || '');
-      const path = resumeId
-        ? `${ctx.userId}/resumes/${resumeId}.pdf`
-        : `${ctx.userId}/${data.jobId || Date.now()}.pdf`;
+      const fileName = await resolveResumePdfFileName(ctx.userId, {
+        company: String(data.company || data.companyName || ''),
+        role: String(data.title || data.role || data.docTitle || ''),
+      });
+      const path = resumeStorageObjectPath(ctx.userId, fileName);
       const { error } = await admin.storage.from('resumes').upload(path, pdfBytes, { contentType: 'application/pdf', upsert: true });
       if (error) throw error;
       const { data: signed } = await admin.storage.from('resumes').createSignedUrl(path, 60 * 60 * 24 * 7);
       const pdfUrl = signed?.signedUrl || '';
       await admin.from('documents').insert({
         user_id: ctx.userId,
-        name: String(data.docTitle || 'resume') + '.pdf',
+        name: fileName,
         type: 'pdf',
         size: pdfBytes.length,
         folder: 'resumes',
@@ -730,10 +762,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         pdfLink: pdfUrl,
         pdf_url: pdfUrl,
         resumeId,
+        fileName,
+        storage_path: path,
       });
       ctx.variables.processedJobs = processed;
 
-      return { output: { ...data, pdf_url: pdfUrl, storage_path: path }, status: 'success' };
+      return { output: { ...data, pdf_url: pdfUrl, storage_path: path, fileName }, status: 'success' };
     },
   },
   email: {

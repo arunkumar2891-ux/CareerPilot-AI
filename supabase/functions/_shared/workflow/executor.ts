@@ -18,9 +18,25 @@ import {
   startNodeExecution,
 } from './execution-persistence.ts';
 import { deriveRunStatus } from './execution-status.ts';
-import { computeNextCronRun, shouldStartScheduledAutomation, startOfUtcDay } from '../cron-schedule.ts';
+import { storedFileLogMessages } from '../resume-store.ts';
+import { isDuplicateConstraintError } from '../job-dedupe.ts';
+import {
+  computeNextCronRun,
+  pickCanonicalAutomations,
+  scheduleSlotKey,
+  shouldStartScheduledAutomation,
+  startOfUtcDay,
+  utcDateKey,
+} from '../cron-schedule.ts';
 import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
-import type { RunContext, WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
+import {
+  applyNextSearchRole,
+  ensureSearchRoleContext,
+  findRoleLoopStart,
+  roleSubgraphNodeIds,
+  searchRoleForNode,
+} from './role-loop.ts';
+import type { RunContext } from './types.ts';
 
 export async function loadWorkflow(workflowId: string, userId: string) {
   const admin = createAdminClient();
@@ -279,14 +295,50 @@ export async function executeWorkflow(
     delete ctx.variables.retryPendingJobs;
   }
 
+  const roleLoopStart = findRoleLoopStart(nodes);
+  const searchRoles = roleLoopStart
+    ? ensureSearchRoleContext(
+      ctx.variables,
+      ctx.settings.jobSearch as Record<string, unknown> | undefined,
+    )
+    : [];
+
   const startNodes = resumeNodeId
     ? nodes.filter((n) => n.id === resumeNodeId)
     : getEntryNodes(nodes, edges);
 
+  if (!resumeNodeId && roleLoopStart && searchRoles.length && startNodes[0]) {
+    await logStep(
+      runId,
+      userId,
+      startNodes[0].id,
+      'info',
+      searchRoles.length === 1
+        ? `Search role: ${searchRoles[0]}`
+        : `Search roles (${searchRoles.length}): ${searchRoles.join(', ')} — running one after another`,
+    );
+  }
+
   let queue = [...startNodes];
   const visited = new Set<string>();
   let iterations = 0;
-  const maxIterations = 100;
+  const maxIterations = 400;
+
+  const startNextSearchRole = async (): Promise<boolean> => {
+    if (!roleLoopStart) return false;
+    if (!applyNextSearchRole(ctx.variables, searchRoles)) return false;
+    for (const id of roleSubgraphNodeIds(nodes, edges)) visited.delete(id);
+    queue.push(roleLoopStart);
+    await logStep(
+      runId,
+      userId,
+      roleLoopStart.id,
+      'info',
+      `Starting search role ${Number(ctx.variables.roleIndex ?? 0) + 1}/${searchRoles.length}: ${ctx.variables.currentRole}`,
+    );
+    await saveRunContext(runId, ctx);
+    return true;
+  };
 
   while (queue.length && iterations < maxIterations) {
     iterations++;
@@ -307,6 +359,7 @@ export async function executeWorkflow(
       workflowNodeId: node.id,
       nodeName: node.name,
       nodeType: node.type,
+      searchRole: searchRoleForNode(node, ctx.variables),
     });
 
     try {
@@ -343,6 +396,7 @@ export async function executeWorkflow(
           );
           await saveRunContext(runId, ctx);
           for (const chainNode of chain) visited.add(chainNode.id);
+          if (await startNextSearchRole()) continue;
           const nextId = getNextNodeId(tail.id, edges);
           if (nextId) {
             const nextNode = nodes.find((n) => n.id === nextId);
@@ -380,6 +434,7 @@ export async function executeWorkflow(
 
           delete ctx.variables.batchProgress;
           for (const chainNode of chain) visited.add(chainNode.id);
+          if (await startNextSearchRole()) continue;
           const nextId = getNextNodeId(tail.id, edges);
           if (nextId) {
             const nextNode = nodes.find((n) => n.id === nextId);
@@ -437,6 +492,11 @@ export async function executeWorkflow(
         await recordNodeRun(admin, runId, userId, node.id, 'success', batchDuration, results);
         await touchRunDuration(admin, runId);
         await logStep(runId, userId, node.id, 'info', `Completed node: ${node.name} (${node.type}) in ${batchDuration}ms`);
+        if (node.type === 'storage') {
+          for (const message of storedFileLogMessages(results)) {
+            await logStep(runId, userId, node.id, 'info', message);
+          }
+        }
         await saveRunContext(runId, ctx);
         const nextId = getNextNodeId(node.id, edges);
         if (nextId) {
@@ -477,6 +537,11 @@ export async function executeWorkflow(
       await recordNodeRun(admin, runId, userId, node.id, 'success', duration, result.output);
       await touchRunDuration(admin, runId);
       await logStep(runId, userId, node.id, 'info', `Completed node: ${node.name} (${node.type}) in ${duration}ms`);
+      if (node.type === 'storage') {
+        for (const message of storedFileLogMessages(result.output)) {
+          await logStep(runId, userId, node.id, 'info', message);
+        }
+      }
 
       ctx.nodeOutputs[node.id] = result.output;
 
@@ -604,24 +669,43 @@ export async function processDueSteps(): Promise<number> {
   return steps.length;
 }
 
-async function hasActiveScheduledRunToday(
+async function hasScheduledRunToday(
   admin: ReturnType<typeof createAdminClient>,
   workflowId: string,
   userId: string,
+  workflowName: string,
   now: Date,
 ): Promise<boolean> {
   const dayStart = startOfUtcDay(now).toISOString();
-  const { data } = await admin
+  const { data: sameWorkflow } = await admin
     .from('workflow_runs')
     .select('id')
     .eq('workflow_id', workflowId)
     .eq('user_id', userId)
     .eq('trigger_type', 'schedule')
-    .in('status', ['running', 'queued'])
     .gte('started_at', dayStart)
     .limit(1)
     .maybeSingle();
-  return Boolean(data?.id);
+  if (sameWorkflow?.id) return true;
+
+  const { data: siblings } = await admin
+    .from('workflows')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('name', workflowName);
+  const siblingIds = (siblings || []).map((row) => String(row.id)).filter((id) => id !== workflowId);
+  if (!siblingIds.length) return false;
+
+  const { data: siblingRun } = await admin
+    .from('workflow_runs')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('trigger_type', 'schedule')
+    .in('workflow_id', siblingIds)
+    .gte('started_at', dayStart)
+    .limit(1)
+    .maybeSingle();
+  return Boolean(siblingRun?.id);
 }
 
 async function claimScheduledAutomation(
@@ -642,6 +726,30 @@ async function claimScheduledAutomation(
   return Boolean(data?.id);
 }
 
+async function claimDailyScheduleSlot(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  scheduleKey: string,
+  utcDate: string,
+  workflowId: string,
+): Promise<boolean | 'missing-table'> {
+  const { error } = await admin
+    .from('scheduled_run_slots')
+    .insert({
+      user_id: userId,
+      schedule_key: scheduleKey,
+      utc_date: utcDate,
+      workflow_id: workflowId,
+    });
+  if (error) {
+    if (isDuplicateConstraintError(error)) return false;
+    const message = `${error.message || ''} ${error.code || ''}`;
+    if (/does not exist|schema cache|could not find the table/i.test(message)) return 'missing-table';
+    throw error;
+  }
+  return true;
+}
+
 export async function processScheduledAutomations(): Promise<number> {
   const admin = createAdminClient();
   const now = new Date();
@@ -654,31 +762,65 @@ export async function processScheduledAutomations(): Promise<number> {
 
   if (!automations?.length) return 0;
 
+  const workflowIds = [...new Set(automations.map((auto) => String(auto.workflow_id)))];
+  const { data: workflows } = await admin
+    .from('workflows')
+    .select('id, name')
+    .in('id', workflowIds);
+  const nameById = new Map((workflows || []).map((row) => [String(row.id), String(row.name || '')]));
+
+  const canonical = pickCanonicalAutomations(
+    automations.map((auto) => ({
+      ...auto,
+      user_id: String(auto.user_id),
+      workflow_id: String(auto.workflow_id),
+      created_at: (auto.created_at as string | null) ?? null,
+      schedule_key: scheduleSlotKey(nameById.get(String(auto.workflow_id)) || String(auto.name || '')),
+    })),
+  );
+
   let ran = 0;
-  for (const auto of automations) {
+  for (const auto of canonical) {
     try {
       const schedule = String(auto.schedule || '0 7 * * *');
       let nextRunAt = auto.next_run ? new Date(auto.next_run as string) : null;
       const lastRunAt = auto.last_run ? new Date(auto.last_run as string) : null;
+      const workflowName = nameById.get(auto.workflow_id) || String(auto.name || '');
+      const slotKey = auto.schedule_key || scheduleSlotKey(workflowName);
 
       if (!nextRunAt) {
         nextRunAt = computeNextCronRun(schedule, now);
         await admin.from('automations').update({ next_run: nextRunAt.toISOString() }).eq('id', auto.id);
       }
 
-      const hasActive = await hasActiveScheduledRunToday(admin, auto.workflow_id, auto.user_id, now);
+      const alreadyRanToday = await hasScheduledRunToday(
+        admin,
+        auto.workflow_id,
+        auto.user_id,
+        workflowName,
+        now,
+      );
       if (!shouldStartScheduledAutomation(schedule, nextRunAt, lastRunAt, now, {
-        hasActiveScheduledRunToday: hasActive,
+        hasScheduledRunToday: alreadyRanToday,
       })) continue;
 
       const nextRun = computeNextCronRun(schedule, now);
+      const slot = await claimDailyScheduleSlot(
+        admin,
+        auto.user_id,
+        slotKey,
+        utcDateKey(now),
+        auto.workflow_id,
+      );
+      if (slot === false) continue;
+
       const claimed = await claimScheduledAutomation(
         admin,
-        { id: auto.id, last_run: (auto.last_run as string | null) ?? null },
+        { id: String(auto.id), last_run: (auto.last_run as string | null) ?? null },
         nowIso,
         nextRun.toISOString(),
       );
-      if (!claimed) continue;
+      if (slot === 'missing-table' && !claimed) continue;
 
       await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
       ran++;

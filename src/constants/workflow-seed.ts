@@ -22,15 +22,16 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
     { type: 'wait', name: 'Wait 10s', x: 800, y: 400, config: { seconds: 10 } },
     { type: 'apify', name: 'Fetch Results', x: 1000, y: 200, config: { action: 'fetch_dataset' } },
     { type: 'function', name: 'Parse Jobs', x: 1200, y: 200, config: { builtin: 'parse_apify_jobs' } },
-    { type: 'transform', name: 'Limit Jobs', x: 1400, y: 200, config: { action: 'limit', max: 10 } },
-    { type: 'duplicate_checker', name: 'Filter Duplicates', x: 1600, y: 200, config: {} },
-    { type: 'supabase', name: 'Store Job', x: 1800, y: 200, config: { action: 'insert_job' } },
-    { type: 'gemini', name: 'ATS Optimizer', x: 2000, y: 200, config: {} },
-    { type: 'function', name: 'Build LaTeX', x: 2200, y: 200, config: { builtin: 'build_latex' } },
-    { type: 'pdf', name: 'Compile PDF', x: 2400, y: 200, config: {} },
-    { type: 'storage', name: 'Upload to Storage', x: 2600, y: 200, config: {} },
-    { type: 'function', name: 'Email Summary', x: 2800, y: 200, config: { builtin: 'email_summary' } },
-    { type: 'email', name: 'Send Email', x: 3000, y: 200, config: {} },
+    { type: 'duplicate_checker', name: 'Filter Duplicates', x: 1400, y: 200, config: {} },
+    { type: 'transform', name: 'Limit Jobs', x: 1600, y: 200, config: { action: 'limit', max: 10 } },
+    { type: 'transform', name: 'Match Score', x: 1800, y: 200, config: { action: 'match_score' } },
+    { type: 'supabase', name: 'Store Job', x: 2000, y: 200, config: { action: 'insert_job' } },
+    { type: 'gemini', name: 'ATS Optimizer', x: 2200, y: 200, config: {} },
+    { type: 'function', name: 'Build LaTeX', x: 2400, y: 200, config: { builtin: 'build_latex' } },
+    { type: 'pdf', name: 'Compile PDF', x: 2600, y: 200, config: {} },
+    { type: 'storage', name: 'Upload to Storage', x: 2800, y: 200, config: {} },
+    { type: 'function', name: 'Email Summary', x: 3000, y: 200, config: { builtin: 'email_summary' } },
+    { type: 'email', name: 'Send Email', x: 3200, y: 200, config: {} },
   ] as SeedNode[],
 };
 
@@ -67,6 +68,7 @@ export function buildSeedEdges(_nodeIds: string[]): { source: number; target: nu
     { source: 13, target: 14 },
     { source: 14, target: 15 },
     { source: 15, target: 16 },
+    { source: 16, target: 17 },
   ];
 }
 

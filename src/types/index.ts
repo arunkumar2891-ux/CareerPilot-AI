@@ -50,6 +50,7 @@ export interface Job {
   role: string;
   description: string;
   matchScore: number;
+  matchScoreSource?: string;
   salaryMin?: number;
   salaryMax?: number;
   skills: string[];
@@ -248,6 +249,7 @@ export interface JobExecution {
   runId: string;
   jobIndex: number;
   label?: string;
+  searchRole?: string;
   status: WorkflowRunStatus | 'pending';
   attempt: number;
   failedNodeId?: string;
@@ -276,6 +278,7 @@ export interface NodeExecution {
   errorCode?: string;
   errorMessage?: string;
   outputSummary?: Record<string, unknown>;
+  searchRole?: string;
 }
 
 export interface WorkflowRunDetail extends WorkflowRun {

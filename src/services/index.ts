@@ -120,6 +120,7 @@ function mapJob(row: Record<string, unknown>): Job {
     role: String(row.role ?? ''),
     description: String(row.description ?? ''),
     matchScore: Number(row.match_score ?? 0),
+    matchScoreSource: row.match_score_source ? String(row.match_score_source) : undefined,
     salaryMin: row.salary_min as number | undefined,
     salaryMax: row.salary_max as number | undefined,
     skills: (row.skills as string[]) ?? [],
@@ -464,6 +465,18 @@ export class JobSearchService {
         _pdf_url: linked?.pdf_url || row.pdf_url,
       });
     }));
+  }
+  async scoreMatch(jobId: string): Promise<{ score: number; source: string; method?: string }> {
+    const { data, error } = await supabase.functions.invoke('resume-actions', {
+      body: { mode: 'score_job', jobId },
+    });
+    throwResumeActionError(data as ResumeActionResponse | null, 'Match scoring failed');
+    if (error) throw error;
+    return {
+      score: Number((data as { score?: number })?.score ?? 0),
+      source: String((data as { source?: string })?.source || ''),
+      method: (data as { method?: string })?.method,
+    };
   }
   async search(config: Partial<JobSearchConfig>): Promise<Job[]> {
     let q = supabase.from('jobs').select('*');
@@ -1046,7 +1059,14 @@ export class WorkflowService {
   }
   async ensureDefaultPipeline(): Promise<Workflow> {
     const userId = await requireUserId();
-    const { data: existing } = await supabase.from('workflows').select('id').eq('user_id', userId).eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name).maybeSingle();
+    const { data: existingRows } = await supabase
+      .from('workflows')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    const existing = existingRows?.[0];
     if (existing) {
       await this.repairDefaultPipelineGraph(existing.id);
       await this.repairDefaultAutomation(existing.id, userId);
@@ -1071,34 +1091,44 @@ export class WorkflowService {
     }));
     await this.saveGraph(wf.id, nodes, edges);
     await supabase.from('workflows').update({ schedule: DEFAULT_JOB_SEARCH_WORKFLOW.schedule, active: true }).eq('id', wf.id);
-    const { data: autoExists } = await supabase.from('automations').select('id, next_run').eq('workflow_id', wf.id).maybeSingle();
-    if (!autoExists) {
-      const nextRun = computeNextCronRun(DEFAULT_JOB_SEARCH_WORKFLOW.schedule);
-      await supabase.from('automations').insert({
-        user_id: userId,
-        name: 'Daily 7 AM Job Search',
-        workflow_id: wf.id,
-        status: 'active',
-        schedule: DEFAULT_JOB_SEARCH_WORKFLOW.schedule,
-        trigger: 'schedule',
-        retries: 2,
-        next_run: nextRun.toISOString(),
-      });
-    } else {
-      await this.repairDefaultAutomation(wf.id, userId);
-    }
+    await this.repairDefaultAutomation(wf.id, userId);
     return (await this.get(wf.id))!;
   }
   /** Keep the built-in daily automation schedulable (next_run set, active). */
   private async repairDefaultAutomation(workflowId: string, userId: string): Promise<void> {
     const schedule = DEFAULT_JOB_SEARCH_WORKFLOW.schedule;
-    const { data: auto } = await supabase
+    const { data: namedWorkflows } = await supabase
+      .from('workflows')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name);
+    const siblingIds = (namedWorkflows || []).map((row) => String(row.id));
+    let keepId: string | undefined;
+    if (siblingIds.length) {
+      const { data: extras } = await supabase
+        .from('automations')
+        .select('id, workflow_id, created_at, status')
+        .eq('user_id', userId)
+        .in('workflow_id', siblingIds)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true });
+      keepId = extras?.find((row) => row.workflow_id === workflowId)?.id || extras?.[0]?.id;
+      const pauseIds = (extras || []).map((row) => String(row.id)).filter((id) => id !== keepId);
+      if (pauseIds.length) {
+        await supabase.from('automations').update({ status: 'paused' }).in('id', pauseIds);
+      }
+    }
+
+    const { data: autoRows } = await supabase
       .from('automations')
       .select('id, status, next_run, schedule')
       .eq('workflow_id', workflowId)
-      .maybeSingle();
+      .order('created_at', { ascending: true })
+      .limit(1);
+    const auto = autoRows?.[0];
 
     if (!auto) {
+      if (keepId) return;
       const nextRun = computeNextCronRun(schedule);
       await supabase.from('automations').insert({
         user_id: userId,
@@ -1130,37 +1160,73 @@ export class WorkflowService {
       await supabase.from('automations').update(patch).eq('id', auto.id);
     }
   }
-  /** Ensure jobs are stored in Supabase before ATS tailoring (fixes legacy graph order). */
+  /** Ensure parse → filter → limit → match score → store → ATS (fixes legacy graph order). */
   private async repairDefaultPipelineGraph(workflowId: string): Promise<void> {
     const wf = await this.get(workflowId);
     if (!wf) return;
     const find = (name: string) => wf.nodes.find((n) => n.name === name);
+    const parse = find('Parse Jobs');
     const dedupe = find('Filter Duplicates');
+    const limit = find('Limit Jobs')
+      || wf.nodes.find((n) => n.type === 'transform' && n.config.action === 'limit');
     const store = find('Store Job');
     const ats = find('ATS Optimizer');
     const latex = find('Build LaTeX');
-    if (!dedupe || !store || !ats || !latex) return;
-    if (!wf.edges.some((e) => e.source === dedupe.id && e.target === ats.id)) return;
+    if (!parse || !dedupe || !limit || !store || !ats || !latex) return;
 
-    const chainIds = new Set([dedupe.id, store.id, ats.id, latex.id]);
+    let match = find('Match Score')
+      || wf.nodes.find((n) => n.type === 'transform' && n.config.action === 'match_score');
+    const nodes = [...wf.nodes];
+    if (!match) {
+      match = {
+        id: crypto.randomUUID(),
+        type: 'transform',
+        name: 'Match Score',
+        position: {
+          x: Math.round((limit.position.x + store.position.x) / 2) || limit.position.x + 100,
+          y: limit.position.y,
+        },
+        config: { action: 'match_score' },
+      };
+      nodes.push(match);
+    }
+
+    const desired: [string, string][] = [
+      [parse.id, dedupe.id],
+      [dedupe.id, limit.id],
+      [limit.id, match.id],
+      [match.id, store.id],
+      [store.id, ats.id],
+      [ats.id, latex.id],
+    ];
+    const hasEdge = (source: string, target: string) =>
+      wf.edges.some((e) => e.source === source && e.target === target);
+    const alreadyRepaired = desired.every(([source, target]) => hasEdge(source, target));
+    if (alreadyRepaired && nodes.length === wf.nodes.length) return;
+
+    const chainIds = new Set(desired.flat());
     const kept = wf.edges.filter((e) => !chainIds.has(e.source) || !chainIds.has(e.target));
     const repaired: WorkflowEdge[] = [
       ...kept,
-      { id: crypto.randomUUID(), source: dedupe.id, target: store.id },
-      { id: crypto.randomUUID(), source: store.id, target: ats.id },
-      { id: crypto.randomUUID(), source: ats.id, target: latex.id },
+      ...desired.map(([source, target]) => ({
+        id: crypto.randomUUID(),
+        source,
+        target,
+      })),
     ];
-    await this.saveGraph(workflowId, wf.nodes, repaired);
+    await this.saveGraph(workflowId, nodes, repaired);
   }
 
   async ensureTailorPipeline(): Promise<Workflow> {
     const userId = await requireUserId();
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('workflows')
       .select('id')
       .eq('user_id', userId)
       .eq('name', DEFAULT_RESUME_TAILOR_WORKFLOW.name)
-      .maybeSingle();
+      .order('created_at', { ascending: true })
+      .limit(1);
+    const existing = existingRows?.[0];
     if (existing) {
       await this.repairTailorPipelineGraph(existing.id);
       const wf = await this.get(existing.id);
@@ -1246,12 +1312,12 @@ const WORKFLOW_RUN_LIST_COLUMNS = [
 const WORKFLOW_RUN_NODES_LIST = 'workflow_run_nodes(node_id,status,duration_ms)';
 const WORKFLOW_JOB_EXECUTIONS_LIST = 'workflow_job_executions(id)';
 const WORKFLOW_JOB_EXECUTIONS_DETAIL = [
-  'workflow_job_executions(id,run_id,job_index,job_id,label,status,attempt,',
+  'workflow_job_executions(id,run_id,job_index,job_id,label,status,attempt,search_role,',
   'failed_node_id,started_at,completed_at,duration_ms,error_type,error_code,error_message)',
 ].join('');
 const WORKFLOW_NODE_EXECUTIONS_DETAIL = [
   'workflow_node_executions(id,run_id,job_execution_id,workflow_node_id,node_name,node_type,',
-  'job_index,attempt,status,started_at,completed_at,duration_ms,error_type,error_code,error_message,output_summary)',
+  'job_index,attempt,status,started_at,completed_at,duration_ms,error_type,error_code,error_message,output_summary,search_role)',
 ].join('');
 
 const WORKFLOW_RUN_LIST_SELECT = [
@@ -1355,6 +1421,7 @@ function mapJobExecution(row: Record<string, unknown>): JobExecution {
     runId: String(row.run_id),
     jobIndex: Number(row.job_index),
     label: row.label as string | undefined,
+    searchRole: row.search_role ? String(row.search_role) : undefined,
     status: (row.status as JobExecution['status']) ?? 'pending',
     attempt: Number(row.attempt ?? 1),
     failedNodeId: row.failed_node_id as string | undefined,
@@ -1385,6 +1452,7 @@ function mapNodeExecution(row: Record<string, unknown>): NodeExecution {
     errorCode: row.error_code as string | undefined,
     errorMessage: row.error_message as string | undefined,
     outputSummary: row.output_summary as Record<string, unknown> | undefined,
+    searchRole: row.search_role ? String(row.search_role) : undefined,
   };
 }
 
@@ -1945,9 +2013,17 @@ export class AutomationService {
     return mapAutomation(data);
   }
   async toggle(id: string): Promise<void> {
-    const { data } = await supabase.from('automations').select('status').eq('id', id).maybeSingle();
+    const { data } = await supabase.from('automations').select('status, workflow_id').eq('id', id).maybeSingle();
     if (data) {
       const next = data.status === 'active' ? 'paused' : 'active';
+      if (next === 'active' && data.workflow_id) {
+        await supabase
+          .from('automations')
+          .update({ status: 'paused' })
+          .eq('workflow_id', data.workflow_id)
+          .eq('status', 'active')
+          .neq('id', id);
+      }
       await supabase.from('automations').update({ status: next }).eq('id', id);
     }
   }
@@ -2231,19 +2307,33 @@ export class BootstrapService {
     }
 
     const settings = await this.settings.get();
-    const jobSearch = settings.jobSearch as Record<string, string> | undefined;
-    if (!jobSearch?.query) {
+    const jobSearch = (settings.jobSearch as Record<string, unknown> | undefined) || {};
+    const query = String(jobSearch.query || '').trim();
+    const roles = Array.isArray(jobSearch.roles)
+      ? (jobSearch.roles as unknown[]).map((role) => String(role).trim()).filter(Boolean)
+      : [];
+    if (!query) {
       await this.settings.update({
         jobSearch: {
+          ...jobSearch,
           query: 'Integration Architect',
-          location: 'San Francisco, CA',
-          maxJobs: '5',
-          postedWithin: '1d',
-          resumeFileId: jobSearch?.resumeFileId ?? '',
-          driveFolderId: jobSearch?.driveFolderId ?? '',
+          roles: ['Integration Architect'],
+          location: String(jobSearch.location || 'San Francisco, CA'),
+          maxJobs: String(jobSearch.maxJobs || '5'),
+          postedWithin: String(jobSearch.postedWithin || '1d'),
+          resumeFileId: String(jobSearch.resumeFileId ?? ''),
+          driveFolderId: String(jobSearch.driveFolderId ?? ''),
         },
         notifications: { email: user.email ?? '' },
         userEmail: user.email ?? '',
+      });
+    } else if (!roles.length) {
+      await this.settings.update({
+        jobSearch: {
+          ...jobSearch,
+          query,
+          roles: [query],
+        },
       });
     }
 

@@ -18,6 +18,7 @@ import type { createAdminClient } from '../supabase-admin.ts';
 import { formatUnknownError, isJobPipelineStart } from './job-discovery.ts';
 import { shouldYieldForNextJob, shouldYieldMidChain } from './job-pipeline-slice.ts';
 import { isDuplicateSkipOutput } from '../job-dedupe.ts';
+import { storedFileLogMessages } from '../resume-store.ts';
 
 export { isJobPipelineStart };
 export { shouldYieldForNextJob, PIPELINE_SLICE_BUDGET_MS } from './job-pipeline-slice.ts';
@@ -57,7 +58,9 @@ export async function ensureJobExecutionsInitialized(
   items: unknown[],
 ): Promise<void> {
   if (ctx.variables.jobExecutionsInitialized) return;
-  const rows = await initializeJobExecutions(admin, runId, userId, items);
+  const rows = await initializeJobExecutions(admin, runId, userId, items, {
+    searchRole: String(ctx.variables.currentRole || '') || null,
+  });
   ctx.variables.jobExecutionsInitialized = true;
   ctx.variables.jobPipelineTotal = items.length;
   ctx.variables.pendingJobExecutionIds = rows.map((r) => r.id);
@@ -148,12 +151,13 @@ export async function executePerJobPipeline(
 
   let jobExecution = await resolveCurrentJobExecution(admin, runId, userId, ctx, items, index);
   const jobIndex = jobExecution.job_index;
+  const localIndex = index + 1;
   const attempt = jobExecution.attempt || 1;
 
   ctx.variables.currentItem = jobExecution.input_snapshot ?? item;
   ctx.variables.batchProgress = {
     node: chain[0]?.name || 'Pipeline',
-    index: jobIndex,
+    index: localIndex,
     total,
   };
 
@@ -162,7 +166,7 @@ export async function executePerJobPipeline(
 
   await helpers.logStep(
     runId, userId, chain[0].id, 'info',
-    `Starting job ${jobIndex}/${total} pipeline`,
+    `Starting job ${localIndex}/${total} pipeline`,
     { jobExecutionId, jobIndex, attempt },
   );
   await startJobExecution(admin, jobExecutionId);
@@ -187,7 +191,7 @@ export async function executePerJobPipeline(
     const chainNode = chain[ci];
     await assertRunActive(admin, runId);
     ctx.currentNodeId = chainNode.id;
-    ctx.variables.batchProgress = { node: chainNode.name, index: jobIndex, total };
+    ctx.variables.batchProgress = { node: chainNode.name, index: localIndex, total };
 
     const nodeExecutionId = await startNodeExecution(admin, {
       runId,
@@ -198,11 +202,12 @@ export async function executePerJobPipeline(
       jobExecutionId,
       jobIndex,
       attempt,
+      searchRole: String(ctx.variables.currentRole || '') || null,
     });
 
     await helpers.logStep(
       runId, userId, chainNode.id, 'info',
-      `Executing node: ${chainNode.name} (${chainNode.type}) [job ${jobIndex}/${total}]`,
+      `Executing node: ${chainNode.name} (${chainNode.type}) [job ${localIndex}/${total}]`,
       { jobExecutionId, nodeExecutionId, jobIndex, attempt },
     );
     await helpers.saveRunContext(runId, ctx);
@@ -228,9 +233,18 @@ export async function executePerJobPipeline(
       );
       await helpers.logStep(
         runId, userId, chainNode.id, 'info',
-        `Completed node: ${chainNode.name} (${chainNode.type}) in ${stepDuration}ms [job ${jobIndex}/${total}]`,
+        `Completed node: ${chainNode.name} (${chainNode.type}) in ${stepDuration}ms [job ${localIndex}/${total}]`,
         { jobExecutionId, nodeExecutionId, jobIndex, attempt },
       );
+      if (chainNode.type === 'storage') {
+        for (const message of storedFileLogMessages(itemData)) {
+          await helpers.logStep(
+            runId, userId, chainNode.id, 'info',
+            message,
+            { jobExecutionId, nodeExecutionId, jobIndex, attempt },
+          );
+        }
+      }
 
       await admin.from('workflow_job_executions').update({
         checkpoint_data: itemData,
@@ -261,7 +275,7 @@ export async function executePerJobPipeline(
         await helpers.saveRunContext(runId, ctx);
         await helpers.logStep(
           runId, userId, chainNode.id, 'info',
-          `Checkpoint after ${chainNode.name}: ${remainingChain} step(s) left for job ${jobIndex}/${total}. Starting next slice so storage is not cut off.`,
+          `Checkpoint after ${chainNode.name}: ${remainingChain} step(s) left for job ${localIndex}/${total}. Starting next slice so storage is not cut off.`,
           { jobExecutionId, nodeExecutionId, jobIndex, attempt },
         );
         return { results: pipelineResults, yieldForNext: true };
@@ -281,7 +295,7 @@ export async function executePerJobPipeline(
       await helpers.recordNodeRun(admin, runId, userId, chainNode.id, 'failed', stepDuration);
       await helpers.logStep(
         runId, userId, chainNode.id, 'error',
-        `Job ${jobIndex}/${total} failed at ${chainNode.name}: ${message}`,
+        `Job ${localIndex}/${total} failed at ${chainNode.name}: ${message}`,
         { jobExecutionId, nodeExecutionId, jobIndex, attempt },
       );
       await skipRemainingJobNodes(
@@ -302,7 +316,7 @@ export async function executePerJobPipeline(
     });
     await helpers.logStep(
       runId, userId, chain[0].id, 'info',
-      `Skipped job ${jobIndex}/${total}: identical URL already stored`,
+      `Skipped job ${localIndex}/${total}: identical URL already stored`,
       { jobExecutionId, jobIndex, attempt },
     );
   } else if (!jobFailed && itemData != null) {
@@ -315,7 +329,7 @@ export async function executePerJobPipeline(
     });
     await helpers.logStep(
       runId, userId, chain[chain.length - 1].id, 'info',
-      `Finished job ${jobIndex}/${total} pipeline in ${Date.now() - jobStart}ms`,
+      `Finished job ${localIndex}/${total} pipeline in ${Date.now() - jobStart}ms`,
       { jobExecutionId, jobIndex, attempt },
     );
   } else if (jobFailed) {
@@ -363,7 +377,7 @@ export async function executePerJobPipeline(
         : 'finished';
     await helpers.logStep(
       runId, userId, chain[0].id, 'info',
-      `Job ${jobIndex}/${total} ${outcome} — starting next job in this slice (${remaining.length} left).`,
+      `Job ${localIndex}/${total} ${outcome} — starting next job in this slice (${remaining.length} left).`,
       { jobIndex, attempt },
     );
     return executePerJobPipeline(runId, userId, ctx, chain, items, edges, admin, helpers);

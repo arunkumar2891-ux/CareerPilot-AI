@@ -4,7 +4,10 @@ import {
   computeNextUtcTime,
   isAutomationDue,
   isCronDueNow,
+  pickCanonicalAutomations,
+  scheduleSlotKey,
   shouldStartScheduledAutomation,
+  utcDateKey,
 } from './cron-schedule.ts';
 
 Deno.test('isCronDueNow matches 07:00 UTC', () => {
@@ -94,4 +97,54 @@ Deno.test('shouldStartScheduledAutomation skips when a scheduled run is already 
     hasActiveScheduledRunToday: true,
   });
   if (start) throw new Error('must not start a second scheduled run while one is already active');
+});
+
+Deno.test('shouldStartScheduledAutomation skips when any scheduled run already exists today', () => {
+  const now = new Date('2026-09-03T07:00:00.000Z');
+  const start = shouldStartScheduledAutomation('0 7 * * *', null, null, now, {
+    hasScheduledRunToday: true,
+  });
+  if (start) throw new Error('a finished or failed scheduled run must still consume the daily slot');
+});
+
+Deno.test('pickCanonicalAutomations keeps the oldest row per user and workflow', () => {
+  const picked = pickCanonicalAutomations([
+    { id: 'b', user_id: 'u1', workflow_id: 'w1', created_at: '2026-09-11T00:00:02.000Z' },
+    { id: 'a', user_id: 'u1', workflow_id: 'w1', created_at: '2026-09-10T00:00:00.000Z' },
+    { id: 'c', user_id: 'u1', workflow_id: 'w2', created_at: '2026-09-11T00:00:00.000Z' },
+  ]);
+  if (picked.length !== 2) throw new Error(`expected 2 canonical automations, got ${picked.length}`);
+  if (picked[0].id !== 'a') throw new Error('expected the oldest automation for w1');
+  if (!picked.some((row) => row.id === 'c')) throw new Error('expected the distinct workflow to be kept');
+});
+
+Deno.test('pickCanonicalAutomations collapses copies that share a schedule slot key', () => {
+  const picked = pickCanonicalAutomations([
+    {
+      id: 'a',
+      user_id: 'u1',
+      workflow_id: 'w1',
+      schedule_key: 'daily job search pipeline',
+      created_at: '2026-09-10T00:00:00.000Z',
+    },
+    {
+      id: 'b',
+      user_id: 'u1',
+      workflow_id: 'w2',
+      schedule_key: 'daily job search pipeline',
+      created_at: '2026-09-11T00:00:00.000Z',
+    },
+  ]);
+  if (picked.length !== 1 || picked[0].id !== 'a') {
+    throw new Error('duplicate named pipelines must share one automation');
+  }
+});
+
+Deno.test('scheduleSlotKey collapses duplicate Daily Job Search Pipeline copies', () => {
+  const key = scheduleSlotKey('Daily Job Search Pipeline');
+  const copy = scheduleSlotKey('  Daily Job Search Pipeline  ');
+  if (key !== copy) throw new Error('workflow name copies must share a schedule slot');
+  if (utcDateKey(new Date('2026-09-11T07:00:30.000Z')) !== '2026-09-11') {
+    throw new Error('utcDateKey must be the UTC calendar date');
+  }
 });

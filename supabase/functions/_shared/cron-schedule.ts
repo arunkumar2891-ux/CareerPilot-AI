@@ -49,6 +49,45 @@ export function startOfUtcDay(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
+export function utcDateKey(now: Date): string {
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(now.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function scheduleSlotKey(workflowName: string): string {
+  return workflowName.trim().toLowerCase() || 'default';
+}
+
+export interface CanonicalAutomation {
+  id?: string;
+  user_id: string;
+  workflow_id: string;
+  created_at?: string | null;
+  schedule_key?: string;
+}
+
+/** One active schedule per user+workflow, or per shared schedule_key when set. */
+export function pickCanonicalAutomations<T extends CanonicalAutomation>(automations: T[]): T[] {
+  const sorted = [...automations].sort((left, right) => {
+    const created = String(left.created_at || '').localeCompare(String(right.created_at || ''));
+    if (created !== 0) return created;
+    return String(left.id || '').localeCompare(String(right.id || ''));
+  });
+  const seen = new Set<string>();
+  const picked: T[] = [];
+  for (const auto of sorted) {
+    const key = auto.schedule_key
+      ? `${auto.user_id}:${auto.schedule_key}`
+      : `${auto.user_id}:${auto.workflow_id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    picked.push(auto);
+  }
+  return picked;
+}
+
 export function ranOnUtcDay(lastRunAt: Date | null, now: Date): boolean {
   if (!lastRunAt) return false;
   const last = new Date(lastRunAt);
@@ -75,9 +114,9 @@ export function shouldStartScheduledAutomation(
   nextRunAt: Date | null,
   lastRunAt: Date | null,
   now: Date = new Date(),
-  options?: { hasActiveScheduledRunToday?: boolean },
+  options?: { hasActiveScheduledRunToday?: boolean; hasScheduledRunToday?: boolean },
 ): boolean {
-  if (options?.hasActiveScheduledRunToday) return false;
+  if (options?.hasActiveScheduledRunToday || options?.hasScheduledRunToday) return false;
   return isAutomationDue(schedule, nextRunAt, lastRunAt, now);
 }
 

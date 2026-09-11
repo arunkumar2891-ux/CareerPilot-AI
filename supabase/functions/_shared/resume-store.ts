@@ -11,6 +11,41 @@ export function parseTailoredJobKey(name: string): string | null {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
+export function resumeStorageFileName(fileName: string): string {
+  const base = String(fileName || 'resume.pdf').split(/[/\\]/).pop()?.trim() || 'resume.pdf';
+  const cleaned = base.replace(/[^a-zA-Z0-9._-]/g, '').replace(/^\.+/, '') || 'resume.pdf';
+  return /\.pdf$/i.test(cleaned) ? cleaned : `${cleaned}.pdf`;
+}
+
+export function resumeStorageObjectPath(userId: string, fileName: string): string {
+  return `${userId}/resumes/${resumeStorageFileName(fileName)}`;
+}
+
+export function storedFileNameFromOutput(output: unknown): string {
+  if (!output || typeof output !== 'object') return '';
+  const row = output as Record<string, unknown>;
+  if (row.skipped) return '';
+  const named = String(row.fileName || '').trim();
+  if (named) return resumeStorageFileName(named);
+  const path = String(row.storage_path || '').trim();
+  if (!path) return '';
+  return resumeStorageFileName(path.split('/').pop() || '');
+}
+
+export function storedFileLogMessage(fileName: string): string {
+  return `Stored file: ${resumeStorageFileName(fileName)}`;
+}
+
+export function storedFileLogMessages(output: unknown): string[] {
+  const items = Array.isArray(output) ? output : [output];
+  const messages: string[] = [];
+  for (const item of items) {
+    const name = storedFileNameFromOutput(item);
+    if (name) messages.push(storedFileLogMessage(name));
+  }
+  return messages;
+}
+
 /** `Tailored: Company Role (jobKey)` — job key keeps two postings of the same role distinct. */
 export function buildTailoredResumeName(company: string, role: string, jobId?: string): string {
   const suffix = jobId ? ` (${shortJobKey(jobId)})` : '';

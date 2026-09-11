@@ -84,6 +84,23 @@ export async function matchRoleSpecificResume(
   }
 }
 
+export async function loadMasterResumeText(userId: string): Promise<{ text: string; name: string }> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from('resumes')
+    .select('name, content, corpus_type')
+    .eq('user_id', userId)
+    .eq('is_corpus', true);
+  if (error) throw error;
+  const rows = (data || []) as CareerCorpusRow[];
+  const master = rows.find(isMasterRow);
+  const text = String(master?.content || '').trim();
+  if (text.length < MIN_MASTER_CHARS) {
+    throw new Error('Add a master resume on the Corpus page before scoring jobs.');
+  }
+  return { text, name: String(master?.name || MASTER_NAME) };
+}
+
 export async function loadCareerCorpus(
   userId: string,
   jobDescription: string,

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
-  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield,
+  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield, X,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { FadeIn } from '@/components/motion';
@@ -18,6 +18,8 @@ import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
 import { JOB_POSTED_WITHIN_OPTIONS, DEFAULT_JOB_POSTED_WITHIN } from '@/constants';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId, googleDocResumeFileId } from '@/utils/google';
+import { normalizeJobSearchRoles } from '@/utils/job-search-roles';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 export function SettingsPage() {
@@ -28,6 +30,8 @@ export function SettingsPage() {
   const [title, setTitle] = useState(user?.title || '');
   const [email] = useState(user?.email || '');
   const [jobQuery, setJobQuery] = useState('AI Product Manager');
+  const [jobRoles, setJobRoles] = useState<string[]>(['AI Product Manager']);
+  const [roleDraft, setRoleDraft] = useState('');
   const [jobLocation, setJobLocation] = useState('San Francisco, CA');
   const [maxJobs, setMaxJobs] = useState('5');
   const [postedWithin, setPostedWithin] = useState(DEFAULT_JOB_POSTED_WITHIN);
@@ -47,16 +51,20 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (settings) {
-      const js = settings.jobSearch as Record<string, string> | undefined;
+      const js = settings.jobSearch as Record<string, unknown> | undefined;
       const notif = settings.notifications as Record<string, string> | undefined;
-      if (js?.query) setJobQuery(js.query);
-      if (js?.location) setJobLocation(js.location);
-      if (js?.maxJobs) setMaxJobs(js.maxJobs);
-      if (js?.postedWithin) setPostedWithin(js.postedWithin);
+      const roles = normalizeJobSearchRoles(js?.roles, js?.query);
+      if (roles.length) {
+        setJobRoles(roles);
+        setJobQuery(roles[0]);
+      }
+      if (js?.location) setJobLocation(String(js.location));
+      if (js?.maxJobs) setMaxJobs(String(js.maxJobs));
+      if (js?.postedWithin) setPostedWithin(String(js.postedWithin));
       else setPostedWithin(DEFAULT_JOB_POSTED_WITHIN);
-      if (js?.resumeFileId) setResumeFileId(js.resumeFileId);
+      if (js?.resumeFileId) setResumeFileId(String(js.resumeFileId));
       else setResumeFileId('');
-      setDriveFolderId(js?.driveFolderId ?? '');
+      setDriveFolderId(js?.driveFolderId ? String(js.driveFolderId) : '');
       if (notif?.email) setNotifyEmail(notif.email);
       const contact = settings.contact as Record<string, string> | undefined;
       if (contact?.phone) setPhone(contact.phone);
@@ -89,7 +97,31 @@ export function SettingsPage() {
     qc.invalidateQueries({ queryKey: ['resumes'] });
   };
 
+  const addRole = () => {
+    const next = normalizeJobSearchRoles([...jobRoles, roleDraft]);
+    if (!next.length || next.length === jobRoles.length) {
+      setRoleDraft('');
+      return;
+    }
+    setJobRoles(next);
+    setJobQuery(next[0]);
+    setRoleDraft('');
+  };
+
+  const removeRole = (role: string) => {
+    const next = jobRoles.filter((item) => item !== role);
+    setJobRoles(next);
+    setJobQuery(next[0] || '');
+  };
+
   const saveJobSearch = async () => {
+    const roles = normalizeJobSearchRoles(jobRoles, roleDraft || jobQuery);
+    if (!roles.length) {
+      toast.error('Add at least one search role');
+      return;
+    }
+    setJobRoles(roles);
+    setJobQuery(roles[0]);
     const parsedResumeId = parseGoogleDocFileId(resumeFileId);
     const parsedFolderId = parseGoogleDriveFolderId(driveFolderId);
     setResumeFileId(parsedResumeId);
@@ -100,7 +132,8 @@ export function SettingsPage() {
     await services.settings.update({
       jobSearch: {
         ...previousJobSearch,
-        query: jobQuery,
+        query: roles[0],
+        roles,
         location: jobLocation,
         maxJobs,
         postedWithin,
@@ -189,10 +222,39 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Search Query</Label>
-                <Input value={jobQuery} onChange={(e) => setJobQuery(e.target.value)} placeholder="Forward Deployed Engineer" />
+                <Label htmlFor="job-role-input">Search roles</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {jobRoles.map((role) => (
+                    <Badge key={role} variant="secondary" className="gap-1 pr-1">
+                      {role}
+                      <button
+                        type="button"
+                        className="rounded-sm p-0.5 hover:bg-background/60"
+                        aria-label={`Remove ${role}`}
+                        onClick={() => removeRole(role)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id="job-role-input"
+                    value={roleDraft}
+                    onChange={(e) => setRoleDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault();
+                        addRole();
+                      }
+                    }}
+                    placeholder="Forward Deployed Engineer"
+                  />
+                  <Button type="button" variant="outline" onClick={addRole}>Add</Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Job title keywords sent to LinkedIn (e.g. Forward Deployed Engineer). Short aliases like FDE work too. Irrelevant results are filtered after scrape.
+                  Each role runs as its own scrape in the same execution. Short aliases like FDE work too. Max jobs below applies per role.
                 </p>
               </div>
               <div className="space-y-1.5"><Label>Location</Label><Input value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="San Francisco, CA" /></div>
@@ -208,7 +270,20 @@ export function SettingsPage() {
                 </Select>
                 <p className="text-xs text-muted-foreground">LinkedIn time filter for each pipeline run. Default is past 24 hours.</p>
               </div>
-              <div className="space-y-1.5"><Label>Max Jobs Per Run</Label><Input value={maxJobs} onChange={(e) => setMaxJobs(e.target.value)} type="number" /></div>
+              <div className="space-y-1.5">
+                <Label htmlFor="max-jobs-per-role">Max jobs per role</Label>
+                <Input
+                  id="max-jobs-per-role"
+                  value={maxJobs}
+                  onChange={(e) => setMaxJobs(e.target.value)}
+                  type="number"
+                  min={1}
+                  max={40}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Caps how many jobs are scored and tailored for each role (for example 10 FDE + 10 Engineering Manager).
+                </p>
+              </div>
               <div className="space-y-1.5">
                 <Label>Google Doc Resume ID</Label>
                 <Input value={resumeFileId} onChange={(e) => setResumeFileId(e.target.value)} placeholder="docs.google.com/document/d/FILE_ID/edit" />

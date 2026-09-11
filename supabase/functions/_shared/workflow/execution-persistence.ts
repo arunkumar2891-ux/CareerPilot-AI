@@ -1,3 +1,4 @@
+import { nextJobIndexOffset } from './role-loop.ts';
 import { classifyExecutionError, deriveRunStatus } from './execution-status.ts';
 import type { WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 import type { createAdminClient } from '../supabase-admin.ts';
@@ -35,6 +36,7 @@ export interface JobExecutionRow {
   error_type?: string | null;
   error_code?: string | null;
   error_message?: string | null;
+  search_role?: string | null;
 }
 
 export interface NodeExecutionRow {
@@ -54,6 +56,7 @@ export interface NodeExecutionRow {
   error_code?: string | null;
   error_message?: string | null;
   output_summary?: unknown;
+  search_role?: string | null;
 }
 
 function summarizeOutput(output: unknown): Record<string, unknown> | null {
@@ -109,15 +112,25 @@ export async function initializeJobExecutions(
   runId: string,
   userId: string,
   items: unknown[],
+  options?: { searchRole?: string | null },
 ): Promise<JobExecutionRow[]> {
+  const { data: maxRows } = await admin
+    .from('workflow_job_executions')
+    .select('job_index')
+    .eq('run_id', runId)
+    .order('job_index', { ascending: false })
+    .limit(1);
+  const offset = nextJobIndexOffset(maxRows?.[0]?.job_index);
+  const searchRole = String(options?.searchRole || '').trim() || null;
   const rows = items.map((item, idx) => ({
     run_id: runId,
     user_id: userId,
-    job_index: idx + 1,
-    label: jobLabelFromInput(idx + 1, item),
+    job_index: offset + idx + 1,
+    label: jobLabelFromInput(offset + idx + 1, item),
     status: 'pending',
     attempt: 1,
     input_snapshot: item,
+    search_role: searchRole,
   }));
 
   const { data, error } = await admin
@@ -126,21 +139,31 @@ export async function initializeJobExecutions(
     .select('*');
   if (error && !String(error.message).includes('duplicate')) throw error;
 
-  const { data: existing } = await admin
-    .from('workflow_job_executions')
-    .select('*')
-    .eq('run_id', runId)
-    .eq('attempt', 1)
-    .order('job_index', { ascending: true });
+  const inserted = (data || []) as JobExecutionRow[];
+  if (!inserted.length) {
+    const existingQuery = admin
+      .from('workflow_job_executions')
+      .select('*')
+      .eq('run_id', runId)
+      .eq('attempt', 1)
+      .gt('job_index', offset)
+      .order('job_index', { ascending: true });
+    const { data: existing } = searchRole
+      ? await existingQuery.eq('search_role', searchRole)
+      : await existingQuery;
+    return (existing || []) as JobExecutionRow[];
+  }
 
+  const { data: runRow } = await admin
+    .from('workflow_runs')
+    .select('jobs_total')
+    .eq('id', runId)
+    .single();
   await admin.from('workflow_runs').update({
-    jobs_total: items.length,
-    jobs_successful: 0,
-    jobs_failed: 0,
-    jobs_skipped: 0,
+    jobs_total: Number(runRow?.jobs_total ?? 0) + items.length,
   }).eq('id', runId);
 
-  return (existing || data || []) as JobExecutionRow[];
+  return inserted;
 }
 
 function jobLabelFromInput(jobIndex: number, input: unknown): string {
@@ -263,6 +286,7 @@ export async function startNodeExecution(
     jobExecutionId?: string | null;
     jobIndex?: number | null;
     attempt?: number;
+    searchRole?: string | null;
   },
 ): Promise<string> {
   const { data, error } = await admin.from('workflow_node_executions').insert({
@@ -276,6 +300,7 @@ export async function startNodeExecution(
     attempt: params.attempt ?? 1,
     status: 'running',
     started_at: new Date().toISOString(),
+    search_role: params.searchRole ?? null,
   }).select('id').single();
   if (error) throw error;
   return data.id as string;
