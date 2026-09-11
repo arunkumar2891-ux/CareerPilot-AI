@@ -7,24 +7,47 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { services } from '@/services';
+import { supabase } from '@/lib/supabase';
 import { timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { InlineLoader } from '@/components/motion';
 import type { CoverLetter } from '@/types';
 
 export function CoverLettersPage() {
   const qc = useQueryClient();
   const { data: letters } = useQuery({ queryKey: ['cover-letters'], queryFn: () => services.coverLetter.list() });
   const [selected, setSelected] = useState<CoverLetter | null>(null);
+  const [showJobPicker, setShowJobPicker] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState('');
 
-  const generate = async () => {
-    toast.success('Generating cover letter...');
-    await services.coverLetter.generate(letters?.[0]?.id || '');
-    toast.success('Cover letter generated');
-    qc.invalidateQueries({ queryKey: ['cover-letters'] });
+  const { data: jobs } = useQuery({
+    queryKey: ['jobs'],
+    queryFn: async () => {
+      const { data } = await supabase.from('jobs').select('id, company, role').order('created_at', { ascending: false }).limit(50);
+      return data || [];
+    },
+  });
+
+  const generate = async (jobId: string) => {
+    if (!jobId) return;
+    setGenerating(true);
+    try {
+      await services.coverLetter.generate(jobId);
+      toast.success('Cover letter generated');
+      setShowJobPicker(false);
+      setSelectedJobId('');
+      qc.invalidateQueries({ queryKey: ['cover-letters'] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Cover letter generation failed');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   return (
@@ -33,12 +56,33 @@ export function CoverLettersPage() {
         title="Cover Letter Studio"
         description="Generate, edit, and manage cover letters"
         actions={
-          <Button onClick={generate} className="gap-2"><Sparkles className="h-4 w-4" /> Generate</Button>
+          <Button onClick={() => setShowJobPicker(true)} className="gap-2"><Sparkles className="h-4 w-4" /> Generate</Button>
         }
       />
 
+      <Dialog open={showJobPicker} onOpenChange={setShowJobPicker}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Generate Cover Letter</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">Select a job to generate a cover letter for.</p>
+            <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+              <SelectTrigger><SelectValue placeholder="Choose a job..." /></SelectTrigger>
+              <SelectContent>
+                {jobs?.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>{job.role} at {job.company}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button onClick={() => generate(selectedJobId)} disabled={!selectedJobId || generating} className="w-full gap-2">
+              {generating ? <InlineLoader /> : <Sparkles className="h-4 w-4" />}
+              {generating ? 'Generating...' : 'Generate Cover Letter'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {(!letters || letters.length === 0) ? (
-        <Card><CardContent><EmptyState icon={FileX} title="No cover letters yet" description="Generate a cover letter to get started with your applications." action={<Button onClick={generate} className="gap-2"><Sparkles className="h-4 w-4" /> Generate</Button>} /></CardContent></Card>
+        <Card><CardContent><EmptyState icon={FileX} title="No cover letters yet" description="Generate a cover letter to get started with your applications." action={<Button onClick={() => setShowJobPicker(true)} className="gap-2"><Sparkles className="h-4 w-4" /> Generate</Button>} /></CardContent></Card>
       ) : (
       <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {letters.map((cl) => (

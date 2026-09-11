@@ -1,4 +1,4 @@
-import { buildLatexFromAtsText } from './resume-latex.ts';
+import { buildLatexFromAtsText, type PdfTemplate } from './resume-latex.ts';
 import { fetchWithTimeout } from './fetch-timeout.ts';
 
 export async function compileLatexToPdf(latex: string): Promise<Uint8Array> {
@@ -22,7 +22,7 @@ export async function compileLatexToPdf(latex: string): Promise<Uint8Array> {
 
 export async function compileResumeContentToPdf(
   content: string,
-  meta: { targetRole?: string; targetCompany?: string } = {},
+  meta: { targetRole?: string; targetCompany?: string; template?: PdfTemplate } = {},
 ): Promise<Uint8Array> {
   const latex = buildLatexFromAtsText(String(content || '').trim(), meta);
   return compileLatexToPdf(latex);

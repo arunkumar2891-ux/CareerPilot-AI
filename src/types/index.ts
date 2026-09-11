@@ -44,6 +44,15 @@ export type NotificationType =
   | 'failure'
   | 'summary';
 
+export interface InterviewPrep {
+  talkingPoints: string[];
+  technicalQuestions: string[];
+  behavioralQuestions: string[];
+  questionsToAsk: string[];
+  researchNotes: string;
+  generatedAt: string;
+}
+
 export interface Job {
   id: string;
   company: string;
@@ -69,6 +78,7 @@ export interface Job {
   driveFileId?: string;
   pdfUrl?: string;
   createdAt: string;
+  interviewPrep?: InterviewPrep | null;
 }
 
 export interface AtsReview {

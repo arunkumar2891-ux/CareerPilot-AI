@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  FileText, Download, Sparkles, FileCheck, Cloud, CloudUpload, TrendingUp, MessageSquare,
+  FileText, Download, Sparkles, FileCheck, Cloud, CloudUpload, TrendingUp, MessageSquare, Target,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { services } from '@/services';
 import { toast } from 'sonner';
+import { JdMatchPanel } from '@/components/resumes/JdMatchPanel';
 import type { AtsReview, Resume } from '@/types';
 
 export function ResumeEditor({
@@ -36,7 +39,9 @@ export function ResumeEditor({
   const [openingCopilot, setOpeningCopilot] = useState(false);
   const [syncingDrive, setSyncingDrive] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfTemplate, setPdfTemplate] = useState<string>('');
   const [activeTab, setActiveTab] = useState('edit');
+  const [linkedJd, setLinkedJd] = useState('');
 
   useEffect(() => {
     if (!resume) return;
@@ -45,7 +50,36 @@ export function ResumeEditor({
     setAtsReview(resume.atsReview);
     setDriveFileId(resume.driveFileId);
     setActiveTab('edit');
+    setLinkedJd('');
   }, [resume?.id, resume?.atsScore, resume?.atsReview, resume?.driveFileId]);
+
+  useEffect(() => {
+    if (!resume?.jobId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const job = await services.jobSearch.getById(resume.jobId!);
+        if (!cancelled && job?.description) setLinkedJd(job.description);
+      } catch {
+        // JD not available
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [resume?.jobId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await services.settings.get();
+        const js = settings.jobSearch as Record<string, unknown> | undefined;
+        if (!cancelled && js?.pdfTemplate) setPdfTemplate(String(js.pdfTemplate));
+      } catch {
+        // use default
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   if (!resume) return null;
   const displayContent = content || resume.content;
@@ -109,7 +143,7 @@ export function ResumeEditor({
       if (content && content !== resume.content) {
         await services.resume.update(resume.id, displayContent);
       }
-      await services.resume.downloadPdf(resume.id, displayContent);
+      await services.resume.downloadPdf(resume.id, displayContent, pdfTemplate || undefined);
       toast.success('PDF downloaded');
       onResumeUpdated();
     } catch (err) {
@@ -157,6 +191,9 @@ export function ResumeEditor({
             <TabsTrigger value="edit">Markdown Editor</TabsTrigger>
             <TabsTrigger value="preview">Preview</TabsTrigger>
             <TabsTrigger value="pdf">PDF View</TabsTrigger>
+            <TabsTrigger value="jd-match" disabled={!linkedJd}>
+              <Target className="mr-1 h-3.5 w-3.5" /> JD Match
+            </TabsTrigger>
             <TabsTrigger value="ats-review" disabled={!atsReview}>ATS Review</TabsTrigger>
           </TabsList>
           <TabsContent value="edit" className="mt-4">
@@ -173,22 +210,40 @@ export function ResumeEditor({
             </div>
           </TabsContent>
           <TabsContent value="pdf" className="mt-4">
-            <div className="flex h-[55vh] items-center justify-center rounded-lg border border-dashed border-border bg-muted/30">
-              <div className="text-center">
-                <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-                <p className="mt-2 text-sm text-muted-foreground">Generate and download a PDF from your resume content</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 gap-2"
-                  disabled={downloadingPdf}
-                  onClick={downloadPdf}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  {downloadingPdf ? 'Generating…' : 'Download PDF'}
-                </Button>
+            <div className="flex h-[55vh] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-6">
+              <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">Generate and download a PDF from your resume content</p>
+              <div className="mt-4 flex items-center gap-2">
+                <Label htmlFor="pdf-template" className="text-sm">Template:</Label>
+                <Select value={pdfTemplate || 'classic'} onValueChange={setPdfTemplate}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="classic">Classic</SelectItem>
+                    <SelectItem value="modern_single">Modern Single Column</SelectItem>
+                    <SelectItem value="modern_two_column">Modern Two Column</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4 gap-2"
+                disabled={downloadingPdf}
+                onClick={downloadPdf}
+              >
+                <Download className="h-3.5 w-3.5" />
+                {downloadingPdf ? 'Generating…' : 'Download PDF'}
+              </Button>
             </div>
+          </TabsContent>
+          <TabsContent value="jd-match" className="mt-4">
+            {linkedJd ? (
+              <JdMatchPanel jd={linkedJd} resume={displayContent} />
+            ) : (
+              <p className="text-sm text-muted-foreground">This resume is not linked to a job. Tailor a resume from a job to see keyword matching.</p>
+            )}
           </TabsContent>
           <TabsContent value="ats-review" className="mt-4">
             {atsReview ? (

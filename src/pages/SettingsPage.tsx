@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useUIStore, useAuthStore } from '@/store';
 import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
@@ -37,6 +38,7 @@ export function SettingsPage() {
   const [postedWithin, setPostedWithin] = useState(DEFAULT_JOB_POSTED_WITHIN);
   const [resumeFileId, setResumeFileId] = useState('');
   const [driveFolderId, setDriveFolderId] = useState('');
+  const [pdfTemplate, setPdfTemplate] = useState('classic');
   const [notifyEmail, setNotifyEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState('');
   const [location, setLocation] = useState('');
@@ -65,6 +67,7 @@ export function SettingsPage() {
       if (js?.resumeFileId) setResumeFileId(String(js.resumeFileId));
       else setResumeFileId('');
       setDriveFolderId(js?.driveFolderId ? String(js.driveFolderId) : '');
+      setPdfTemplate(js?.pdfTemplate ? String(js.pdfTemplate) : 'classic');
       if (notif?.email) setNotifyEmail(notif.email);
       const contact = settings.contact as Record<string, string> | undefined;
       if (contact?.phone) setPhone(contact.phone);
@@ -139,6 +142,7 @@ export function SettingsPage() {
         postedWithin,
         resumeFileId: parsedResumeId,
         driveFolderId: parsedFolderId,
+        pdfTemplate,
       },
       notifications: { email: notifyEmail },
       userEmail: notifyEmail,
@@ -298,6 +302,26 @@ export function SettingsPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Paste a folder link or folder ID — same as the resume Doc field. PDFs are named Company_YourName_Role_ddmmyyyy.pdf. Change anytime and Save.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>PDF Template</Label>
+                <RadioGroup value={pdfTemplate} onValueChange={setPdfTemplate}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="classic" id="tpl-classic" />
+                    <Label htmlFor="tpl-classic" className="font-normal">Classic</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="modern_single" id="tpl-modern-single" />
+                    <Label htmlFor="tpl-modern-single" className="font-normal">Modern Single Column</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="modern_two_column" id="tpl-modern-two-col" />
+                    <Label htmlFor="tpl-modern-two-col" className="font-normal">Modern Two Column</Label>
+                  </div>
+                </RadioGroup>
+                <p className="text-xs text-muted-foreground">
+                  LaTeX template used for PDF generation. Classic uses moderncv banking style; Modern Single uses casual style; Modern Two Column uses a custom two-column layout.
                 </p>
               </div>
               <p className="text-xs text-muted-foreground">

@@ -139,6 +139,7 @@ function mapJob(row: Record<string, unknown>): Job {
     driveFileId: row._drive_file_id as string | undefined,
     pdfUrl: (row._pdf_url as string | undefined) || (row.pdf_url as string | undefined),
     createdAt: row.created_at as string,
+    interviewPrep: row.interview_prep as Job['interviewPrep'],
   };
 }
 
@@ -466,6 +467,17 @@ export class JobSearchService {
       });
     }));
   }
+  async getById(id: string): Promise<Job | null> {
+    const userId = await requireUserId();
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapJob(data) : null;
+  }
   async scoreMatch(jobId: string): Promise<{ score: number; source: string; method?: string }> {
     const { data, error } = await supabase.functions.invoke('resume-actions', {
       body: { mode: 'score_job', jobId },
@@ -477,6 +489,38 @@ export class JobSearchService {
       source: String((data as { source?: string })?.source || ''),
       method: (data as { method?: string })?.method,
     };
+  }
+  async createManual(input: { company: string; role: string; description: string; url?: string }): Promise<Job> {
+    const userId = await requireUserId();
+    const { data, error } = await supabase.from('jobs').insert({
+      user_id: userId,
+      company: input.company.trim(),
+      role: input.role.trim(),
+      description: input.description.trim(),
+      url: input.url?.trim() || null,
+      source: 'manual',
+      status: 'queued',
+      resume_status: 'none',
+      application_status: 'draft',
+      match_score: 0,
+      skills: [],
+      posting_date: new Date().toISOString(),
+      location: '',
+      remote: false,
+      hybrid: false,
+      experience: '',
+      duplicate: false,
+    }).select().single();
+    if (error) throw error;
+    return mapJob(data);
+  }
+  async generateInterviewPrep(jobId: string): Promise<Job['interviewPrep']> {
+    const { data, error } = await supabase.functions.invoke('resume-actions', {
+      body: { mode: 'interview_prep', jobId },
+    });
+    throwResumeActionError(data as ResumeActionResponse | null, 'Interview prep generation failed');
+    if (error) throw error;
+    return (data as { prep?: Job['interviewPrep'] })?.prep ?? null;
   }
   async search(config: Partial<JobSearchConfig>): Promise<Job[]> {
     let q = supabase.from('jobs').select('*');
@@ -739,12 +783,12 @@ export class ResumeService {
       errors: data?.errors as Array<{ resumeId: string; error: string }> | undefined,
     };
   }
-  async downloadPdf(id: string, content?: string): Promise<void> {
+  async downloadPdf(id: string, content?: string, template?: string): Promise<void> {
     const resume = await this.get(id);
     if (!resume) throw new Error('Resume not found');
 
     const { data, error } = await supabase.functions.invoke('resume-actions', {
-      body: { mode: 'generate_pdf', resumeId: id, content },
+      body: { mode: 'generate_pdf', resumeId: id, content, template },
     });
     throwResumeActionError(data as ResumeActionResponse | null, 'PDF generation failed');
     if (error) throw error;
@@ -2323,6 +2367,7 @@ export class BootstrapService {
           postedWithin: String(jobSearch.postedWithin || '1d'),
           resumeFileId: String(jobSearch.resumeFileId ?? ''),
           driveFolderId: String(jobSearch.driveFolderId ?? ''),
+          pdfTemplate: String(jobSearch.pdfTemplate ?? 'classic'),
         },
         notifications: { email: user.email ?? '' },
         userEmail: user.email ?? '',

@@ -59,6 +59,7 @@ async function ensureResumePdf(
   userId: string,
   resume: ResumeRow,
   contentOverride?: string,
+  templateOverride?: string,
 ): Promise<{ pdfBytes: Uint8Array; storagePath: string; signedUrl: string }> {
   const content = String(contentOverride || resume.content || '').trim();
   if (!content) throw new Error('Resume content is empty');
@@ -68,7 +69,19 @@ async function ensureResumePdf(
   const company = jobMeta.company || tailoredMeta.company;
   const role = jobMeta.role || tailoredMeta.role;
 
-  const pdfBytes = await compileResumeContentToPdf(content, { targetCompany: company, targetRole: role });
+  let template = templateOverride;
+  if (!template) {
+    const { data: settingsRow } = await admin
+      .from('user_settings')
+      .select('data')
+      .eq('user_id', userId)
+      .maybeSingle();
+    const settings = (settingsRow?.data as Record<string, unknown> | undefined) || {};
+    const jobSearch = (settings.jobSearch as Record<string, unknown> | undefined) || {};
+    template = (jobSearch.pdfTemplate as string) || 'classic';
+  }
+
+  const pdfBytes = await compileResumeContentToPdf(content, { targetCompany: company, targetRole: role, template: template as import('../_shared/resume-latex.ts').PdfTemplate });
   const storagePath = resume.storage_path || `${userId}/resumes/${resume.id}.pdf`;
   const { error: uploadError } = await admin.storage
     .from('resumes')
@@ -185,7 +198,8 @@ Deno.serve(async (req) => {
         resume.content = contentOverride;
       }
 
-      const generated = await ensureResumePdf(admin, user.id, resume as ResumeRow, contentOverride);
+      const templateOverride = body.template ? String(body.template) : undefined;
+      const generated = await ensureResumePdf(admin, user.id, resume as ResumeRow, contentOverride, templateOverride);
       return jsonResponse({
         url: generated.signedUrl,
         storagePath: generated.storagePath,
@@ -346,6 +360,70 @@ Deno.serve(async (req) => {
         source: result.source,
         method: result.method,
       });
+    }
+
+    if (mode === 'interview_prep') {
+      const jobId = String(body.jobId || '').trim();
+      if (!jobId) return jsonResponse({ error: 'jobId required' }, 400);
+
+      const { data: job, error: jobError } = await admin
+        .from('jobs')
+        .select('id, description, role, company')
+        .eq('id', jobId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (jobError) throw jobError;
+      if (!job) return jsonResponse({ error: 'Job not found' }, 404);
+
+      const { data: tailored } = await admin
+        .from('resumes')
+        .select('name, content')
+        .eq('user_id', user.id)
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const resumeText = String(tailored?.content || '').trim();
+
+      const prompt = [
+        `Given this job description and tailored resume, generate interview preparation notes.`,
+        `Return JSON only with these keys: talkingPoints (string[]), technicalQuestions (string[]), behavioralQuestions (string[]), questionsToAsk (string[]), researchNotes (string).`,
+        `Job: ${job.role} at ${job.company}`,
+        `Job Description:\n${String(job.description || '').slice(0, 4000)}`,
+        resumeText ? `Tailored Resume:\n${resumeText.slice(0, 4000)}` : 'No tailored resume available — use general best practices.',
+      ].join('\n\n');
+
+      const { generateText } = await import('../_shared/ai/router.ts');
+      const raw = await generateText({
+        operation: 'cover_letter',
+        systemPrompt: 'You are an expert interview coach. Return valid JSON only. No markdown.',
+        userPrompt: prompt,
+      }, { userId: user.id });
+
+      let prep: Record<string, unknown> = {};
+      try {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) prep = JSON.parse(jsonMatch[0].replace(/```json\n?|\n?```/g, ''));
+      } catch {
+        prep = { researchNotes: raw.slice(0, 2000) };
+      }
+
+      const result = {
+        talkingPoints: Array.isArray(prep.talkingPoints) ? prep.talkingPoints.map(String) : [],
+        technicalQuestions: Array.isArray(prep.technicalQuestions) ? prep.technicalQuestions.map(String) : [],
+        behavioralQuestions: Array.isArray(prep.behavioralQuestions) ? prep.behavioralQuestions.map(String) : [],
+        questionsToAsk: Array.isArray(prep.questionsToAsk) ? prep.questionsToAsk.map(String) : [],
+        researchNotes: String(prep.researchNotes || ''),
+        generatedAt: new Date().toISOString(),
+      };
+
+      await admin
+        .from('jobs')
+        .update({ interview_prep: result })
+        .eq('id', jobId)
+        .eq('user_id', user.id);
+
+      return jsonResponse({ prep: result });
     }
 
     return jsonResponse({ error: 'Unknown mode' }, 400);

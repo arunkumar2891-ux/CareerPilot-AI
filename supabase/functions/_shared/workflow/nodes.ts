@@ -263,9 +263,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const data = input as Record<string, unknown>;
         if (data?.skipped) return { output: data, status: 'success' };
         const raw = String(data.output ?? '').trim();
+        const jobSearch = (ctx.settings.jobSearch as Record<string, unknown> | undefined) || {};
+        const template = (jobSearch.pdfTemplate as string) || 'classic';
         const latex = buildLatexFromAtsText(raw, {
           targetRole: String(data.title || data.role || ''),
           targetCompany: String(data.company || data.companyName || ''),
+          template: template as import('../resume-latex.ts').PdfTemplate,
         });
         return { output: { ...data, latex }, status: 'success' };
       }

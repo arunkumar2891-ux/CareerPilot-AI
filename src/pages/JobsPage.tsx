@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
-  Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2, Gauge,
+  Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2, Gauge, Plus, Target, MessageSquare,
 } from 'lucide-react';
 import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
 import { transitionFast } from '@/lib/motion';
@@ -27,6 +27,9 @@ import { formatCurrency, formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { ApplicationPackageWizard } from '@/components/jobs/ApplicationPackageWizard';
+import { JdMatchPanel } from '@/components/resumes/JdMatchPanel';
 import { hasUsableMasterResume } from '@/utils/resume-classification';
 import type { Job } from '@/types';
 
@@ -38,6 +41,7 @@ export function JobsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showPasteJd, setShowPasteJd] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
@@ -176,6 +180,9 @@ export function JobsPage() {
         description="Autonomous job search across multiple boards"
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowPasteJd(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Add Job
+            </Button>
             <Button variant="outline" onClick={repairSync} disabled={repairing} className="gap-2">
               <Link2 className="h-4 w-4" />
               {repairing ? 'Repairing…' : 'Repair Sync'}
@@ -479,6 +486,7 @@ export function JobsPage() {
       ))}
 
       <JobDetailDialog job={selectedJob} onClose={() => setSelectedJob(null)} />
+      <ApplicationPackageWizard open={showPasteJd} onOpenChange={setShowPasteJd} />
     </div>
   );
 }
@@ -551,10 +559,22 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
   const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
   const [scoring, setScoring] = useState(false);
+  const [showMatchPanel, setShowMatchPanel] = useState(false);
+  const [showInterviewPrep, setShowInterviewPrep] = useState(false);
+  const [generatingPrep, setGeneratingPrep] = useState(false);
   const [scoreOverride, setScoreOverride] = useState<{ jobId: string; score: number; source?: string } | null>(null);
   const { data: corpusResumes } = useQuery({
     queryKey: ['resumes', 'corpus'],
     queryFn: () => services.resume.list({ kind: 'corpus' }),
+  });
+  const { data: linkedResume } = useQuery({
+    queryKey: ['resume', job?.resumeId],
+    queryFn: async () => {
+      if (!job?.resumeId) return null;
+      const { data } = await supabase.from('resumes').select('content').eq('id', job.resumeId).single();
+      return data?.content || null;
+    },
+    enabled: !!job?.resumeId,
   });
   if (!job) return null;
 
@@ -600,6 +620,23 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
     }
   };
 
+  const generateInterviewPrep = async () => {
+    if (generatingPrep) return;
+    setGeneratingPrep(true);
+    try {
+      const prep = await services.jobSearch.generateInterviewPrep(job.id);
+      if (prep) {
+        await qc.invalidateQueries({ queryKey: ['jobs'] });
+        setShowInterviewPrep(true);
+        toast.success('Interview prep generated');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Interview prep failed');
+    } finally {
+      setGeneratingPrep(false);
+    }
+  };
+
   return (
     <Dialog open={!!job} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden">
@@ -642,6 +679,54 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               <span>Experience: {job.experience || 'Any'}</span>
               {matchSource && <span>Scored with: {matchSource}</span>}
             </div>
+            {showMatchPanel && (
+              <div className="mt-4 border-t border-border pt-4">
+                <JdMatchPanel jd={job.description} resume={linkedResume || ''} />
+              </div>
+            )}
+            {showInterviewPrep && job.interviewPrep && (
+              <div className="mt-4 border-t border-border pt-4 space-y-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Interview Prep</p>
+                {job.interviewPrep.talkingPoints.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Talking Points</p>
+                    <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                      {job.interviewPrep.talkingPoints.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {job.interviewPrep.technicalQuestions.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Technical Questions</p>
+                    <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                      {job.interviewPrep.technicalQuestions.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {job.interviewPrep.behavioralQuestions.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Behavioral Questions</p>
+                    <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                      {job.interviewPrep.behavioralQuestions.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {job.interviewPrep.questionsToAsk.length > 0 && (
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Questions to Ask</p>
+                    <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                      {job.interviewPrep.questionsToAsk.map((item, i) => <li key={i}>{item}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {job.interviewPrep.researchNotes && (
+                  <div>
+                    <p className="mb-1 text-sm font-medium">Research Notes</p>
+                    <p className="text-sm text-muted-foreground">{job.interviewPrep.researchNotes}</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </ScrollArea>
         <div className="flex items-center gap-2 border-t border-border pt-4">
@@ -651,6 +736,26 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
           <Button variant="outline" onClick={scoreMatch} disabled={scoring || starting} className="gap-2">
             <Gauge className="h-4 w-4" /> {scoring ? 'Scoring…' : 'Score match'}
           </Button>
+          {matchScore > 0 && (
+            <Button
+              variant={showMatchPanel ? 'secondary' : 'outline'}
+              onClick={() => setShowMatchPanel(!showMatchPanel)}
+              className="gap-2"
+            >
+              <Target className="h-4 w-4" /> {showMatchPanel ? 'Hide Match' : 'View Match'}
+            </Button>
+          )}
+          {(job.resumeId || job.interviewPrep) && (
+            <Button
+              variant={showInterviewPrep ? 'secondary' : 'outline'}
+              onClick={() => job.interviewPrep ? setShowInterviewPrep(!showInterviewPrep) : generateInterviewPrep()}
+              disabled={generatingPrep}
+              className="gap-2"
+            >
+              <MessageSquare className="h-4 w-4" />
+              {generatingPrep ? 'Generating…' : showInterviewPrep ? 'Hide Prep' : job.interviewPrep ? 'View Prep' : 'Interview Prep'}
+            </Button>
+          )}
           <Button variant="outline" className="gap-2"><Star className="h-4 w-4" /> Save</Button>
           <Button variant="ghost" className="ml-auto gap-2" onClick={() => window.open(job.url, '_blank')}>
             View Posting <ExternalLink className="h-3.5 w-3.5" />

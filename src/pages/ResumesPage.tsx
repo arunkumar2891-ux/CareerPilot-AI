@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ApplicationPackageWizard } from '@/components/jobs/ApplicationPackageWizard';
 import { ResumeEditor } from '@/components/resumes/ResumeEditor';
 import { services } from '@/services';
 import { formatDate, timeAgo } from '@/utils';
@@ -36,6 +37,7 @@ export function ResumesPage() {
   const [compareB, setCompareB] = useState('');
   const [compareResult, setCompareResult] = useState<string[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showPasteJd, setShowPasteJd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<Resume['type']>('general');
   const [newContent, setNewContent] = useState('');
@@ -124,6 +126,9 @@ export function ResumesPage() {
         description="Job-tailored resumes from search pipelines and manual generation"
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowPasteJd(true)} className="gap-2">
+              <FileText className="h-4 w-4" /> Tailor from JD
+            </Button>
             <Button variant="outline" onClick={() => setDeleteTarget('all')} disabled={!resumes?.length} className="gap-2">
               <Trash2 className="h-4 w-4" /> Delete All
             </Button>
@@ -376,6 +381,7 @@ export function ResumesPage() {
         onResumeUpdated={() => qc.invalidateQueries({ queryKey: ['resumes'] })}
         showGenerateTailored
       />
+      <ApplicationPackageWizard open={showPasteJd} onOpenChange={setShowPasteJd} />
     </div>
   );
 }
