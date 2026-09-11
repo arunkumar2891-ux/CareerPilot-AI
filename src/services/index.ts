@@ -1541,7 +1541,7 @@ export class ExecutionService {
     if (!id) return [];
     const rpc = await supabase.rpc('get_run_logs', { p_run_id: id });
     if (!rpc.error && Array.isArray(rpc.data)) {
-      return mapLogRows(rpc.data as Record<string, unknown>[]);
+      return mapLogRows(rpc.data as unknown as Record<string, unknown>[]);
     }
     const { data, error } = await supabase
       .from('workflow_logs')
@@ -1550,7 +1550,7 @@ export class ExecutionService {
       .order('timestamp', { ascending: true })
       .limit(5000);
     if (error) throw error;
-    return mapLogRows((data || []) as Record<string, unknown>[]);
+    return mapLogRows((data || []) as unknown as Record<string, unknown>[]);
   }
 
   async getRunDetail(runId: string): Promise<WorkflowRunDetail | null> {
