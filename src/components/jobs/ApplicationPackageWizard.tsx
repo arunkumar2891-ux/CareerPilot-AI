@@ -172,13 +172,13 @@ export function ApplicationPackageWizard({ open, onOpenChange }: ApplicationPack
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+      <DialogContent className="flex h-[min(90vh,56rem)] w-[calc(100%-2rem)] max-w-3xl flex-col overflow-hidden">
+        <DialogHeader className="min-w-0 shrink-0 pr-8">
           <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+            <FileText className="h-5 w-5 shrink-0" />
             Application Package Wizard
           </DialogTitle>
-          <div className="flex items-center gap-2 pt-2">
+          <div className="flex flex-wrap items-center gap-2 pt-2">
             {(['paste', 'score', 'generate', 'results'] as Step[]).map((s, i) => (
               <div key={s} className="flex items-center gap-1">
                 <div
@@ -199,10 +199,10 @@ export function ApplicationPackageWizard({ open, onOpenChange }: ApplicationPack
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="min-h-0 min-w-0 flex-1 pr-4">
           {step === 'paste' && (
             <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="wiz-company">Company</Label>
                   <Input id="wiz-company" placeholder="e.g. Acme Corp" value={company} onChange={(e) => setCompany(e.target.value)} />
@@ -347,7 +347,7 @@ export function ApplicationPackageWizard({ open, onOpenChange }: ApplicationPack
           )}
         </ScrollArea>
 
-        <div className="flex items-center justify-between border-t border-border pt-4">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
           <div>
             {step === 'score' && (
               <Button variant="outline" onClick={() => setStep('paste')} className="gap-2">

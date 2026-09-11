@@ -1,5 +1,14 @@
 import { expandJobSearchQuery } from './job-url.ts';
 
+export const INDIA_REMOTE_LOCATION = 'India';
+
+export interface SearchTarget {
+  role: string;
+  location: string;
+  remoteOnly: boolean;
+  label: string;
+}
+
 export function parseJobSearchRoles(jobSearch: Record<string, unknown> | undefined): string[] {
   const seen = new Set<string>();
   const roles: string[] = [];
@@ -36,4 +45,34 @@ export function nextSearchRole(
   const next = currentIndex + 1;
   if (next >= roles.length) return null;
   return { role: roles[next], index: next };
+}
+
+export function alsoSearchIndiaRemote(jobSearch: Record<string, unknown> | undefined): boolean {
+  const value = jobSearch?.alsoSearchIndiaRemote;
+  if (value === false || value === 'false') return false;
+  return true;
+}
+
+export function buildSearchTargets(jobSearch: Record<string, unknown> | undefined): SearchTarget[] {
+  const roles = parseJobSearchRoles(jobSearch);
+  const location = String(jobSearch?.location || '').trim() || 'United States';
+  const includeIndiaRemote = alsoSearchIndiaRemote(jobSearch);
+  const targets: SearchTarget[] = [];
+  for (const role of roles) {
+    targets.push({
+      role,
+      location,
+      remoteOnly: false,
+      label: role,
+    });
+    if (includeIndiaRemote) {
+      targets.push({
+        role,
+        location: INDIA_REMOTE_LOCATION,
+        remoteOnly: true,
+        label: `${role} · India remote`,
+      });
+    }
+  }
+  return targets;
 }

@@ -173,21 +173,21 @@ export function ResumeEditor({
 
   return (
     <Dialog open={!!resume} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-primary" />
-            {resume.name}
-            <Badge variant="secondary" className="ml-2">ATS {atsScore}</Badge>
+      <DialogContent className="flex h-[min(85vh,56rem)] w-[calc(100%-2rem)] max-w-4xl flex-col overflow-hidden">
+        <DialogHeader className="min-w-0 shrink-0 pr-8">
+          <DialogTitle className="flex min-w-0 flex-wrap items-center gap-2">
+            <FileText className="h-5 w-5 shrink-0 text-primary" />
+            <span className="min-w-0 break-words">{resume.name}</span>
+            <Badge variant="secondary">ATS {atsScore}</Badge>
             {driveFileId && (
-              <Badge variant="outline" className="ml-1 gap-1">
+              <Badge variant="outline" className="gap-1">
                 <Cloud className="h-3 w-3" /> Drive
               </Badge>
             )}
           </DialogTitle>
         </DialogHeader>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <TabsList className="h-auto w-full shrink-0 flex-wrap justify-start">
             <TabsTrigger value="edit">Markdown Editor</TabsTrigger>
             <TabsTrigger value="preview">Preview</TabsTrigger>
             <TabsTrigger value="pdf">PDF View</TabsTrigger>
@@ -196,24 +196,24 @@ export function ResumeEditor({
             </TabsTrigger>
             <TabsTrigger value="ats-review" disabled={!atsReview}>ATS Review</TabsTrigger>
           </TabsList>
-          <TabsContent value="edit" className="mt-4">
+          <TabsContent value="edit" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
             <Textarea
               rows={18}
               value={displayContent}
               onChange={(e) => setContent(e.target.value)}
-              className="font-mono text-sm scrollbar-thin"
+              className="min-h-[240px] font-mono text-sm scrollbar-thin"
             />
           </TabsContent>
-          <TabsContent value="preview" className="mt-4">
-            <div className="max-h-[55vh] overflow-y-auto scrollbar-thin rounded-lg border border-border bg-white p-8 text-black dark:bg-white">
+          <TabsContent value="preview" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
+            <div className="rounded-lg border border-border bg-white p-8 text-black dark:bg-white">
               <MarkdownPreview content={displayContent} />
             </div>
           </TabsContent>
-          <TabsContent value="pdf" className="mt-4">
-            <div className="flex h-[55vh] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-6">
+          <TabsContent value="pdf" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
+            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-6">
               <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-              <p className="mt-2 text-sm text-muted-foreground">Generate and download a PDF from your resume content</p>
-              <div className="mt-4 flex items-center gap-2">
+              <p className="mt-2 text-center text-sm text-muted-foreground">Generate and download a PDF from your resume content</p>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <Label htmlFor="pdf-template" className="text-sm">Template:</Label>
                 <Select value={pdfTemplate || 'classic'} onValueChange={setPdfTemplate}>
                   <SelectTrigger className="w-[180px]">
@@ -238,16 +238,16 @@ export function ResumeEditor({
               </Button>
             </div>
           </TabsContent>
-          <TabsContent value="jd-match" className="mt-4">
+          <TabsContent value="jd-match" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
             {linkedJd ? (
               <JdMatchPanel jd={linkedJd} resume={displayContent} />
             ) : (
               <p className="text-sm text-muted-foreground">This resume is not linked to a job. Tailor a resume from a job to see keyword matching.</p>
             )}
           </TabsContent>
-          <TabsContent value="ats-review" className="mt-4">
+          <TabsContent value="ats-review" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
             {atsReview ? (
-              <div className="max-h-[55vh] space-y-5 overflow-y-auto scrollbar-thin pr-1">
+              <div className="space-y-5 pr-1">
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
                   <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Latest ATS score</p>
                   <p className="mt-1 text-3xl font-semibold text-primary">{atsReview.score}<span className="text-base text-muted-foreground">/100</span></p>
@@ -275,7 +275,7 @@ export function ResumeEditor({
             )}
           </TabsContent>
         </Tabs>
-        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button onClick={save} className="gap-2"><FileCheck className="h-4 w-4" /> Save</Button>
           <Button variant="outline" onClick={scoreATS} disabled={scoring} className="gap-2">
             <Sparkles className="h-4 w-4" /> {scoring ? 'Scoring…' : 'Score ATS'}
@@ -289,7 +289,7 @@ export function ResumeEditor({
           {showGenerateTailored && (
             <Button variant="outline" className="gap-2"><TrendingUp className="h-4 w-4" /> Generate Tailored</Button>
           )}
-          <Button variant="ghost" onClick={exportResume} className="ml-auto gap-2"><Download className="h-4 w-4" /> Export</Button>
+          <Button variant="ghost" onClick={exportResume} className="gap-2"><Download className="h-4 w-4" /> Export</Button>
         </div>
       </DialogContent>
     </Dialog>

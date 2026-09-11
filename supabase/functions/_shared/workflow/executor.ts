@@ -296,26 +296,27 @@ export async function executeWorkflow(
   }
 
   const roleLoopStart = findRoleLoopStart(nodes);
-  const searchRoles = roleLoopStart
+  const searchTargets = roleLoopStart
     ? ensureSearchRoleContext(
       ctx.variables,
       ctx.settings.jobSearch as Record<string, unknown> | undefined,
     )
     : [];
+  const searchLabels = searchTargets.map((target) => target.label);
 
   const startNodes = resumeNodeId
     ? nodes.filter((n) => n.id === resumeNodeId)
     : getEntryNodes(nodes, edges);
 
-  if (!resumeNodeId && roleLoopStart && searchRoles.length && startNodes[0]) {
+  if (!resumeNodeId && roleLoopStart && searchLabels.length && startNodes[0]) {
     await logStep(
       runId,
       userId,
       startNodes[0].id,
       'info',
-      searchRoles.length === 1
-        ? `Search role: ${searchRoles[0]}`
-        : `Search roles (${searchRoles.length}): ${searchRoles.join(', ')} — running one after another`,
+      searchLabels.length === 1
+        ? `Search: ${searchLabels[0]}`
+        : `Searches (${searchLabels.length}): ${searchLabels.join(', ')} — running one after another`,
     );
   }
 
@@ -326,7 +327,7 @@ export async function executeWorkflow(
 
   const startNextSearchRole = async (): Promise<boolean> => {
     if (!roleLoopStart) return false;
-    if (!applyNextSearchRole(ctx.variables, searchRoles)) return false;
+    if (!applyNextSearchRole(ctx.variables, searchTargets)) return false;
     for (const id of roleSubgraphNodeIds(nodes, edges)) visited.delete(id);
     queue.push(roleLoopStart);
     await logStep(
@@ -334,7 +335,7 @@ export async function executeWorkflow(
       userId,
       roleLoopStart.id,
       'info',
-      `Starting search role ${Number(ctx.variables.roleIndex ?? 0) + 1}/${searchRoles.length}: ${ctx.variables.currentRole}`,
+      `Starting search ${Number(ctx.variables.roleIndex ?? 0) + 1}/${searchLabels.length}: ${ctx.variables.currentSearchLabel || ctx.variables.currentRole}`,
     );
     await saveRunContext(runId, ctx);
     return true;

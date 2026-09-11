@@ -19,6 +19,7 @@ import { formatUnknownError, isJobPipelineStart } from './job-discovery.ts';
 import { shouldYieldForNextJob, shouldYieldMidChain } from './job-pipeline-slice.ts';
 import { isDuplicateSkipOutput } from '../job-dedupe.ts';
 import { storedFileLogMessages } from '../resume-store.ts';
+import { currentSearchLabel } from './role-loop.ts';
 
 export { isJobPipelineStart };
 export { shouldYieldForNextJob, PIPELINE_SLICE_BUDGET_MS } from './job-pipeline-slice.ts';
@@ -59,7 +60,7 @@ export async function ensureJobExecutionsInitialized(
 ): Promise<void> {
   if (ctx.variables.jobExecutionsInitialized) return;
   const rows = await initializeJobExecutions(admin, runId, userId, items, {
-    searchRole: String(ctx.variables.currentRole || '') || null,
+    searchRole: currentSearchLabel(ctx.variables) || null,
   });
   ctx.variables.jobExecutionsInitialized = true;
   ctx.variables.jobPipelineTotal = items.length;
@@ -202,7 +203,7 @@ export async function executePerJobPipeline(
       jobExecutionId,
       jobIndex,
       attempt,
-      searchRole: String(ctx.variables.currentRole || '') || null,
+      searchRole: currentSearchLabel(ctx.variables) || null,
     });
 
     await helpers.logStep(

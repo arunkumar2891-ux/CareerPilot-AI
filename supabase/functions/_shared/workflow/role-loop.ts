@@ -1,4 +1,4 @@
-import { nextSearchRole, parseJobSearchRoles } from '../job-search-roles.ts';
+import { buildSearchTargets, type SearchTarget } from '../job-search-roles.ts';
 import type { WorkflowEdgeRow, WorkflowNodeRow } from './types.ts';
 
 export function isRoleLoopStart(node: { type: string; config?: Record<string, unknown> }): boolean {
@@ -55,20 +55,59 @@ export function nextJobIndexOffset(existingMaxIndex: number | null | undefined):
   return Math.floor(n);
 }
 
+export function applySearchTarget(vars: Record<string, unknown>, target: SearchTarget): void {
+  vars.currentRole = target.role;
+  vars.currentLocation = target.location;
+  vars.remoteOnly = target.remoteOnly;
+  vars.currentSearchLabel = target.label;
+}
+
+function isSearchTarget(value: unknown): value is SearchTarget {
+  if (!value || typeof value !== 'object') return false;
+  return Boolean(String((value as SearchTarget).role || '').trim());
+}
+
+/** In-flight runs stored `searchRoles` before search targets existed. Keep those as location-only. */
+function coerceSearchTargets(
+  vars: Record<string, unknown>,
+  jobSearch: Record<string, unknown> | undefined,
+): SearchTarget[] {
+  const existing = Array.isArray(vars.searchTargets)
+    ? (vars.searchTargets as unknown[]).filter(isSearchTarget)
+    : [];
+  if (existing.length) return existing;
+
+  const legacy = Array.isArray(vars.searchRoles)
+    ? (vars.searchRoles as unknown[]).map((role) => String(role).trim()).filter(Boolean)
+    : [];
+  if (legacy.length) {
+    const location = String(vars.currentLocation || jobSearch?.location || '').trim() || 'United States';
+    return legacy.map((role) => ({
+      role,
+      location,
+      remoteOnly: false,
+      label: role,
+    }));
+  }
+  return buildSearchTargets(jobSearch);
+}
+
 export function ensureSearchRoleContext(
   vars: Record<string, unknown>,
   jobSearch: Record<string, unknown> | undefined,
-): string[] {
-  const existing = Array.isArray(vars.searchRoles)
-    ? (vars.searchRoles as unknown[]).map((role) => String(role).trim()).filter(Boolean)
-    : [];
-  const roles = existing.length ? existing : parseJobSearchRoles(jobSearch);
-  vars.searchRoles = roles;
+): SearchTarget[] {
+  const targets = coerceSearchTargets(vars, jobSearch);
+  vars.searchTargets = targets;
   const idx = Number(vars.roleIndex ?? 0);
-  const safeIndex = Number.isFinite(idx) && idx >= 0 && idx < roles.length ? idx : 0;
+  const safeIndex = Number.isFinite(idx) && idx >= 0 && idx < targets.length ? idx : 0;
   vars.roleIndex = safeIndex;
-  vars.currentRole = String(vars.currentRole || roles[safeIndex] || roles[0] || '');
-  return roles;
+  applySearchTarget(vars, targets[safeIndex] || {
+    role: '',
+    location: 'United States',
+    remoteOnly: false,
+    label: '',
+  });
+  return targets;
 }
 
 const ROLE_RESET_KEYS = [
@@ -83,11 +122,11 @@ const ROLE_RESET_KEYS = [
   'batchProgress',
 ] as const;
 
-export function applyNextSearchRole(vars: Record<string, unknown>, roles: string[]): boolean {
-  const next = nextSearchRole(roles, Number(vars.roleIndex ?? 0));
-  if (!next) return false;
-  vars.roleIndex = next.index;
-  vars.currentRole = next.role;
+export function applyNextSearchRole(vars: Record<string, unknown>, targets: SearchTarget[]): boolean {
+  const next = Number(vars.roleIndex ?? 0) + 1;
+  if (next >= targets.length) return false;
+  vars.roleIndex = next;
+  applySearchTarget(vars, targets[next]);
   for (const key of ROLE_RESET_KEYS) delete vars[key];
   return true;
 }
@@ -98,7 +137,24 @@ export function currentSearchRole(
 ): string {
   const fromCtx = String(vars.currentRole || '').trim();
   if (fromCtx) return fromCtx;
-  return parseJobSearchRoles(jobSearch)[0];
+  return buildSearchTargets(jobSearch)[0]?.role || '';
+}
+
+export function currentSearchLabel(vars: Record<string, unknown>): string {
+  return String(vars.currentSearchLabel || vars.currentRole || '').trim();
+}
+
+export function currentSearchLocation(
+  vars: Record<string, unknown>,
+  jobSearch?: Record<string, unknown>,
+): string {
+  const fromCtx = String(vars.currentLocation || '').trim();
+  if (fromCtx) return fromCtx;
+  return String(jobSearch?.location || '').trim() || 'United States';
+}
+
+export function isRemoteOnlySearch(vars: Record<string, unknown>): boolean {
+  return vars.remoteOnly === true || vars.remoteOnly === 'true';
 }
 
 export function searchRoleForNode(
@@ -106,8 +162,8 @@ export function searchRoleForNode(
   vars: Record<string, unknown>,
 ): string | null {
   if (isSharedPrefixNode(node) || isFanInNode(node)) return null;
-  const role = String(vars.currentRole || '').trim();
-  return role || null;
+  const label = currentSearchLabel(vars);
+  return label || null;
 }
 
 export function groupJobExecutionsByRole<T extends { searchRole?: string | null }>(

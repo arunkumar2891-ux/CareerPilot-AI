@@ -34,6 +34,7 @@ export function SettingsPage() {
   const [jobRoles, setJobRoles] = useState<string[]>(['AI Product Manager']);
   const [roleDraft, setRoleDraft] = useState('');
   const [jobLocation, setJobLocation] = useState('San Francisco, CA');
+  const [alsoSearchIndiaRemote, setAlsoSearchIndiaRemote] = useState(true);
   const [maxJobs, setMaxJobs] = useState('5');
   const [postedWithin, setPostedWithin] = useState(DEFAULT_JOB_POSTED_WITHIN);
   const [resumeFileId, setResumeFileId] = useState('');
@@ -61,6 +62,7 @@ export function SettingsPage() {
         setJobQuery(roles[0]);
       }
       if (js?.location) setJobLocation(String(js.location));
+      setAlsoSearchIndiaRemote(js?.alsoSearchIndiaRemote !== false && js?.alsoSearchIndiaRemote !== 'false');
       if (js?.maxJobs) setMaxJobs(String(js.maxJobs));
       if (js?.postedWithin) setPostedWithin(String(js.postedWithin));
       else setPostedWithin(DEFAULT_JOB_POSTED_WITHIN);
@@ -138,6 +140,7 @@ export function SettingsPage() {
         query: roles[0],
         roles,
         location: jobLocation,
+        alsoSearchIndiaRemote,
         maxJobs,
         postedWithin,
         resumeFileId: parsedResumeId,
@@ -258,10 +261,35 @@ export function SettingsPage() {
                   <Button type="button" variant="outline" onClick={addRole}>Add</Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Each role runs as its own scrape in the same execution. Short aliases like FDE work too. Max jobs below applies per role.
+                  Each role is scraped in your location, then again as remote-only across India when that option is on. Short aliases like FDE work too. Max jobs below applies per scrape.
                 </p>
               </div>
-              <div className="space-y-1.5"><Label>Location</Label><Input value={jobLocation} onChange={(e) => setJobLocation(e.target.value)} placeholder="San Francisco, CA" /></div>
+              <div className="space-y-1.5">
+                <Label htmlFor="job-location">Location</Label>
+                <Input
+                  id="job-location"
+                  value={jobLocation}
+                  onChange={(e) => setJobLocation(e.target.value)}
+                  placeholder="San Francisco, CA"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Primary search location. Includes on-site, hybrid, and remote jobs in this place.
+                </p>
+              </div>
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="india-remote-search">Also search remote jobs in India</Label>
+                  <p className="text-xs text-muted-foreground">
+                    On by default. Each role is searched again as remote-only with location India, in addition to your location above.
+                  </p>
+                </div>
+                <Switch
+                  id="india-remote-search"
+                  className="shrink-0"
+                  checked={alsoSearchIndiaRemote}
+                  onCheckedChange={setAlsoSearchIndiaRemote}
+                />
+              </div>
               <div className="space-y-1.5">
                 <Label>Posted within</Label>
                 <Select value={postedWithin} onValueChange={setPostedWithin}>
@@ -285,7 +313,7 @@ export function SettingsPage() {
                   max={40}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Caps how many jobs are scored and tailored for each role (for example 10 FDE + 10 Engineering Manager).
+                  Caps how many jobs are scored and tailored for each scrape (for example 10 in your location plus 10 India remote, per role).
                 </p>
               </div>
               <div className="space-y-1.5">

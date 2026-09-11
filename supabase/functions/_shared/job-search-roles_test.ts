@@ -1,4 +1,10 @@
-import { maxJobsPerRole, nextSearchRole, parseJobSearchRoles } from './job-search-roles.ts';
+import {
+  alsoSearchIndiaRemote,
+  buildSearchTargets,
+  maxJobsPerRole,
+  nextSearchRole,
+  parseJobSearchRoles,
+} from './job-search-roles.ts';
 
 Deno.test('parseJobSearchRoles reads multiple roles and expands aliases', () => {
   const roles = parseJobSearchRoles({
@@ -34,4 +40,35 @@ Deno.test('nextSearchRole walks child pipelines then stops', () => {
     throw new Error(JSON.stringify(second));
   }
   if (nextSearchRole(roles, 1) !== null) throw new Error('last role must stop');
+});
+
+Deno.test('alsoSearchIndiaRemote defaults on', () => {
+  if (!alsoSearchIndiaRemote(undefined)) throw new Error('undefined');
+  if (!alsoSearchIndiaRemote({})) throw new Error('empty');
+  if (alsoSearchIndiaRemote({ alsoSearchIndiaRemote: false })) throw new Error('false');
+  if (alsoSearchIndiaRemote({ alsoSearchIndiaRemote: 'false' })) throw new Error('string false');
+});
+
+Deno.test('buildSearchTargets adds India remote after each location scrape', () => {
+  const targets = buildSearchTargets({
+    roles: ['FDE', 'EM'],
+    location: 'Bengaluru, India',
+  });
+  if (targets.length !== 4) throw new Error(String(targets.length));
+  if (targets[0].location !== 'Bengaluru, India' || targets[0].remoteOnly) throw new Error('FDE location');
+  if (targets[1].location !== 'India' || !targets[1].remoteOnly) throw new Error('FDE India remote');
+  if (targets[1].role !== 'Forward Deployed Engineer') throw new Error(targets[1].role);
+  if (!String(targets[1].label).includes('India remote')) throw new Error(targets[1].label);
+  if (targets[2].role !== 'Engineering Manager' || targets[2].remoteOnly) throw new Error('EM location');
+  if (targets[3].role !== 'Engineering Manager' || !targets[3].remoteOnly) throw new Error('EM India remote');
+});
+
+Deno.test('buildSearchTargets skips India remote when disabled', () => {
+  const targets = buildSearchTargets({
+    roles: ['EM', 'SWE'],
+    location: 'San Francisco, CA',
+    alsoSearchIndiaRemote: false,
+  });
+  if (targets.length !== 2) throw new Error(String(targets.length));
+  if (targets.some((target) => target.remoteOnly)) throw new Error('unexpected remote scrape');
 });

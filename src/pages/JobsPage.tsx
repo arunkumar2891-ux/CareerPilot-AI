@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  MapPin, DollarSign, Star, Filter, Search, LayoutGrid,
+  MapPin, DollarSign, Filter, Search, LayoutGrid,
   Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2, Gauge, Plus, Target, MessageSquare,
 } from 'lucide-react';
 import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
@@ -46,6 +46,7 @@ export function JobsPage() {
   const [repairing, setRepairing] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [bulkTailoring, setBulkTailoring] = useState(false);
+  const [bulkScoring, setBulkScoring] = useState(false);
   const [filters, setFilters] = useState({
     keywords: '',
     location: '',
@@ -155,6 +156,32 @@ export function JobsPage() {
       toast.error(err instanceof Error ? err.message : 'Resume generation failed');
     } finally {
       setBulkTailoring(false);
+    }
+  };
+
+  const bulkScoreMatch = async () => {
+    const ids = Array.from(selectedJobIds);
+    if (ids.length === 0 || bulkScoring || bulkTailoring) return;
+    setBulkScoring(true);
+    try {
+      toast.success(`Scoring ${ids.length} job${ids.length === 1 ? '' : 's'}…`);
+      const { results, errors } = await services.jobSearch.scoreMatchMany(ids);
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
+      const failed = errors?.length ?? 0;
+      if (failed && results.length) {
+        toast.success(`Scored ${results.length} job${results.length === 1 ? '' : 's'}`, {
+          description: `${failed} could not be scored`,
+        });
+      } else if (failed && !results.length) {
+        toast.error(errors?.[0]?.error || 'Match scoring failed');
+      } else {
+        toast.success(`Scored ${results.length} job${results.length === 1 ? '' : 's'}`);
+      }
+      setSelectedJobIds(new Set());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Match scoring failed');
+    } finally {
+      setBulkScoring(false);
     }
   };
 
@@ -332,14 +359,24 @@ export function JobsPage() {
           </span>
           <Button
             size="sm"
+            variant="outline"
             className="gap-2"
-            disabled={bulkTailoring}
+            disabled={bulkTailoring || bulkScoring}
+            onClick={bulkScoreMatch}
+          >
+            <Gauge className="h-4 w-4" />
+            {bulkScoring ? 'Scoring…' : `Score match (${selectedJobIds.size})`}
+          </Button>
+          <Button
+            size="sm"
+            className="gap-2"
+            disabled={bulkTailoring || bulkScoring}
             onClick={bulkGenerateResumes}
           >
             <FileText className="h-4 w-4" />
             {bulkTailoring ? 'Starting…' : `Generate Resumes (${selectedJobIds.size})`}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds(new Set())}>Clear</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds(new Set())} disabled={bulkTailoring || bulkScoring}>Clear</Button>
         </div>
       )}
 
@@ -639,20 +676,20 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
 
   return (
     <Dialog open={!!job} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden">
-        <DialogHeader>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <DialogTitle className="text-xl">{job.role}</DialogTitle>
-              <p className="mt-1 text-sm text-muted-foreground">{job.company} · {job.location}</p>
+      <DialogContent className="flex h-[min(85vh,56rem)] w-[calc(100%-2rem)] max-w-2xl flex-col gap-4 overflow-hidden">
+        <DialogHeader className="min-w-0 shrink-0 pr-8 text-left">
+          <div className="flex min-w-0 items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-xl leading-snug break-words">{job.role}</DialogTitle>
+              <p className="mt-1 text-sm text-muted-foreground break-words">{job.company} · {job.location}</p>
             </div>
-            <div className="flex h-14 w-14 flex-col items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
+            <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
               {matchScore}
             </div>
           </div>
         </DialogHeader>
-        <ScrollArea className="max-h-[60vh] pr-3">
-          <div className="space-y-4">
+        <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-hidden pr-3">
+          <div className="min-w-0 max-w-full space-y-4">
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary" className="gap-1"><MapPin className="h-3 w-3" />{job.location}</Badge>
               {job.remote && <Badge variant="secondary">Remote</Badge>}
@@ -670,14 +707,14 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
                 {job.skills.map((s) => <Badge key={s} variant="outline">{s}</Badge>)}
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</p>
-              <p className="text-sm leading-relaxed text-muted-foreground">{job.description}</p>
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{job.description}</p>
             </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>Posted: {formatDate(job.postingDate)}</span>
               <span>Experience: {job.experience || 'Any'}</span>
-              {matchSource && <span>Scored with: {matchSource}</span>}
+              {matchSource && <span className="break-words">Scored with: {matchSource}</span>}
             </div>
             {showMatchPanel && (
               <div className="mt-4 border-t border-border pt-4">
@@ -729,7 +766,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
             )}
           </div>
         </ScrollArea>
-        <div className="flex items-center gap-2 border-t border-border pt-4">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button onClick={generateResume} disabled={starting || scoring} className="gap-2">
             <FileText className="h-4 w-4" /> {starting ? 'Starting…' : 'Generate Resume'}
           </Button>
@@ -756,10 +793,11 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               {generatingPrep ? 'Generating…' : showInterviewPrep ? 'Hide Prep' : job.interviewPrep ? 'View Prep' : 'Interview Prep'}
             </Button>
           )}
-          <Button variant="outline" className="gap-2"><Star className="h-4 w-4" /> Save</Button>
-          <Button variant="ghost" className="ml-auto gap-2" onClick={() => window.open(job.url, '_blank')}>
-            View Posting <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
+          {job.url && (
+            <Button variant="ghost" className="gap-2" onClick={() => window.open(job.url, '_blank')}>
+              View Posting <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

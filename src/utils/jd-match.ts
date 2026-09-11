@@ -1,6 +1,28 @@
 const STOP = new Set([
   'and', 'the', 'for', 'with', 'you', 'your', 'this', 'that', 'from', 'have',
   'will', 'are', 'our', 'job', 'role', 'team', 'work', 'plus', 'etc',
+  'who', 'what', 'when', 'where', 'why', 'how', 'can', 'may', 'must',
+  'able', 'also', 'into', 'such', 'than', 'then', 'them', 'they', 'their',
+  'there', 'these', 'those', 'been', 'being', 'both', 'each', 'more', 'most',
+  'other', 'some', 'any', 'all', 'not', 'but', 'out', 'over', 'after',
+  'before', 'about', 'across', 'through', 'between', 'under', 'again',
+  'once', 'only', 'very', 'just', 'like', 'make', 'made', 'using', 'used',
+  'use', 'well', 'good', 'best', 'high', 'new', 'including', 'includes',
+  'include', 'within', 'across', 'among', 'while', 'during', 'without',
+  'join', 'play', 'key', 'part', 'perks', 'benefits', 'culture', 'life',
+  'us', 'we', 'our', 'youll', 'youre', 'weve', 'were', 'dont', 'does',
+  'doing', 'done', 'get', 'got', 'has', 'had', 'having', 'its', 'own',
+  'one', 'two', 'year', 'years', 'day', 'days', 'time', 'times',
+  'strong', 'great', 'excellent', 'preferred', 'required', 'requirements',
+  'responsibility', 'responsibilities', 'looking', 'opportunity',
+  'opportunities', 'environment', 'company', 'position', 'candidate',
+  'candidates', 'please', 'apply', 'application', 'description',
+  'about', 'why', 'what', 'who', 'how',
+]);
+
+const SHORT_TECH = new Set([
+  'ai', 'ml', 'aws', 'gcp', 'sql', 'api', 'rag', 'nlp', 'ci', 'cd',
+  'c++', 'c#', 'js', 'ts', 'go', 'k8s', 'eks', 's3', 'ec2',
 ]);
 
 export function tokenizeScoreText(value: string): string[] {
@@ -8,7 +30,12 @@ export function tokenizeScoreText(value: string): string[] {
     .toLowerCase()
     .split(/[^a-z0-9+#.]+/)
     .map((w) => w.trim())
-    .filter((w) => w.length >= 3 && !STOP.has(w));
+    .filter((w) => {
+      if (!w) return false;
+      if (STOP.has(w)) return false;
+      if (SHORT_TECH.has(w)) return true;
+      return w.length >= 4;
+    });
 }
 
 export interface JdMatchResult {

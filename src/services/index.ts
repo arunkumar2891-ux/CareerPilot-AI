@@ -490,6 +490,31 @@ export class JobSearchService {
       method: (data as { method?: string })?.method,
     };
   }
+  async scoreMatchMany(jobIds: string[]): Promise<{
+    results: Array<{ jobId: string; score: number; source: string; method?: string }>;
+    errors?: Array<{ jobId: string; error: string }>;
+  }> {
+    const ids = [...new Set(jobIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!ids.length) throw new Error('Select at least one job');
+    const results: Array<{ jobId: string; score: number; source: string; method?: string }> = [];
+    const errors: Array<{ jobId: string; error: string }> = [];
+    const chunkSize = 20;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { data, error } = await supabase.functions.invoke('resume-actions', {
+        body: { mode: 'score_jobs', jobIds: chunk },
+      });
+      throwResumeActionError(data as ResumeActionResponse | null, 'Match scoring failed');
+      if (error) throw error;
+      const payload = data as {
+        results?: Array<{ jobId: string; score: number; source: string; method?: string }>;
+        errors?: Array<{ jobId: string; error: string }>;
+      } | null;
+      results.push(...(payload?.results || []));
+      errors.push(...(payload?.errors || []));
+    }
+    return { results, errors: errors.length ? errors : undefined };
+  }
   async createManual(input: { company: string; role: string; description: string; url?: string }): Promise<Job> {
     const userId = await requireUserId();
     const { data, error } = await supabase.from('jobs').insert({
@@ -1511,6 +1536,23 @@ export class ExecutionService {
     return (data || []).map((row) => mapRunRow(row as unknown as Record<string, unknown>)) as unknown as Workflow['runs'];
   }
 
+  async getRunLogs(runId: string): Promise<WorkflowRun['logs']> {
+    const id = runId.trim();
+    if (!id) return [];
+    const rpc = await supabase.rpc('get_run_logs', { p_run_id: id });
+    if (!rpc.error && Array.isArray(rpc.data)) {
+      return mapLogRows(rpc.data as Record<string, unknown>[]);
+    }
+    const { data, error } = await supabase
+      .from('workflow_logs')
+      .select(WORKFLOW_LOG_SELECT)
+      .eq('run_id', id)
+      .order('timestamp', { ascending: true })
+      .limit(5000);
+    if (error) throw error;
+    return mapLogRows((data || []) as Record<string, unknown>[]);
+  }
+
   async getRunDetail(runId: string): Promise<WorkflowRunDetail | null> {
     const [runResult, logsResult] = await Promise.all([
       supabase
@@ -2363,6 +2405,7 @@ export class BootstrapService {
           query: 'Integration Architect',
           roles: ['Integration Architect'],
           location: String(jobSearch.location || 'San Francisco, CA'),
+          alsoSearchIndiaRemote: jobSearch.alsoSearchIndiaRemote !== false && jobSearch.alsoSearchIndiaRemote !== 'false',
           maxJobs: String(jobSearch.maxJobs || '5'),
           postedWithin: String(jobSearch.postedWithin || '1d'),
           resumeFileId: String(jobSearch.resumeFileId ?? ''),
@@ -2372,14 +2415,23 @@ export class BootstrapService {
         notifications: { email: user.email ?? '' },
         userEmail: user.email ?? '',
       });
-    } else if (!roles.length) {
-      await this.settings.update({
-        jobSearch: {
-          ...jobSearch,
-          query,
-          roles: [query],
-        },
-      });
+    } else {
+      const patch: Record<string, unknown> = {};
+      if (!roles.length) {
+        patch.query = query;
+        patch.roles = [query];
+      }
+      if (jobSearch.alsoSearchIndiaRemote === undefined) {
+        patch.alsoSearchIndiaRemote = true;
+      }
+      if (Object.keys(patch).length) {
+        await this.settings.update({
+          jobSearch: {
+            ...jobSearch,
+            ...patch,
+          },
+        });
+      }
     }
 
   }

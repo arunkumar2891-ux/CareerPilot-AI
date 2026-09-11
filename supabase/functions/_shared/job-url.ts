@@ -144,11 +144,15 @@ export function postedWithinCutoffIso(postedWithin?: string): string | null {
   return new Date(Date.now() - seconds * 1000).toISOString().slice(0, 10);
 }
 
+/** LinkedIn workplace type: 1 on-site, 2 remote, 3 hybrid. */
+export const LINKEDIN_REMOTE_WORK_TYPE = '2';
+
 /** LinkedIn search URL for reference / manual verification (no deprecated sort filters). */
 export function buildLinkedInJobSearchUrl(
   query: string,
   location: string,
   postedWithin?: string,
+  options?: { remoteOnly?: boolean },
 ): string {
   const params = new URLSearchParams({
     keywords: expandJobSearchQuery(query),
@@ -156,6 +160,7 @@ export function buildLinkedInJobSearchUrl(
   });
   const fTPR = linkedInPostedWithinFilter(postedWithin);
   if (fTPR) params.set('f_TPR', fTPR);
+  if (options?.remoteOnly) params.set('f_WT', LINKEDIN_REMOTE_WORK_TYPE);
   return `https://www.linkedin.com/jobs/search/?${params.toString()}`;
 }
 
@@ -164,21 +169,27 @@ export function buildApifyJobSearchInput(
   location: string,
   postedWithin?: string,
   limitPerSource?: number,
+  options?: { remoteOnly?: boolean },
 ): {
   keywords: string;
   location: string;
   datePosted: string;
   linkedinUrl: string;
   limitPerSource?: number;
+  workType?: string;
+  remoteOnly: boolean;
 } {
   const keywords = expandJobSearchQuery(query);
   const loc = location.trim() || 'United States';
+  const remoteOnly = Boolean(options?.remoteOnly);
   return {
     keywords,
     location: loc,
     datePosted: postedWithinToApifyDatePosted(postedWithin),
-    linkedinUrl: buildLinkedInJobSearchUrl(keywords, loc, postedWithin),
+    linkedinUrl: buildLinkedInJobSearchUrl(keywords, loc, postedWithin, { remoteOnly }),
     limitPerSource: limitPerSource && limitPerSource > 0 ? limitPerSource : undefined,
+    workType: remoteOnly ? LINKEDIN_REMOTE_WORK_TYPE : undefined,
+    remoteOnly,
   };
 }
 

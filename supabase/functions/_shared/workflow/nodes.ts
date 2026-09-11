@@ -27,7 +27,7 @@ import {
 import { uploadOrUpdateDrivePdf, resolveResumePdfFileName } from '../resume-drive.ts';
 import { fetchWithTimeout } from '../fetch-timeout.ts';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
-import { currentSearchRole } from './role-loop.ts';
+import { currentSearchLabel, currentSearchLocation, currentSearchRole, isRemoteOnlySearch } from './role-loop.ts';
 import { loadMasterResumeText } from '../career-corpus/load.ts';
 import { scoreJobsAgainstResume } from '../career-corpus/score.ts';
 import { maxJobsPerRole } from '../job-search-roles.ts';
@@ -134,8 +134,15 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const query = expandJobSearchQuery(
           String(node.config.query || currentSearchRole(ctx.variables, jobSearch) || 'Software Engineer'),
         );
-        const location = String(node.config.location || jobSearch.location || 'United States');
-        const apifyInput = buildApifyJobSearchInput(query, location, String(jobSearch.postedWithin || ''));
+        const location = String(node.config.location || currentSearchLocation(ctx.variables, jobSearch));
+        const remoteOnly = isRemoteOnlySearch(ctx.variables);
+        const apifyInput = buildApifyJobSearchInput(
+          query,
+          location,
+          String(jobSearch.postedWithin || ''),
+          undefined,
+          { remoteOnly },
+        );
         return {
           output: {
             linkedinUrl: apifyInput.linkedinUrl,
@@ -143,7 +150,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             location,
             datePosted: apifyInput.datePosted,
             postedWithin: jobSearch.postedWithin || '1d',
-            searchRole: query,
+            searchRole: currentSearchLabel(ctx.variables) || query,
+            remoteOnly,
           },
           status: 'success',
         };
@@ -207,9 +215,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const jobs: Record<string, unknown>[] = [];
         const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
         const searchQuery = expandJobSearchQuery(currentSearchRole(ctx.variables, jobSearch));
+        const searchLabel = currentSearchLabel(ctx.variables) || searchQuery;
+        const remoteOnly = isRemoteOnlySearch(ctx.variables);
         const postedCutoff = postedWithinCutoffIso(String(jobSearch.postedWithin || ''));
         ctx.variables.jobsScraped = rawItems.length;
         let skippedQuery = 0;
+        let skippedNotRemote = 0;
         for (const j of rawItems) {
           const jobLink = normalizeLinkedInJobUrl(String(j.link || j.jobUrl || j.url || ''));
           if (!jobLink) continue;
@@ -239,6 +250,24 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             skippedQuery++;
             continue;
           }
+          const workplaceType = [
+            j.workplaceType,
+            j.workType,
+            Array.isArray(j.workplaceTypes) ? j.workplaceTypes.join(' ') : j.workplaceTypes,
+            j.workRemoteAllowed === true || j.workRemoteAllowed === 'true' ? 'remote' : '',
+            j.jobBenefits,
+          ].map((part) => String(part || '').trim()).filter(Boolean).join(' ');
+          if (remoteOnly) {
+            const workplace = inferJobWorkplace(
+              String(j.location || ''),
+              String(j.employmentType || ''),
+              `${workplaceType} ${title} ${jobDescription.slice(0, 800)}`,
+            );
+            if (!workplace.remote) {
+              skippedNotRemote++;
+              continue;
+            }
+          }
           jobs.push({
             title,
             company: j.companyName || j.company || 'Unknown Company',
@@ -246,15 +275,16 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             postedAt,
             employmentType: j.employmentType || '',
             seniorityLevel: j.seniorityLevel || '',
-            workplaceType: j.workplaceType || j.workType || j.jobBenefits || '',
+            workplaceType,
             jobLink,
             jobDescription,
-            searchRole: searchQuery,
+            searchRole: searchLabel,
           });
           if (jobs.length >= 40) break;
         }
         const { kept, skippedDuplicate } = filterDuplicateJobs(jobs);
         ctx.variables.jobsSkippedQueryMismatch = skippedQuery;
+        ctx.variables.jobsSkippedNotRemote = skippedNotRemote;
         ctx.variables.jobsSkippedParseDuplicate = skippedDuplicate;
         ctx.variables.jobsParsed = kept.length;
         return { output: kept, status: 'success' };
@@ -346,11 +376,13 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         }
         const jobSearch = (ctx.settings.jobSearch as Record<string, unknown>) || {};
         const scrapeLimit = maxJobsPerRole(jobSearch);
+        const remoteOnly = isRemoteOnlySearch(ctx.variables) || prev.remoteOnly === true || prev.remoteOnly === 'true';
         const apifyInput = buildApifyJobSearchInput(
           query || currentSearchRole(ctx.variables, jobSearch),
-          location || String(jobSearch.location || 'United States'),
+          location || currentSearchLocation(ctx.variables, jobSearch),
           String(jobSearch.postedWithin || ''),
           scrapeLimit,
+          { remoteOnly },
         );
         ctx.variables.jobSearchQuery = apifyInput.keywords;
         ctx.variables.linkedinSearchUrl = apifyInput.linkedinUrl;
@@ -365,6 +397,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             scrapeCompany: true,
             autoConvertToAiSearch: true,
             limitPerSource: apifyInput.limitPerSource ?? scrapeLimit,
+            ...(apifyInput.workType ? { f_WT: apifyInput.workType, workType: apifyInput.workType } : {}),
           }),
         });
         const json = await res.json();
