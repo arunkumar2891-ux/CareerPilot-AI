@@ -11,7 +11,42 @@ import {
   resolveUploadMime,
 } from '../_shared/resume-parse.ts';
 import { loadMasterResumeText } from '../_shared/career-corpus/load.ts';
-import { scoreJobMatch } from '../_shared/career-corpus/score.ts';
+import { scoreJobMatch, scoreJobsAgainstResume } from '../_shared/career-corpus/score.ts';
+import {
+  chunkItems,
+  groupJobsByResumeText,
+  MAX_SCORE_JOBS_PER_REQUEST,
+  parseScoreJobIds,
+} from '../_shared/career-corpus/score-batch.ts';
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+async function persistJobMatchScore(
+  admin: AdminClient,
+  userId: string,
+  jobId: string,
+  score: number,
+  source: string,
+): Promise<void> {
+  const { error: updateError } = await admin
+    .from('jobs')
+    .update({
+      match_score: score,
+      match_score_source: source,
+    })
+    .eq('id', jobId)
+    .eq('user_id', userId);
+  if (updateError && /match_score_source/.test(String(updateError.message))) {
+    const { error: fallbackError } = await admin
+      .from('jobs')
+      .update({ match_score: score })
+      .eq('id', jobId)
+      .eq('user_id', userId);
+    if (fallbackError) throw fallbackError;
+  } else if (updateError) {
+    throw updateError;
+  }
+}
 
 function actionErrorResponse(err: unknown, status = 500) {
   const message = err instanceof Error ? err.message : String(err);
@@ -336,29 +371,113 @@ Deno.serve(async (req) => {
         userId: user.id,
       });
 
-      const { error: updateError } = await admin
-        .from('jobs')
-        .update({
-          match_score: result.score,
-          match_score_source: result.source,
-        })
-        .eq('id', jobId)
-        .eq('user_id', user.id);
-      if (updateError && /match_score_source/.test(String(updateError.message))) {
-        const { error: fallbackError } = await admin
-          .from('jobs')
-          .update({ match_score: result.score })
-          .eq('id', jobId)
-          .eq('user_id', user.id);
-        if (fallbackError) throw fallbackError;
-      } else if (updateError) {
-        throw updateError;
-      }
+      await persistJobMatchScore(admin, user.id, jobId, result.score, result.source);
 
       return jsonResponse({
         score: result.score,
         source: result.source,
         method: result.method,
+      });
+    }
+
+    if (mode === 'score_jobs') {
+      const jobIds = parseScoreJobIds(body.jobIds ?? body.jobId);
+      if (!jobIds.length) return jsonResponse({ error: 'jobIds required' }, 400);
+      if (jobIds.length > MAX_SCORE_JOBS_PER_REQUEST) {
+        return jsonResponse({ error: `Score at most ${MAX_SCORE_JOBS_PER_REQUEST} jobs per request` }, 400);
+      }
+
+      const { data: jobRows, error: jobsError } = await admin
+        .from('jobs')
+        .select('id, description, role, company')
+        .eq('user_id', user.id)
+        .in('id', jobIds);
+      if (jobsError) throw jobsError;
+
+      const found = new Map(
+        (jobRows || []).map((row) => [String(row.id), {
+          id: String(row.id),
+          description: String(row.description || ''),
+          role: String(row.role || ''),
+          company: String(row.company || ''),
+        }]),
+      );
+      const errors: Array<{ jobId: string; error: string }> = [];
+      const jobs = jobIds.map((id) => found.get(id)).filter((job): job is {
+        id: string;
+        description: string;
+        role: string;
+        company: string;
+      } => Boolean(job));
+      for (const id of jobIds) {
+        if (!found.has(id)) errors.push({ jobId: id, error: 'Job not found' });
+      }
+
+      const { data: tailoredRows, error: tailoredError } = jobs.length
+        ? await admin
+          .from('resumes')
+          .select('job_id, name, content, created_at')
+          .eq('user_id', user.id)
+          .in('job_id', jobs.map((job) => job.id))
+          .order('created_at', { ascending: false })
+        : { data: [], error: null };
+      if (tailoredError) throw tailoredError;
+
+      const tailoredByJobId = new Map<string, { name: string; text: string }>();
+      for (const row of tailoredRows || []) {
+        const jobId = String(row.job_id || '');
+        if (!jobId || tailoredByJobId.has(jobId)) continue;
+        tailoredByJobId.set(jobId, {
+          name: String(row.name || 'Resume'),
+          text: String(row.content || '').trim(),
+        });
+      }
+
+      const master = await loadMasterResumeText(user.id);
+      const groups = groupJobsByResumeText(jobs, tailoredByJobId, {
+        name: master.name,
+        text: master.text,
+      });
+      const results: Array<{ jobId: string; score: number; source: string; method?: string }> = [];
+
+      for (const group of groups) {
+        for (const slice of chunkItems(group.jobs)) {
+          const scored = await scoreJobsAgainstResume({
+            jobs: slice.map((job) => ({
+              jobDescription: job.description,
+              jobTitle: job.role,
+              company: job.company,
+            })),
+            resumeText: group.resumeText,
+            resumeName: group.resumeName,
+            userId: user.id,
+          });
+          for (let i = 0; i < slice.length; i++) {
+            const job = slice[i];
+            const result = scored[i] || { score: 0, source: group.resumeName, method: 'lexical' as const };
+            try {
+              await persistJobMatchScore(admin, user.id, job.id, result.score, result.source);
+              results.push({
+                jobId: job.id,
+                score: result.score,
+                source: result.source,
+                method: result.method,
+              });
+            } catch (err) {
+              errors.push({
+                jobId: job.id,
+                error: err instanceof Error ? err.message : 'Failed to save score',
+              });
+            }
+          }
+        }
+      }
+
+      return jsonResponse({
+        results,
+        errors: errors.length ? errors : undefined,
+        scored: results.length,
+        failed: errors.length,
       });
     }
 

@@ -15,6 +15,7 @@ import { buildExecutionGraph } from '@/utils/execution-graph';
 import type { GraphNodeView } from '@/utils/execution-graph';
 import { ExecutionGraph } from '@/components/executions/ExecutionGraph';
 import { ExecutionNodeDetailSheet } from '@/components/executions/ExecutionNodeDetailSheet';
+import { ExecutionRunLogs } from '@/components/executions/ExecutionRunLogs';
 import { getActiveExecutionStep } from '@/utils/execution';
 import { toast } from 'sonner';
 import { hasUsableMasterResume } from '@/utils/resume-classification';
@@ -37,6 +38,17 @@ export function ExecutionDetailPage() {
     enabled: Boolean(runId),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
+      if (status === 'running' || status === 'queued') return 5000;
+      return false;
+    },
+  });
+
+  const { data: runLogs } = useQuery({
+    queryKey: ['run-logs', runId],
+    queryFn: () => services.execution.getRunLogs(runId!),
+    enabled: Boolean(runId),
+    refetchInterval: (query) => {
+      const status = run?.status;
       if (status === 'running' || status === 'queued') return 5000;
       return false;
     },
@@ -86,6 +98,7 @@ export function ExecutionDetailPage() {
       const result = await services.execution.retryFailedJobs(runId);
       toast.success(`Retrying ${result.retriedJobs} failed job(s)`);
       await qc.invalidateQueries({ queryKey: ['run-detail', runId] });
+      await qc.invalidateQueries({ queryKey: ['run-logs', runId] });
       await qc.invalidateQueries({ queryKey: ['runs'] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Retry failed');
@@ -160,7 +173,15 @@ export function ExecutionDetailPage() {
         description={`Run ${run.id.slice(0, 8)}…`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => refetch()}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                refetch();
+                qc.invalidateQueries({ queryKey: ['run-logs', runId] });
+              }}
+            >
               <RefreshCw className="h-3.5 w-3.5" /> Refresh
             </Button>
             {isActive && (
@@ -228,6 +249,8 @@ export function ExecutionDetailPage() {
           </div>
         )}
       </div>
+
+      <ExecutionRunLogs runId={run.id} logs={runLogs?.length ? runLogs : run.logs} />
 
       <ExecutionNodeDetailSheet
         open={Boolean(selectedNode)}

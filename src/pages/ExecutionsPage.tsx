@@ -9,6 +9,8 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -19,6 +21,7 @@ import { computeRunDurationMs, formatDurationMs, formatExecutionStart, timeAgo, 
 import { getActiveExecutionStep } from '@/utils/execution';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { toast } from 'sonner';
+import { resolveRunIdLookup } from '@/utils/run-id';
 import type { WorkflowRun, WorkflowRunStatus } from '@/types';
 
 export function ExecutionsPage() {
@@ -37,6 +40,7 @@ export function ExecutionsPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+  const [runIdLookup, setRunIdLookup] = useState('');
 
   const isActiveRun = (status: WorkflowRunStatus) => status === 'running' || status === 'queued';
 
@@ -129,11 +133,20 @@ export function ExecutionsPage() {
     return parts.join(' · ');
   };
 
+  const openRunById = () => {
+    const runId = resolveRunIdLookup(runIdLookup, allRuns.map((run) => run.id));
+    if (!runId) {
+      toast.error('Enter a full run id, or a unique prefix from the list below');
+      return;
+    }
+    navigate(`/executions/${runId}`);
+  };
+
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Execution Center"
-        description="Open a run to view the execution graph, per-job branches, and node logs"
+        description="Paste a run id to open its logs, or pick a recent execution"
         actions={
           <Button
             variant="outline"
@@ -186,6 +199,27 @@ export function ExecutionsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <form
+        className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          openRunById();
+        }}
+      >
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <Label htmlFor="run-id-lookup">Open logs by run id</Label>
+          <Input
+            id="run-id-lookup"
+            value={runIdLookup}
+            onChange={(e) => setRunIdLookup(e.target.value)}
+            placeholder="Paste a workflow run UUID"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+        <Button type="submit" className="shrink-0">Open</Button>
+      </form>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10"><CheckCircle2 className="h-5 w-5 text-success" /></div><div><p className="text-xs text-muted-foreground">Successful</p><p className="text-xl font-semibold">{allRuns.filter((r) => r.status === 'success').length}</p></div></div></CardContent></Card>
