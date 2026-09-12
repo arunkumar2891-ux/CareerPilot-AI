@@ -25,7 +25,7 @@ import {
   resolvePipelineJobId,
 } from './job-discovery.ts';
 import { uploadOrUpdateDrivePdf, resolveResumePdfFileName } from '../resume-drive.ts';
-import { fetchWithTimeout } from '../fetch-timeout.ts';
+import { fetchWithTimeout, fetchJsonChecked } from '../fetch-timeout.ts';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
 import { currentSearchLabel, currentSearchLocation, currentSearchRole, isRemoteOnlySearch } from './role-loop.ts';
 import { extractEmailFromText } from '../apply-email.ts';
@@ -389,29 +389,52 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         ctx.variables.jobSearchQuery = apifyInput.keywords;
         ctx.variables.linkedinSearchUrl = apifyInput.linkedinUrl;
 
-        const res = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            keywords: apifyInput.keywords,
-            location: apifyInput.location,
-            datePosted: apifyInput.datePosted,
-            scrapeCompany: true,
-            autoConvertToAiSearch: true,
-            limitPerSource: apifyInput.limitPerSource ?? scrapeLimit,
-            ...(apifyInput.workType ? { f_WT: apifyInput.workType, workType: apifyInput.workType } : {}),
-          }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error?.message || 'Apify start failed');
+        const json = await fetchJsonChecked<{ data?: { id: string; defaultDatasetId: string } }>(
+          `https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              keywords: apifyInput.keywords,
+              location: apifyInput.location,
+              datePosted: apifyInput.datePosted,
+              scrapeCompany: true,
+              autoConvertToAiSearch: true,
+              limitPerSource: apifyInput.limitPerSource ?? scrapeLimit,
+              ...(apifyInput.workType ? { f_WT: apifyInput.workType, workType: apifyInput.workType } : {}),
+            }),
+          },
+          30000,
+          'Apify start run',
+        );
+        if (!json.data?.id) throw new Error('Apify start failed: response missing run id');
         ctx.variables.apifyRunId = json.data.id;
         ctx.variables.apifyDatasetId = json.data.defaultDatasetId;
         return { output: json.data, status: 'success' };
       }
       if (action === 'check_status') {
         const runId = ctx.variables.apifyRunId as string;
-        const res = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs/${runId}?token=${token}`);
-        const json = await res.json();
+        const url = `https://api.apify.com/v2/acts/${actorId}/runs/${runId}?token=${token}`;
+        let json: { data?: { status?: string } };
+        try {
+          json = await fetchJsonChecked(url, {}, 30000, 'Apify status check');
+          ctx.variables.apifyPollErrors = 0;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          // 4xx means a permanent problem (bad token, run gone) — fail fast.
+          if (/HTTP 4\d\d/.test(message)) throw err instanceof Error ? err : new Error(message);
+          // Transient errors (5xx, HTML error pages, network) — keep polling instead of killing the run.
+          const failures = Number(ctx.variables.apifyPollErrors ?? 0) + 1;
+          ctx.variables.apifyPollErrors = failures;
+          if (failures >= 5) {
+            throw new Error(`Apify status check failed ${failures} times in a row: ${message}`);
+          }
+          return {
+            output: { pollError: message, consecutiveFailures: failures },
+            status: 'waiting',
+            resumeAt: new Date(Date.now() + 10000),
+          };
+        }
         const status = json.data?.status;
         if (status === 'SUCCEEDED') return { output: json.data, status: 'success', route: 'true' };
         if (status === 'FAILED' || status === 'ABORTED') throw new Error(`Apify run ${status}`);
@@ -419,9 +442,19 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       }
       if (action === 'fetch_dataset') {
         const datasetId = ctx.variables.apifyDatasetId as string;
-        const res = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}`);
-        const items = await res.json();
-        return { output: items, status: 'success' };
+        const url = `https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}`;
+        let lastError: Error | null = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const items = await fetchJsonChecked<unknown[]>(url, {}, 30000, 'Apify dataset fetch');
+            return { output: items, status: 'success' };
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            if (/HTTP 4\d\d/.test(lastError.message)) break;
+            if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+        throw lastError ?? new Error('Apify dataset fetch failed');
       }
       return { output: input, status: 'success' };
     },
