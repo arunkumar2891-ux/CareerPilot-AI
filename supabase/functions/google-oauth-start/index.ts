@@ -19,11 +19,14 @@ Deno.serve(async (req) => {
       const state = btoa(JSON.stringify({ userId: user.id }));
       // drive.readonly: read resume by Doc ID (Drive export API in gdocs node)
       // drive.file: upload PDFs created by the workflow
+      // gmail.send + gmail.compose: send application emails via Gmail API
       const scopes = [
         'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/documents',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.compose',
       ].join(' ');
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
         client_id: clientId,

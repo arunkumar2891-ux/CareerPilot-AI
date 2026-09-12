@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
   MapPin, DollarSign, Filter, Search, LayoutGrid,
   Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2, Gauge, Plus, Target, MessageSquare,
+  Mail, Send, Loader2,
 } from 'lucide-react';
 import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
 import { transitionFast } from '@/lib/motion';
@@ -47,6 +48,8 @@ export function JobsPage() {
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
   const [bulkTailoring, setBulkTailoring] = useState(false);
   const [bulkScoring, setBulkScoring] = useState(false);
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const [extractingEmails, setExtractingEmails] = useState(false);
   const [filters, setFilters] = useState({
     keywords: '',
     location: '',
@@ -200,6 +203,72 @@ export function JobsPage() {
     }
   };
 
+  const extractApplyEmails = async (jobIds?: string[]) => {
+    setExtractingEmails(true);
+    try {
+      const result = await services.autoApply.extractEmails(jobIds);
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
+      if (result.extracted > 0) {
+        toast.success(`Found apply emails for ${result.extracted} of ${result.total} jobs`);
+      } else if (result.total > 0) {
+        toast.info(`No apply emails found in ${result.total} job description${result.total === 1 ? '' : 's'}`);
+      } else {
+        toast.info('All selected jobs already have an apply email');
+      }
+      return result;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Email extraction failed');
+      return null;
+    } finally {
+      setExtractingEmails(false);
+    }
+  };
+
+  const applyableJobs = (jobs || []).filter(
+    (j) => selectedJobIds.has(j.id) && j.applyEmail && j.resumeStatus === 'ready' && j.status !== 'applied',
+  );
+
+  const extractableJobs = (jobs || []).filter(
+    (j) => selectedJobIds.has(j.id) && !j.applyEmail,
+  );
+
+  const bulkExtractEmails = async () => {
+    if (extractableJobs.length === 0 || extractingEmails) return;
+    const result = await extractApplyEmails(extractableJobs.map((j) => j.id));
+    if (result && result.extracted > 0) setSelectedJobIds(new Set());
+  };
+
+  const bulkAutoApply = async () => {
+    if (applyableJobs.length === 0 || bulkApplying) return;
+    setBulkApplying(true);
+    try {
+      const result = await services.autoApply.apply(applyableJobs.map((j) => j.id));
+      await qc.invalidateQueries({ queryKey: ['jobs', 'applications'] });
+      const parts: string[] = [];
+      if (result.sent > 0) parts.push(`${result.sent} sent`);
+      if (result.failed > 0) parts.push(`${result.failed} failed`);
+      if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
+      if (result.sent > 0) {
+        toast.success(`Auto-apply complete: ${parts.join(', ')}`);
+      } else {
+        toast.warning(`Auto-apply: ${parts.join(', ')}`);
+      }
+      setSelectedJobIds(new Set());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Auto-apply failed';
+      if (/gmail_scope_missing|reconnect Google/i.test(message)) {
+        toast.error('Gmail permission needed', {
+          description: 'Reconnect Google in Integrations to enable email sending.',
+          action: { label: 'Go to Integrations', onClick: () => navigate('/integrations') },
+        });
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setBulkApplying(false);
+    }
+  };
+
   return (
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
@@ -213,6 +282,10 @@ export function JobsPage() {
             <Button variant="outline" onClick={repairSync} disabled={repairing} className="gap-2">
               <Link2 className="h-4 w-4" />
               {repairing ? 'Repairing…' : 'Repair Sync'}
+            </Button>
+            <Button variant="outline" onClick={() => extractApplyEmails()} disabled={extractingEmails || !jobs?.length} className="gap-2">
+              {extractingEmails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+              {extractingEmails ? 'Extracting…' : 'Extract Emails'}
             </Button>
             <Button variant="outline" onClick={() => setShowClearConfirm(true)} className="gap-2" disabled={!jobs?.length}>
               <Trash2 className="h-4 w-4" /> Clear All Jobs
@@ -376,7 +449,31 @@ export function JobsPage() {
             <FileText className="h-4 w-4" />
             {bulkTailoring ? 'Starting…' : `Generate Resumes (${selectedJobIds.size})`}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds(new Set())} disabled={bulkTailoring || bulkScoring}>Clear</Button>
+          {extractableJobs.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              disabled={extractingEmails || bulkApplying || bulkTailoring || bulkScoring}
+              onClick={bulkExtractEmails}
+            >
+              {extractingEmails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+              {extractingEmails ? 'Extracting…' : `Extract Emails (${extractableJobs.length})`}
+            </Button>
+          )}
+          {applyableJobs.length > 0 && (
+            <Button
+              size="sm"
+              variant="default"
+              className="gap-2"
+              disabled={bulkApplying || bulkTailoring || bulkScoring || extractingEmails}
+              onClick={bulkAutoApply}
+            >
+              {bulkApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {bulkApplying ? 'Applying…' : `Auto Apply (${applyableJobs.length})`}
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds(new Set())} disabled={bulkTailoring || bulkScoring || bulkApplying || extractingEmails}>Clear</Button>
         </div>
       )}
 
@@ -586,6 +683,11 @@ function JobCard({
         {!job.resumeId && job.resumeStatus === 'ready' && (
           <Badge variant="secondary" className="text-[10px]">Resume missing</Badge>
         )}
+        {job.applyEmail && (
+          <Badge variant="outline" className="text-[10px] gap-1">
+            <Mail className="h-2.5 w-2.5" /> Email
+          </Badge>
+        )}
       </div>
     </StaggerItem>
   );
@@ -600,6 +702,14 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
   const [showInterviewPrep, setShowInterviewPrep] = useState(false);
   const [generatingPrep, setGeneratingPrep] = useState(false);
   const [scoreOverride, setScoreOverride] = useState<{ jobId: string; score: number; source?: string } | null>(null);
+  const [showApplyConfirm, setShowApplyConfirm] = useState(false);
+  const [applyPreview, setApplyPreview] = useState<{ to: string; subject: string; body: string } | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [manualEmail, setManualEmail] = useState('');
+  const [extractingEmail, setExtractingEmail] = useState(false);
+  const [emailOverride, setEmailOverride] = useState<{ jobId: string; email: string } | null>(null);
   const { data: corpusResumes } = useQuery({
     queryKey: ['resumes', 'corpus'],
     queryFn: () => services.resume.list({ kind: 'corpus' }),
@@ -617,6 +727,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
 
   const matchScore = scoreOverride?.jobId === job.id ? scoreOverride.score : job.matchScore;
   const matchSource = scoreOverride?.jobId === job.id ? scoreOverride.source : job.matchScoreSource;
+  const effectiveApplyEmail = emailOverride?.jobId === job.id ? emailOverride.email : job.applyEmail;
 
   const generateResume = async () => {
     if (starting) return;
@@ -674,6 +785,93 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
     }
   };
 
+  const extractSingleEmail = async () => {
+    if (!job || extractingEmail) return;
+    setExtractingEmail(true);
+    try {
+      const result = await services.autoApply.extractEmails([job.id]);
+      if (result.extracted > 0) {
+        const { data } = await supabase.from('jobs').select('apply_email').eq('id', job.id).single();
+        if (data?.apply_email) {
+          setEmailOverride({ jobId: job.id, email: String(data.apply_email) });
+          toast.success(`Found apply email: ${data.apply_email}`);
+        }
+      } else {
+        toast.info('No apply email found in this job description');
+      }
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Email extraction failed');
+    } finally {
+      setExtractingEmail(false);
+    }
+  };
+
+  const openApplyPreview = async () => {
+    if (!job || !effectiveApplyEmail || loadingPreview) return;
+    setLoadingPreview(true);
+    try {
+      const preview = await services.autoApply.getApplyPreview(job.id);
+      setApplyPreview(preview);
+      setShowApplyConfirm(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to generate preview';
+      if (/gmail_scope_missing|reconnect Google/i.test(message)) {
+        toast.error('Gmail permission needed', {
+          description: 'Reconnect Google in Integrations to enable email sending.',
+          action: { label: 'Go to Integrations', onClick: () => navigate('/integrations') },
+        });
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  const confirmApply = async () => {
+    if (!job || applying) return;
+    setApplying(true);
+    try {
+      const result = await services.autoApply.apply([job.id]);
+      const r = result.results[0];
+      if (r?.status === 'sent') {
+        toast.success(`Application sent to ${effectiveApplyEmail}`);
+        await qc.invalidateQueries({ queryKey: ['jobs', 'applications'] });
+        setShowApplyConfirm(false);
+        onClose();
+      } else {
+        toast.error(r?.error || 'Failed to send application');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Auto-apply failed';
+      if (/gmail_scope_missing|reconnect Google/i.test(message)) {
+        toast.error('Gmail permission needed', {
+          description: 'Reconnect Google in Integrations to enable email sending.',
+          action: { label: 'Go to Integrations', onClick: () => navigate('/integrations') },
+        });
+      } else {
+        toast.error(message);
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const saveManualEmail = async () => {
+    if (!job || !manualEmail.trim()) return;
+    try {
+      await services.autoApply.setApplyEmail(job.id, manualEmail.trim());
+      setEmailOverride({ jobId: job.id, email: manualEmail.trim() });
+      await qc.invalidateQueries({ queryKey: ['jobs'] });
+      toast.success('Apply email saved');
+      setEditingEmail(false);
+      setManualEmail('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save email');
+    }
+  };
+
   return (
     <Dialog open={!!job} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex h-[min(85vh,56rem)] w-[calc(100%-2rem)] max-w-2xl flex-col gap-4 overflow-hidden">
@@ -700,6 +898,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               {job.resumeId && <Badge variant="outline" className="gap-1"><FileText className="h-3 w-3" /> Resume linked</Badge>}
               {job.driveFileId && <Badge variant="outline" className="gap-1"><Cloud className="h-3 w-3" /> On Drive</Badge>}
               {!job.resumeId && job.resumeStatus === 'ready' && <Badge variant="secondary">Resume not linked</Badge>}
+              {effectiveApplyEmail && <Badge variant="outline" className="gap-1"><Mail className="h-3 w-3" /> {effectiveApplyEmail}</Badge>}
             </div>
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Skills</p>
@@ -793,6 +992,47 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               {generatingPrep ? 'Generating…' : showInterviewPrep ? 'Hide Prep' : job.interviewPrep ? 'View Prep' : 'Interview Prep'}
             </Button>
           )}
+          {effectiveApplyEmail && job.resumeStatus === 'ready' && job.status !== 'applied' && (
+            <Button
+              variant="default"
+              onClick={openApplyPreview}
+              disabled={loadingPreview || applying}
+              className="gap-2"
+            >
+              {loadingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {loadingPreview ? 'Loading…' : 'Apply via Email'}
+            </Button>
+          )}
+          {!effectiveApplyEmail && job.status !== 'applied' && (
+            editingEmail ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="hiring@company.com"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                  className="h-8 w-48 text-xs"
+                />
+                <Button size="sm" variant="outline" onClick={saveManualEmail} className="h-8 text-xs">Save</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setEditingEmail(false); setManualEmail(''); }} className="h-8 text-xs">Cancel</Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={extractSingleEmail}
+                  disabled={extractingEmail}
+                  className="gap-1 text-xs"
+                >
+                  {extractingEmail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+                  {extractingEmail ? 'Extracting…' : 'Extract Email'}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setEditingEmail(true)} className="gap-1 text-xs">
+                  Set Manually
+                </Button>
+              </div>
+            )
+          )}
           {job.url && (
             <Button variant="ghost" className="gap-2" onClick={() => window.open(job.url, '_blank')}>
               View Posting <ExternalLink className="h-3.5 w-3.5" />
@@ -800,6 +1040,42 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
           )}
         </div>
       </DialogContent>
+
+      <Dialog open={showApplyConfirm} onOpenChange={setShowApplyConfirm}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Send Application</DialogTitle>
+            <DialogDescription>
+              Review the email before sending. Your tailored resume PDF will be attached.
+            </DialogDescription>
+          </DialogHeader>
+          {applyPreview && (
+            <div className="space-y-3 py-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">To</p>
+                <p className="text-sm font-medium">{applyPreview.to}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Subject</p>
+                <p className="text-sm">{applyPreview.subject}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Body</p>
+                <div className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-border p-3">
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{applyPreview.body}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowApplyConfirm(false)} disabled={applying}>Cancel</Button>
+            <Button onClick={confirmApply} disabled={applying} className="gap-2">
+              {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {applying ? 'Sending…' : 'Send Application'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

@@ -12,6 +12,7 @@ import {
 } from '../_shared/resume-parse.ts';
 import { loadMasterResumeText } from '../_shared/career-corpus/load.ts';
 import { scoreJobMatch, scoreJobsAgainstResume } from '../_shared/career-corpus/score.ts';
+import { extractApplyEmail } from '../_shared/apply-email.ts';
 import {
   chunkItems,
   groupJobsByResumeText,
@@ -543,6 +544,54 @@ Deno.serve(async (req) => {
         .eq('user_id', user.id);
 
       return jsonResponse({ prep: result });
+    }
+
+    if (mode === 'extract_apply_emails') {
+      const jobIds: string[] = Array.isArray(body.jobIds)
+        ? body.jobIds.map((id: unknown) => String(id)).filter(Boolean)
+        : [];
+
+      let query = admin
+        .from('jobs')
+        .select('id, description, company')
+        .eq('user_id', user.id)
+        .is('apply_email', null)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (jobIds.length > 0) query = query.in('id', jobIds);
+
+      const { data: jobs, error: jobsError } = await query;
+      if (jobsError) throw jobsError;
+
+      let extracted = 0;
+      const total = (jobs || []).length;
+      const errors: string[] = [];
+
+      for (const job of jobs || []) {
+        try {
+          const result = await extractApplyEmail(
+            String(job.description || ''),
+            String(job.company || ''),
+            user.id,
+          );
+          if (result.email) {
+            const { error: updateError } = await admin
+              .from('jobs')
+              .update({
+                apply_email: result.email,
+                apply_email_source: 'extracted',
+              })
+              .eq('id', job.id)
+              .eq('user_id', user.id);
+            if (updateError) throw updateError;
+            extracted++;
+          }
+        } catch (err) {
+          errors.push(`${job.id}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      return jsonResponse({ extracted, total, errors: errors.length ? errors : undefined });
     }
 
     return jsonResponse({ error: 'Unknown mode' }, 400);

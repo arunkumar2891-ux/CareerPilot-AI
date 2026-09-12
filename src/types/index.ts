@@ -79,6 +79,8 @@ export interface Job {
   pdfUrl?: string;
   createdAt: string;
   interviewPrep?: InterviewPrep | null;
+  applyEmail?: string;
+  applyEmailSource?: 'extracted' | 'manual';
 }
 
 export interface AtsReview {

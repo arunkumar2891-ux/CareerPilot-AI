@@ -28,6 +28,7 @@ import { uploadOrUpdateDrivePdf, resolveResumePdfFileName } from '../resume-driv
 import { fetchWithTimeout } from '../fetch-timeout.ts';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
 import { currentSearchLabel, currentSearchLocation, currentSearchRole, isRemoteOnlySearch } from './role-loop.ts';
+import { extractEmailFromText } from '../apply-email.ts';
 import { loadMasterResumeText } from '../career-corpus/load.ts';
 import { scoreJobsAgainstResume } from '../career-corpus/score.ts';
 import { maxJobsPerRole } from '../job-search-roles.ts';
@@ -279,6 +280,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             jobLink,
             jobDescription,
             searchRole: searchLabel,
+            applyEmail: extractEmailFromText(jobDescription),
           });
           if (jobs.length >= 40) break;
         }
@@ -717,6 +719,8 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           status: 'queued',
           url,
           content_fingerprint: fingerprint || null,
+          apply_email: job.applyEmail ? String(job.applyEmail) : null,
+          apply_email_source: job.applyEmail ? 'extracted' : null,
         };
         const { data, error } = await admin.from('jobs').insert(row).select().single();
         if (error) {

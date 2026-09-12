@@ -140,6 +140,8 @@ function mapJob(row: Record<string, unknown>): Job {
     pdfUrl: (row._pdf_url as string | undefined) || (row.pdf_url as string | undefined),
     createdAt: row.created_at as string,
     interviewPrep: row.interview_prep as Job['interviewPrep'],
+    applyEmail: row.apply_email as string | undefined,
+    applyEmailSource: (row.apply_email_source as Job['applyEmailSource']) ?? undefined,
   };
 }
 
@@ -1022,6 +1024,56 @@ export class CoverLetterService {
   }
   async update(id: string, content: string): Promise<void> {
     const { error } = await supabase.from('cover_letters').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+  }
+}
+
+export interface ApplyResult {
+  jobId: string;
+  status: 'sent' | 'failed' | 'skipped';
+  error?: string;
+  messageId?: string;
+}
+
+export interface ApplyPreview {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+export class AutoApplyService {
+  async extractEmails(jobIds?: string[]): Promise<{ extracted: number; total: number }> {
+    const { data, error } = await supabase.functions.invoke('resume-actions', {
+      body: { mode: 'extract_apply_emails', jobIds: jobIds?.length ? jobIds : undefined },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return { extracted: data?.extracted ?? 0, total: data?.total ?? 0 };
+  }
+
+  async apply(jobIds: string[]): Promise<{ results: ApplyResult[]; sent: number; failed: number; skipped: number }> {
+    const { data, error } = await supabase.functions.invoke('auto-apply', {
+      body: { jobIds },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+
+  async getApplyPreview(jobId: string): Promise<ApplyPreview> {
+    const { data, error } = await supabase.functions.invoke('auto-apply', {
+      body: { preview: true, jobId },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+
+  async setApplyEmail(jobId: string, email: string): Promise<void> {
+    const { error } = await supabase
+      .from('jobs')
+      .update({ apply_email: email, apply_email_source: 'manual' })
+      .eq('id', jobId);
     if (error) throw error;
   }
 }
@@ -2444,6 +2496,7 @@ export const services = {
   ats: new ATSService(),
   coverLetter: new CoverLetterService(),
   application: new ApplicationService(),
+  autoApply: new AutoApplyService(),
   workflow: new WorkflowService(),
   execution: new ExecutionService(),
   agent: new AgentService(),
