@@ -33,6 +33,14 @@ import { loadMasterResumeText } from '../career-corpus/load.ts';
 import { scoreJobsAgainstResume } from '../career-corpus/score.ts';
 import { maxJobsPerRole } from '../job-search-roles.ts';
 
+/** Apify status polling bounds — prevents an unfinished actor run from looping forever. */
+const APIFY_POLL_INTERVAL_MS = 10000;
+/** 10s interval → 120 attempts ≈ 20 min of polling. */
+const APIFY_POLL_MAX_ATTEMPTS = 120;
+const APIFY_POLL_MAX_WAIT_MS = 20 * 60 * 1000;
+/** Apify run states that will never produce a dataset. */
+const APIFY_TERMINAL_FAILURE_STATUSES = ['FAILED', 'ABORTED', 'TIMED-OUT', 'TIMED_OUT'];
+
 function stripHtml(html: string): string {
   return html
     .replace(/<br\s*\/?>/gi, '\n')
@@ -307,6 +315,10 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       if (fn === 'email_summary') {
         const summaryBlock = await buildEmailSummaryBlock(createAdminClient(), ctx.runId);
         const items = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
+        // One run per search target means one email per target. Without the label
+        // in the subject, up to 10 same-day emails are indistinguishable.
+        const label = currentSearchLabel(ctx.variables);
+        const subjectTarget = label ? ` — ${label}` : '';
         const scraped = Number(ctx.variables.jobsScraped ?? 0);
         const parsed = Number(ctx.variables.jobsParsed ?? 0);
         const afterDedupe = Number(ctx.variables.jobsAfterDedupe ?? 0);
@@ -327,7 +339,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           });
           return {
             output: {
-              subject: `No New Jobs Found — ${today}`,
+              subject: `No New Jobs Found${subjectTarget} — ${today}`,
               body: `${summaryBlock}<p>${detail}</p>`,
               to: email,
             },
@@ -335,7 +347,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           };
         }
         const today = new Date().toISOString().slice(0, 10);
-        let body = `<div style="font-family:Arial,sans-serif"><h2>Your ATS resumes are ready (${items.length})</h2><table border="1" cellpadding="8"><tr><th>Company</th><th>Role</th><th>Job</th><th>Resume</th></tr>`;
+        let body = `<div style="font-family:Arial,sans-serif"><h2>Your ATS resumes are ready (${items.length})${label ? ` — ${label}` : ''}</h2><table border="1" cellpadding="8"><tr><th>Company</th><th>Role</th><th>Job</th><th>Resume</th></tr>`;
         for (const it of items) {
           if (!it || typeof it !== 'object') continue;
           const row = it as Record<string, unknown>;
@@ -345,7 +357,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
         return {
           output: {
-            subject: `ATS Resumes Ready (${items.length}) — ${today}`,
+            subject: `ATS Resumes Ready (${items.length})${subjectTarget} — ${today}`,
             body: `${summaryBlock}${body}`,
             to: email,
           },
@@ -410,10 +422,15 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         if (!json.data?.id) throw new Error('Apify start failed: response missing run id');
         ctx.variables.apifyRunId = json.data.id;
         ctx.variables.apifyDatasetId = json.data.defaultDatasetId;
+        // Reset poll state so a previous role's counters never leak into this run.
+        ctx.variables.apifyPollErrors = 0;
+        ctx.variables.apifyPollAttempts = 0;
+        ctx.variables.apifyPollStartedAt = Date.now();
         return { output: json.data, status: 'success' };
       }
       if (action === 'check_status') {
         const runId = ctx.variables.apifyRunId as string;
+        if (!runId) throw new Error('Apify status check failed: no run id in context (start_run did not complete)');
         const url = `https://api.apify.com/v2/acts/${actorId}/runs/${runId}?token=${token}`;
         let json: { data?: { status?: string } };
         try {
@@ -432,13 +449,35 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           return {
             output: { pollError: message, consecutiveFailures: failures },
             status: 'waiting',
-            resumeAt: new Date(Date.now() + 10000),
+            resumeAt: new Date(Date.now() + APIFY_POLL_INTERVAL_MS),
           };
         }
         const status = json.data?.status;
         if (status === 'SUCCEEDED') return { output: json.data, status: 'success', route: 'true' };
-        if (status === 'FAILED' || status === 'ABORTED') throw new Error(`Apify run ${status}`);
-        return { output: json.data, status: 'waiting', resumeAt: new Date(Date.now() + 10000) };
+        if (APIFY_TERMINAL_FAILURE_STATUSES.includes(String(status))) {
+          throw new Error(`Apify run ${status}`);
+        }
+
+        // Bound the wait so a stuck/never-finishing actor run cannot poll forever.
+        const attempts = Number(ctx.variables.apifyPollAttempts ?? 0) + 1;
+        ctx.variables.apifyPollAttempts = attempts;
+        const startedAt = Number(ctx.variables.apifyPollStartedAt ?? 0) || Date.now();
+        ctx.variables.apifyPollStartedAt = startedAt;
+        const elapsedMs = Date.now() - startedAt;
+
+        if (attempts > APIFY_POLL_MAX_ATTEMPTS || elapsedMs > APIFY_POLL_MAX_WAIT_MS) {
+          throw new Error(
+            `Apify run ${runId} did not finish within ${Math.round(elapsedMs / 60000)} min ` +
+            `(${attempts} status checks, last status: ${status ?? 'unknown'}). ` +
+            `Giving up so the workflow can continue to the next role.`,
+          );
+        }
+
+        return {
+          output: { ...json.data, pollAttempts: attempts, elapsedMs },
+          status: 'waiting',
+          resumeAt: new Date(Date.now() + APIFY_POLL_INTERVAL_MS),
+        };
       }
       if (action === 'fetch_dataset') {
         const datasetId = ctx.variables.apifyDatasetId as string;
@@ -509,6 +548,15 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
   },
   gdocs: {
     async execute(ctx, node) {
+      // The resume corpus is user-scoped, not per-role. With one run per search
+      // target a batch of 10 would otherwise re-sync the same Google Doc 10
+      // times, burning Drive API quota for no benefit. Only target 0 syncs.
+      if (Number(ctx.variables.batchIndex ?? 0) > 0) {
+        return {
+          output: { skipped: true, reason: 'already_synced_this_batch' },
+          status: 'success',
+        };
+      }
       const fileId = parseGoogleDocFileId(resolveTemplate(String(node.config.fileId || ''), ctx));
       if (!fileId || fileId.includes('{{') || fileId.includes('YOUR_GOOGLE')) {
         return {

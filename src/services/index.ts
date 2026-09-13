@@ -1428,6 +1428,9 @@ const WORKFLOW_RUN_LIST_COLUMNS = [
   'jobs_failed',
   'jobs_skipped',
   'trigger_type',
+  'search_label',
+  'batch_index',
+  'batch_total',
 ].join(',');
 
 const WORKFLOW_RUN_NODES_LIST = 'workflow_run_nodes(node_id,status,duration_ms)';
@@ -1521,6 +1524,11 @@ function mapRunRow(r: Record<string, unknown>, logs?: Record<string, unknown>[])
     jobsFailed: Number(r.jobs_failed ?? 0) || undefined,
     jobsSkipped: Number(r.jobs_skipped ?? 0) || undefined,
     triggerType: r.trigger_type as string | undefined,
+    searchLabel: r.search_label ? String(r.search_label) : undefined,
+    batchIndex: r.batch_index === null || r.batch_index === undefined
+      ? undefined
+      : Number(r.batch_index),
+    batchTotal: Number(r.batch_total ?? 0) || undefined,
     targetJobId: targetJobIdFromRow(r),
     isLegacy: jobExecutions.length === 0,
     nodeResults: mergeNodeResults(

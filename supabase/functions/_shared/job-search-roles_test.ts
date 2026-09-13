@@ -1,8 +1,8 @@
 import {
   alsoSearchIndiaRemote,
   buildSearchTargets,
+  MAX_SEARCH_ROLES,
   maxJobsPerRole,
-  nextSearchRole,
   parseJobSearchRoles,
 } from './job-search-roles.ts';
 
@@ -33,13 +33,25 @@ Deno.test('maxJobsPerRole caps and defaults', () => {
   if (maxJobsPerRole(undefined) !== 5) throw new Error('default');
 });
 
-Deno.test('nextSearchRole walks child pipelines then stops', () => {
-  const roles = ['Forward Deployed Engineer', 'Engineering Manager'];
-  const second = nextSearchRole(roles, 0);
-  if (!second || second.role !== 'Engineering Manager' || second.index !== 1) {
-    throw new Error(JSON.stringify(second));
-  }
-  if (nextSearchRole(roles, 1) !== null) throw new Error('last role must stop');
+Deno.test('parseJobSearchRoles truncates beyond the role cap', () => {
+  const roles = parseJobSearchRoles({
+    roles: ['Role A', 'Role B', 'Role C', 'Role D', 'Role E', 'Role F', 'Role G'],
+  });
+  if (roles.length !== MAX_SEARCH_ROLES) throw new Error(String(roles.length));
+  if (roles[0] !== 'Role A' || roles[4] !== 'Role E') throw new Error(String(roles));
+  if (roles.includes('Role F')) throw new Error('cap must be enforced in the backend');
+});
+
+Deno.test('the role cap bounds daily runs and emails at 10', () => {
+  const roles = ['Role A', 'Role B', 'Role C', 'Role D', 'Role E', 'Role F'];
+  const withIndia = buildSearchTargets({ roles, location: 'San Francisco, CA' });
+  if (withIndia.length !== MAX_SEARCH_ROLES * 2) throw new Error(String(withIndia.length));
+  const withoutIndia = buildSearchTargets({
+    roles,
+    location: 'San Francisco, CA',
+    alsoSearchIndiaRemote: false,
+  });
+  if (withoutIndia.length !== MAX_SEARCH_ROLES) throw new Error(String(withoutIndia.length));
 });
 
 Deno.test('alsoSearchIndiaRemote defaults on', () => {

@@ -19,7 +19,7 @@ import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
 import { JOB_POSTED_WITHIN_OPTIONS, DEFAULT_JOB_POSTED_WITHIN } from '@/constants';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId, googleDocResumeFileId } from '@/utils/google';
-import { normalizeJobSearchRoles } from '@/utils/job-search-roles';
+import { normalizeJobSearchRoles, MAX_SEARCH_ROLES } from '@/utils/job-search-roles';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
@@ -102,7 +102,14 @@ export function SettingsPage() {
     qc.invalidateQueries({ queryKey: ['resumes'] });
   };
 
+  const rolesAtCap = jobRoles.length >= MAX_SEARCH_ROLES;
+
   const addRole = () => {
+    if (rolesAtCap) {
+      toast.error(`You can search up to ${MAX_SEARCH_ROLES} roles per day`);
+      setRoleDraft('');
+      return;
+    }
     const next = normalizeJobSearchRoles([...jobRoles, roleDraft]);
     if (!next.length || next.length === jobRoles.length) {
       setRoleDraft('');
@@ -257,12 +264,19 @@ export function SettingsPage() {
                       }
                     }}
                     placeholder="Forward Deployed Engineer"
+                    disabled={rolesAtCap}
+                    aria-describedby="job-role-help"
                   />
-                  <Button type="button" variant="outline" onClick={addRole}>Add</Button>
+                  <Button type="button" variant="outline" onClick={addRole} disabled={rolesAtCap}>Add</Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Each role is scraped in your location, then again as remote-only across India when that option is on. Short aliases like FDE work too. Max jobs below applies per scrape.
+                <p id="job-role-help" className="text-xs text-muted-foreground">
+                  Up to {MAX_SEARCH_ROLES} roles. Each role runs as its own execution and sends its own summary email — searched in your location, then again as remote-only across India when that option is on (so {MAX_SEARCH_ROLES} roles can mean up to {MAX_SEARCH_ROLES * 2} emails a day). Short aliases like FDE work too. Max jobs below applies per scrape.
                 </p>
+                {rolesAtCap && (
+                  <p role="status" className="text-xs font-medium text-amber-600 dark:text-amber-500">
+                    Role limit reached ({MAX_SEARCH_ROLES}). Remove a role to add another.
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="job-location">Location</Label>

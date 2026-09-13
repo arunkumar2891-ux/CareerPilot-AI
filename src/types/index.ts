@@ -237,6 +237,12 @@ export interface WorkflowRun {
   triggerType?: string;
   isLegacy?: boolean;
   targetJobId?: string;
+  /** Search target this run covers, e.g. "Integration Architect · India remote". */
+  searchLabel?: string;
+  /** 0-based position of this run within its batch of search targets. */
+  batchIndex?: number;
+  /** Total search targets in this run's batch. */
+  batchTotal?: number;
 }
 
 export interface WorkflowSnapshotNode {

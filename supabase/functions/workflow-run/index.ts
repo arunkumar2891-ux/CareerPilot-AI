@@ -1,6 +1,9 @@
 import { createUserClient, createAdminClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { createRun, executeWorkflow, loadWorkflow } from '../_shared/workflow/executor.ts';
+import { advanceRunBatch, createRunBatch } from '../_shared/workflow/run-batch.ts';
 import { buildMultiJobDiscoveryRunSeed, workflowHasLoadJobNode } from '../_shared/workflow/job-discovery.ts';
+import { buildSearchTargets } from '../_shared/job-search-roles.ts';
+import { getUserSettings } from '../_shared/credentials.ts';
 import { userHasMasterResume } from '../_shared/career-corpus/load.ts';
 
 async function markRunFailed(runId: string, message: string) {
@@ -69,6 +72,31 @@ Deno.serve(async (req) => {
       const seed = buildMultiJobDiscoveryRunSeed(orderedJobs);
       triggerType = seed.triggerType;
       runContext = seed.context;
+    }
+
+    if (!requiresJob) {
+      // Discovery pipeline: fan out one run per search target, executed
+      // linearly by the batch driver. Only the first run is started here.
+      const settings = await getUserSettings(user.id);
+      const targets = buildSearchTargets(settings.jobSearch as Record<string, unknown> | undefined);
+      const admin = createAdminClient();
+      const batch = await createRunBatch(admin, {
+        userId: user.id,
+        workflowId,
+        targets,
+        triggerType: 'manual',
+      });
+      if (batch) {
+        const advance = await advanceRunBatch(admin, batch.id);
+        // `runId` is kept in the response so JobsPage can keep polling the
+        // first run exactly as before.
+        return jsonResponse({
+          runId: advance.runId ?? null,
+          batchId: batch.id,
+          totalSearches: batch.total,
+          status: advance.spawned ? 'running' : 'queued',
+        });
+      }
     }
 
     const run = await createRun(workflowId, user.id, {

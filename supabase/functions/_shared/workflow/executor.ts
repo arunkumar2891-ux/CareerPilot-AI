@@ -30,12 +30,12 @@ import {
 } from '../cron-schedule.ts';
 import { RunCancelledError, assertRunActive, isRunCancelled, recoverStaleWorkflowState } from './run-lifecycle.ts';
 import {
-  applyNextSearchRole,
-  ensureSearchRoleContext,
+  currentSearchLabel,
   findRoleLoopStart,
-  roleSubgraphNodeIds,
   searchRoleForNode,
 } from './role-loop.ts';
+import { buildSearchTargets } from '../job-search-roles.ts';
+import { advancePendingBatches, advanceRunBatch, cancelRunBatch, createRunBatch } from './run-batch.ts';
 import type { RunContext } from './types.ts';
 
 export async function loadWorkflow(workflowId: string, userId: string) {
@@ -130,6 +130,16 @@ export async function cancelWorkflowRun(runId: string, userId: string): Promise<
   }
 
   await admin.from('workflow_step_queue').delete().eq('run_id', runId);
+
+  // Stop the whole batch. Otherwise Stop looks like a no-op: this target ends
+  // and the scheduler immediately starts the next one.
+  if (run.batch_id) {
+    try {
+      await cancelRunBatch(admin, String(run.batch_id));
+    } catch (err) {
+      console.error(`cancelRunBatch failed for batch ${run.batch_id}:`, err);
+    }
+  }
 
   let logNodeId = run.current_node_id as string | null;
   if (!logNodeId) {
@@ -237,6 +247,23 @@ async function runDurationMs(admin: ReturnType<typeof createAdminClient>, runId:
   return Date.now() - new Date(run.started_at as string).getTime();
 }
 
+/**
+ * Start the batch's next target once this run reaches a terminal state.
+ * Never allowed to throw: the minute scheduler's `advancePendingBatches` is the
+ * authoritative driver, so a failure here only delays the next target.
+ */
+async function kickRunBatch(
+  admin: ReturnType<typeof createAdminClient>,
+  batchId: string | null,
+): Promise<void> {
+  if (!batchId) return;
+  try {
+    await advanceRunBatch(admin, batchId);
+  } catch (err) {
+    console.error(`advanceRunBatch failed for batch ${batchId}:`, err);
+  }
+}
+
 export async function executeWorkflow(
   workflowId: string,
   userId: string,
@@ -250,12 +277,18 @@ export async function executeWorkflow(
 
   let runId = existingRunId;
   let ctx: RunContext;
+  let runBatchId: string | null = null;
+  let runBatchTotal: number | null = null;
 
   if (existingRunId) {
     const { data: run } = await admin.from('workflow_runs').select('*').eq('id', existingRunId).single();
     if (!run) throw new Error('Run not found');
     if (run.status === 'cancelled') return { runId: run.id, status: 'cancelled' };
     runId = run.id;
+    runBatchId = run.batch_id ? String(run.batch_id) : null;
+    runBatchTotal = run.batch_total === null || run.batch_total === undefined
+      ? null
+      : Number(run.batch_total);
     const stored = (run.context as Record<string, unknown>) || {};
     ctx = {
       runId,
@@ -296,50 +329,41 @@ export async function executeWorkflow(
   }
 
   const roleLoopStart = findRoleLoopStart(nodes);
-  const searchTargets = roleLoopStart
-    ? ensureSearchRoleContext(
-      ctx.variables,
-      ctx.settings.jobSearch as Record<string, unknown> | undefined,
-    )
-    : [];
-  const searchLabels = searchTargets.map((target) => target.label);
+  // One run == one search target. The target is seeded into ctx.variables by
+  // run-batch.ts; the fallback covers direct invocations and pre-batch runs.
+  if (roleLoopStart && !String(ctx.variables.currentRole || '').trim()) {
+    const fallback = buildSearchTargets(ctx.settings.jobSearch as Record<string, unknown> | undefined)[0];
+    if (fallback) {
+      ctx.variables.currentRole = fallback.role;
+      ctx.variables.currentLocation = fallback.location;
+      ctx.variables.remoteOnly = fallback.remoteOnly;
+      ctx.variables.currentSearchLabel = fallback.label;
+    }
+  }
+  const searchLabel = currentSearchLabel(ctx.variables);
 
   const startNodes = resumeNodeId
     ? nodes.filter((n) => n.id === resumeNodeId)
     : getEntryNodes(nodes, edges);
 
-  if (!resumeNodeId && roleLoopStart && searchLabels.length && startNodes[0]) {
+  if (!resumeNodeId && roleLoopStart && searchLabel && startNodes[0]) {
+    const batchTotal = Number(runBatchTotal ?? 0);
+    const batchPosition = Number(ctx.variables.batchIndex ?? 0) + 1;
     await logStep(
       runId,
       userId,
       startNodes[0].id,
       'info',
-      searchLabels.length === 1
-        ? `Search: ${searchLabels[0]}`
-        : `Searches (${searchLabels.length}): ${searchLabels.join(', ')} — running one after another`,
+      batchTotal > 1
+        ? `Search ${batchPosition}/${batchTotal}: ${searchLabel}`
+        : `Search: ${searchLabel}`,
     );
   }
 
-  let queue = [...startNodes];
+  const queue = [...startNodes];
   const visited = new Set<string>();
   let iterations = 0;
   const maxIterations = 400;
-
-  const startNextSearchRole = async (): Promise<boolean> => {
-    if (!roleLoopStart) return false;
-    if (!applyNextSearchRole(ctx.variables, searchTargets)) return false;
-    for (const id of roleSubgraphNodeIds(nodes, edges)) visited.delete(id);
-    queue.push(roleLoopStart);
-    await logStep(
-      runId,
-      userId,
-      roleLoopStart.id,
-      'info',
-      `Starting search ${Number(ctx.variables.roleIndex ?? 0) + 1}/${searchLabels.length}: ${ctx.variables.currentSearchLabel || ctx.variables.currentRole}`,
-    );
-    await saveRunContext(runId, ctx);
-    return true;
-  };
 
   while (queue.length && iterations < maxIterations) {
     iterations++;
@@ -397,7 +421,6 @@ export async function executeWorkflow(
           );
           await saveRunContext(runId, ctx);
           for (const chainNode of chain) visited.add(chainNode.id);
-          if (await startNextSearchRole()) continue;
           const nextId = getNextNodeId(tail.id, edges);
           if (nextId) {
             const nextNode = nodes.find((n) => n.id === nextId);
@@ -435,7 +458,6 @@ export async function executeWorkflow(
 
           delete ctx.variables.batchProgress;
           for (const chainNode of chain) visited.add(chainNode.id);
-          if (await startNextSearchRole()) continue;
           const nextId = getNextNodeId(tail.id, edges);
           if (nextId) {
             const nextNode = nodes.find((n) => n.id === nextId);
@@ -586,6 +608,9 @@ export async function executeWorkflow(
         error_message: message,
         duration_ms: duration,
       }).eq('id', runId).in('status', ['running', 'queued']);
+      // A failed target must not strand the rest of the batch. Best-effort: the
+      // minute scheduler advances the batch anyway if this kick fails.
+      await kickRunBatch(admin, runBatchId);
       return { runId, status: 'failed' };
     }
   }
@@ -631,6 +656,9 @@ export async function executeWorkflow(
     last_run: new Date().toISOString(),
   }).eq('id', workflowId);
 
+  // This target finished; start the next one in the batch.
+  await kickRunBatch(admin, runBatchId);
+
   return { runId, status: finalStatus };
 }
 
@@ -643,31 +671,49 @@ export async function processDueSteps(): Promise<number> {
     .select('*')
     .eq('status', 'pending')
     .lte('execute_after', now)
+    .order('execute_after', { ascending: true })
     .limit(10);
 
-  if (!steps?.length) return 0;
+  for (const step of steps ?? []) {
+    try {
+      await admin.from('workflow_step_queue').update({ status: 'processing' }).eq('id', step.id);
+      const { data: run } = await admin
+        .from('workflow_runs')
+        .select('workflow_id, user_id, current_node_id, status')
+        .eq('id', step.run_id)
+        .single();
+      if (!run) {
+        // Orphaned row; clear it so it does not sit in `processing` forever.
+        await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
+        continue;
+      }
+      if (run.status !== 'running' && run.status !== 'queued') {
+        await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
+        continue;
+      }
 
-  for (const step of steps) {
-    await admin.from('workflow_step_queue').update({ status: 'processing' }).eq('id', step.id);
-    const { data: run } = await admin
-      .from('workflow_runs')
-      .select('workflow_id, user_id, current_node_id, status')
-      .eq('id', step.run_id)
-      .single();
-    if (!run) continue;
-    if (run.status !== 'running' && run.status !== 'queued') {
+      const { nodes } = await loadWorkflow(run.workflow_id, run.user_id);
+      const currentNode = nodes.find((n) => n.id === step.node_id);
+      if (!currentNode) {
+        await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
+        continue;
+      }
+
+      await executeWorkflow(run.workflow_id, run.user_id, step.run_id, step.node_id);
       await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
-      continue;
+    } catch (err) {
+      // One bad step must not abort the remaining steps or skip the batch sweep
+      // below. The run itself is already marked failed by executeWorkflow.
+      console.error(`Workflow step ${step.id} failed:`, err);
+      await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
     }
-
-    const { nodes, edges } = await loadWorkflow(run.workflow_id, run.user_id);
-    const currentNode = nodes.find((n) => n.id === step.node_id);
-    if (!currentNode) continue;
-
-    await executeWorkflow(run.workflow_id, run.user_id, step.run_id, step.node_id);
-    await admin.from('workflow_step_queue').update({ status: 'done' }).eq('id', step.id);
   }
-  return steps.length;
+
+  // Always runs, even with no due steps: this is the authoritative batch driver
+  // and the recovery path for batches whose run was reaped by
+  // recoverStaleWorkflowState or whose finalization kick never landed.
+  await advancePendingBatches(admin);
+  return steps?.length ?? 0;
 }
 
 async function hasScheduledRunToday(
@@ -823,7 +869,27 @@ export async function processScheduledAutomations(): Promise<number> {
       );
       if (slot === 'missing-table' && !claimed) continue;
 
-      await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
+      // Only the discovery pipeline fans out per role. A workflow without a
+      // role-loop start node (e.g. Resume Tailoring) runs as a single run.
+      const { nodes: autoNodes } = await loadWorkflow(auto.workflow_id, auto.user_id);
+      const targets = findRoleLoopStart(autoNodes)
+        ? buildSearchTargets(
+          (await getUserSettings(auto.user_id)).jobSearch as Record<string, unknown> | undefined,
+        )
+        : [];
+      const batch = targets.length
+        ? await createRunBatch(admin, {
+          userId: auto.user_id,
+          workflowId: auto.workflow_id,
+          targets,
+          triggerType: 'schedule',
+        })
+        : null;
+      if (batch) {
+        await advanceRunBatch(admin, batch.id);
+      } else {
+        await executeWorkflow(auto.workflow_id, auto.user_id, undefined, undefined, { triggerType: 'schedule' });
+      }
       ran++;
     } catch (err) {
       console.error(`Scheduled automation ${auto.id} failed:`, err);

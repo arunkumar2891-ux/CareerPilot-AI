@@ -258,6 +258,16 @@ export function ExecutionsPage() {
                     <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
                       {describeTriggerType(run.triggerType)}
                     </Badge>
+                    {run.searchLabel && (
+                      <Badge variant="outline" className="min-w-0 text-[10px] font-normal">
+                        <span className="truncate">{run.searchLabel}</span>
+                        {run.batchTotal && run.batchTotal > 1 && (
+                          <span className="ml-1 shrink-0 text-muted-foreground">
+                            {(run.batchIndex ?? 0) + 1}/{run.batchTotal}
+                          </span>
+                        )}
+                      </Badge>
+                    )}
                   </div>
                   <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground break-words sm:truncate">
                     {describeRunSummary(run)}
