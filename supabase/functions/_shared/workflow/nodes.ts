@@ -172,9 +172,13 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         return { output: items.slice(0, max), status: 'success' };
       }
       if (action === 'match_score') {
-        const items = (Array.isArray(input) ? input : (Array.isArray(ctx.items) ? ctx.items : [input]))
+        // Runs inside the per-job fan-out (after ATS Optimizer), so `input` is
+        // normally a single job object. The array path is kept for pre-fan-out
+        // graphs and for `foreach` batches.
+        const isSingle = !Array.isArray(input) && Boolean(input) && typeof input === 'object';
+        const items = (Array.isArray(input) ? input : (isSingle ? [input] : (Array.isArray(ctx.items) ? ctx.items : [])))
           .filter((item) => item && typeof item === 'object') as Record<string, unknown>[];
-        if (!items.length) return { output: [], status: 'success' };
+        if (!items.length) return { output: Array.isArray(input) ? [] : input, status: 'success' };
         const master = await loadMasterResumeText(ctx.userId);
         const scored = await scoreJobsAgainstResume({
           jobs: items.map((job) => ({
@@ -182,7 +186,9 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             jobTitle: String(job.title || job.role || ''),
             company: String(job.company || job.companyName || ''),
           })),
-          resumeText: master.text,
+          // After ATS Optimizer the tailored resume is on `output`, so score
+          // that. Falls back to the master resume for pre-fan-out graphs.
+          resumeText: String((isSingle && items[0].output) || master.text),
           resumeName: master.name,
           userId: ctx.userId,
         });
@@ -191,6 +197,21 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           matchScore: scored[index]?.score ?? 0,
           matchScoreSource: scored[index]?.source || master.name,
         }));
+        // Preserve the input shape: returning an array from inside the fan-out
+        // would make the next node treat one job as a batch.
+        if (isSingle) {
+          const single = output[0];
+          // `Store Job` already inserted this row, so the score has to be
+          // written back or it would never reach the jobs table.
+          const jobId = String(single.jobId || single.id || ctx.variables.lastJobId || '');
+          if (jobId) {
+            await createAdminClient().from('jobs').update({
+              match_score: single.matchScore,
+              match_score_source: single.matchScoreSource || null,
+            }).eq('id', jobId).eq('user_id', ctx.userId);
+          }
+          return { output: single, status: 'success' };
+        }
         ctx.items = output;
         return { output, status: 'success' };
       }

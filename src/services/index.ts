@@ -1282,6 +1282,14 @@ export class WorkflowService {
     }
   }
   /** Ensure parse → filter → limit → match score → store → ATS (fixes legacy graph order). */
+  /**
+   * Migrate the built-in pipeline graph in place for existing users.
+   *
+   * Target chain: Parse → Dedupe → Limit → Store → ATS → Match Score → LaTeX.
+   * `Match Score` sits *inside* the per-job fan-out (after ATS) so it scores the
+   * tailored resume, not the generic master. Earlier versions placed it before
+   * `Store Job`; this moves it and is idempotent either way.
+   */
   private async repairDefaultPipelineGraph(workflowId: string): Promise<void> {
     const wf = await this.get(workflowId);
     if (!wf) return;
@@ -1297,35 +1305,46 @@ export class WorkflowService {
 
     let match = find('Match Score')
       || wf.nodes.find((n) => n.type === 'transform' && n.config.action === 'match_score');
-    const nodes = [...wf.nodes];
+    let nodes = [...wf.nodes];
     if (!match) {
       match = {
         id: crypto.randomUUID(),
         type: 'transform',
         name: 'Match Score',
-        position: {
-          x: Math.round((limit.position.x + store.position.x) / 2) || limit.position.x + 100,
-          y: limit.position.y,
-        },
+        position: { x: ats.position.x + 200, y: ats.position.y },
         config: { action: 'match_score' },
       };
       nodes.push(match);
+    } else if (match.position.x < ats.position.x) {
+      // Reposition an older pre-ATS Match Score so the graph reads correctly.
+      nodes = nodes.map((n) =>
+        n.id === match!.id
+          ? { ...n, position: { x: ats.position.x + 200, y: ats.position.y } }
+          : n
+      );
     }
 
     const desired: [string, string][] = [
       [parse.id, dedupe.id],
       [dedupe.id, limit.id],
-      [limit.id, match.id],
-      [match.id, store.id],
+      [limit.id, store.id],
       [store.id, ats.id],
-      [ats.id, latex.id],
+      [ats.id, match.id],
+      [match.id, latex.id],
     ];
     const hasEdge = (source: string, target: string) =>
       wf.edges.some((e) => e.source === source && e.target === target);
-    const alreadyRepaired = desired.every(([source, target]) => hasEdge(source, target));
-    if (alreadyRepaired && nodes.length === wf.nodes.length) return;
-
+    const desiredSet = new Set(desired.map(([s, t]) => `${s}->${t}`));
     const chainIds = new Set(desired.flat());
+    // Any edge between two chain nodes that isn't in `desired` is stale (e.g. the
+    // old limit→match, match→store, ats→latex) and must be dropped, otherwise a
+    // node would have two outgoing edges and the graph would fork.
+    const staleEdges = wf.edges.filter((e) =>
+      chainIds.has(e.source) && chainIds.has(e.target) && !desiredSet.has(`${e.source}->${e.target}`)
+    );
+    const alreadyRepaired = desired.every(([source, target]) => hasEdge(source, target));
+    if (alreadyRepaired && !staleEdges.length && nodes.length === wf.nodes.length) return;
+
     const kept = wf.edges.filter((e) => !chainIds.has(e.source) || !chainIds.has(e.target));
     const repaired: WorkflowEdge[] = [
       ...kept,

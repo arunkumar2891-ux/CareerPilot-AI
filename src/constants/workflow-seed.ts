@@ -24,9 +24,11 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
     { type: 'function', name: 'Parse Jobs', x: 1200, y: 200, config: { builtin: 'parse_apify_jobs' } },
     { type: 'duplicate_checker', name: 'Filter Duplicates', x: 1400, y: 200, config: {} },
     { type: 'transform', name: 'Limit Jobs', x: 1600, y: 200, config: { action: 'limit', max: 10 } },
-    { type: 'transform', name: 'Match Score', x: 1800, y: 200, config: { action: 'match_score' } },
-    { type: 'supabase', name: 'Store Job', x: 2000, y: 200, config: { action: 'insert_job' } },
-    { type: 'gemini', name: 'ATS Optimizer', x: 2200, y: 200, config: {} },
+    { type: 'supabase', name: 'Store Job', x: 1800, y: 200, config: { action: 'insert_job' } },
+    { type: 'gemini', name: 'ATS Optimizer', x: 2000, y: 200, config: {} },
+    // Inside the per-job fan-out, after ATS optimization: scores the tailored
+    // resume against the job rather than the generic master resume.
+    { type: 'transform', name: 'Match Score', x: 2200, y: 200, config: { action: 'match_score' } },
     { type: 'function', name: 'Build LaTeX', x: 2400, y: 200, config: { builtin: 'build_latex' } },
     { type: 'pdf', name: 'Compile PDF', x: 2600, y: 200, config: {} },
     { type: 'storage', name: 'Upload to Storage', x: 2800, y: 200, config: {} },

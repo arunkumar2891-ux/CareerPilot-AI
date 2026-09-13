@@ -362,6 +362,12 @@ export async function executeWorkflow(
 
   const queue = [...startNodes];
   const visited = new Set<string>();
+  // A resumed run must still dedupe within its own slice. Previously the
+  // `!resumeNodeId` escape disabled the visited guard for the whole slice, so
+  // the Check Apify Status → Wait 10s poll pair could re-enter nodes past it
+  // (e.g. Fetch Results) instead of advancing once. Only the resume entry node
+  // itself needs to bypass the guard, since it was already visited pre-suspend.
+  let allowRevisit = Boolean(resumeNodeId);
   let iterations = 0;
   const maxIterations = 400;
 
@@ -369,7 +375,8 @@ export async function executeWorkflow(
     iterations++;
     await assertRunActive(admin, runId);
     const node = queue.shift()!;
-    if (visited.has(node.id) && !resumeNodeId) continue;
+    if (visited.has(node.id) && !allowRevisit) continue;
+    allowRevisit = false;
     visited.add(node.id);
     ctx.currentNodeId = node.id;
 
@@ -539,6 +546,10 @@ export async function executeWorkflow(
         });
         await recordNodeRun(admin, runId, userId, node.id, 'running', duration, result.output);
         await touchRunDuration(admin, runId);
+        // A run is single-threaded: exactly one pending step may exist for it.
+        // Inserting without clearing let duplicate pending rows accumulate, and
+        // every one of them resumed the run independently.
+        await admin.from('workflow_step_queue').delete().eq('run_id', runId).eq('status', 'pending');
         await admin.from('workflow_step_queue').insert({
           run_id: runId,
           user_id: userId,
@@ -676,7 +687,19 @@ export async function processDueSteps(): Promise<number> {
 
   for (const step of steps ?? []) {
     try {
-      await admin.from('workflow_step_queue').update({ status: 'processing' }).eq('id', step.id);
+      // Atomic claim. `processDueSteps` runs from both the pg_cron minute tick
+      // and the HTTP kick fired by enqueueNextPipelineSlice / enqueueRunStart,
+      // so two invocations can select the same row. Without the status guard
+      // both would execute it, and each `waiting` result would insert another
+      // pending row — pending rows multiply and the run re-executes nodes.
+      const { data: claimed } = await admin
+        .from('workflow_step_queue')
+        .update({ status: 'processing' })
+        .eq('id', step.id)
+        .eq('status', 'pending')
+        .select('id');
+      if (!claimed?.length) continue;
+
       const { data: run } = await admin
         .from('workflow_runs')
         .select('workflow_id, user_id, current_node_id, status')
