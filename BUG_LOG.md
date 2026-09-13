@@ -81,3 +81,71 @@ Three gaps made that last branch a true infinite loop:
 **Validation:** 6 new regression tests in `apify-poll_test.ts` covering: attempt cap exceeded, wall-clock budget exceeded, normal waiting path increments counters, `TIMED-OUT` is terminal, missing run id fails fast, and `SUCCEEDED` still routes `true`. Deno is not installed on this machine, so the suite was not executed locally — run `deno test --allow-all supabase/functions/_shared/workflow/` to confirm.
 
 ---
+
+## BUG-003 — Job search fails with `workflow_nodes_pkey` duplicate key and statement timeout
+
+**Status:** Fixed
+**Feature:** Job search pipeline (built-in graph provisioning / repair)
+
+**Symptom:** Clicking Run Search on the Jobs page surfaced two errors:
+`{"code":"23505","message":"duplicate key value violates unique constraint \"workflow_nodes_pkey\""}`
+and `{"code":"57014","message":"canceling statement due to statement timeout"}`.
+
+**Root Cause:** A latent hazard dating to `d5f3cf3c`, detonated by moving `Match Score` after
+`ATS Optimizer`. `repairDefaultPipelineGraph()` reordered the chain by calling `saveGraph()`,
+which is a destructive full-graph rewrite: `DELETE` all `workflow_edges`, `DELETE` all
+`workflow_nodes`, then re-`INSERT` every node with the *same* primary keys (ids are preserved
+when they are UUIDs).
+
+Before `d5f3cf3c` the repair was a one-shot legacy migration, gated on the presence of the *old*
+shape — `if (!wf.edges.some((e) => e.source === dedupe.id && e.target === ats.id)) return;`.
+Once repaired that edge no longer exists, so the function became a permanent no-op and the
+destructive `saveGraph()` path was effectively unreachable. `d5f3cf3c` replaced that precondition
+with a convergence check (`alreadyRepaired && nodes.length === wf.nodes.length`), which is safe
+only while the desired chain never changes. Changing the chain made it fire on every call.
+Lesson: gate a graph migration on the *source* shape it migrates from, not on the target shape.
+
+Three compounding gaps:
+
+1. **The repair ran on every job search.** `JobsPage.runSearch()` calls
+   `ensureDefaultPipeline()` -> `repairDefaultPipelineGraph()`. Because the desired chain had
+   changed, the "already repaired" early-return no longer matched, so the full rewrite fired on
+   every invocation instead of once.
+2. **Concurrent callers raced on the same rows.** Bootstrap also calls `ensureDefaultPipeline()`.
+   Two overlapping rewrites interleaved as delete/delete/insert/insert; both computed identical
+   node ids, so the second `INSERT` collided -> `23505`. Lock contention between the two
+   delete-all statements produced `57014`.
+3. **`saveGraph` ignored its `DELETE` errors.** The two deletes were awaited without checking
+   `error`, so a timed-out delete fell through to the insert and surfaced as a misleading
+   duplicate-key error rather than the real cause. Worse, the edge delete had already committed,
+   so a throwing node insert left the workflow with **zero edges** — an inert pipeline.
+
+**Files:**
+- `src/services/index.ts` — `repairDefaultPipelineGraph()` rewritten to do targeted writes instead
+  of `saveGraph()`; `ensureDefaultPipeline()` wrapped in an in-flight promise guard;
+  `saveGraph()` now checks both delete errors
+- `supabase/migrations/027_workflow_edges_unique.sql` — dedupes `workflow_edges` and adds a unique
+  index on `(workflow_id, source_id, target_id, COALESCE(label,''))`
+
+**Fix:**
+1. **No more full-graph rewrite.** The repair rebuilds the seed topology by matching nodes on
+   name, then writes only the delta: delete stale edge rows by id, insert missing edge rows.
+   `workflow_nodes` is never deleted, so the PK collision is structurally impossible and the
+   statements are small enough not to time out. Edges touching user-added nodes are left alone.
+2. **Recovers wiped graphs.** Because the desired edge set is derived from `buildSeedEdges()`
+   rather than a hardcoded six-edge chain, a graph left edge-less by the half-applied
+   `saveGraph` is fully restored on the next load.
+3. **Concurrency collapsed.** `ensureDefaultPipeline()` shares a single in-flight promise, so
+   bootstrap plus JobsPage (and React double-mount in dev) no longer race. Residual cross-tab
+   races are absorbed: `23505` on the node/edge inserts is treated as "someone else got there
+   first", and the new unique index prevents duplicate links entirely.
+4. **Duplicate links cannot fork the run.** A second outgoing edge between the same pair made
+   the executor fan out twice down one branch. Migration 027 dedupes existing rows (keeping the
+   oldest per group) and enforces uniqueness. Verified the seed has no legitimate duplicate
+   `(source, target, label)` triples — the only fork, `Check Apify Status`, uses distinct targets.
+
+**Validation:** `npm run typecheck` clean, `npm run build` passes, `npx eslint src/services/index.ts`
+clean. `deno test` on `seed-graph_test.ts` + `run-batch_test.ts` — 14 passed / 0 failed.
+Migration 027 must be applied in Supabase before the next run.
+
+---

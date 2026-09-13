@@ -1137,8 +1137,13 @@ export class WorkflowService {
   }
   async saveGraph(workflowId: string, nodes: WorkflowNode[], edges: WorkflowEdge[]): Promise<void> {
     const userId = await requireUserId();
-    await supabase.from('workflow_edges').delete().eq('workflow_id', workflowId);
-    await supabase.from('workflow_nodes').delete().eq('workflow_id', workflowId);
+    // These deletes must be checked: if one fails (e.g. 57014 statement timeout)
+    // the inserts below would re-add rows that still exist and surface as a
+    // misleading `workflow_nodes_pkey` duplicate-key error instead of the cause.
+    const { error: edgeDelErr } = await supabase.from('workflow_edges').delete().eq('workflow_id', workflowId);
+    if (edgeDelErr) throw edgeDelErr;
+    const { error: nodeDelErr } = await supabase.from('workflow_nodes').delete().eq('workflow_id', workflowId);
+    if (nodeDelErr) throw nodeDelErr;
 
     const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
     const idMap = new Map<string, string>();
@@ -1178,7 +1183,24 @@ export class WorkflowService {
       if (edgeErr) throw edgeErr;
     }
   }
+  private ensureDefaultPipelineInFlight: Promise<Workflow> | null = null;
+  /**
+   * Bootstrap and JobsPage both call this, and React can mount twice in dev, so
+   * overlapping calls are normal. They used to run the graph repair concurrently,
+   * which raced on the same rows (statement timeouts and duplicate primary keys).
+   * Collapse concurrent callers onto a single in-flight promise.
+   */
   async ensureDefaultPipeline(): Promise<Workflow> {
+    if (this.ensureDefaultPipelineInFlight) return this.ensureDefaultPipelineInFlight;
+    const run = this.ensureDefaultPipelineImpl();
+    this.ensureDefaultPipelineInFlight = run;
+    try {
+      return await run;
+    } finally {
+      this.ensureDefaultPipelineInFlight = null;
+    }
+  }
+  private async ensureDefaultPipelineImpl(): Promise<Workflow> {
     const userId = await requireUserId();
     const { data: existingRows } = await supabase
       .from('workflows')
@@ -1283,78 +1305,109 @@ export class WorkflowService {
   }
   /** Ensure parse → filter → limit → match score → store → ATS (fixes legacy graph order). */
   /**
-   * Migrate the built-in pipeline graph in place for existing users.
+   * Migrate/repair the built-in pipeline graph in place for existing users.
    *
-   * Target chain: Parse → Dedupe → Limit → Store → ATS → Match Score → LaTeX.
-   * `Match Score` sits *inside* the per-job fan-out (after ATS) so it scores the
-   * tailored resume, not the generic master. Earlier versions placed it before
-   * `Store Job`; this moves it and is idempotent either way.
+   * Rebuilds the full seed topology by matching nodes on name, so it handles both
+   * the `Match Score` move (it now sits after `ATS Optimizer`, inside the per-job
+   * fan-out, to score the tailored resume rather than the generic master) and
+   * recovery of a graph whose edges were wiped by a half-applied `saveGraph`.
+   *
+   * Deliberately does NOT call `saveGraph`: that deletes and re-inserts every node
+   * and edge. It is slow enough to hit the statement timeout (57014), and when the
+   * node delete failed the subsequent insert re-used the same primary keys and
+   * failed with `workflow_nodes_pkey` (23505) — after the edges had already been
+   * deleted, leaving an edge-less graph. Only rows that actually differ are
+   * touched here, and user-added nodes/edges are left alone.
    */
   private async repairDefaultPipelineGraph(workflowId: string): Promise<void> {
-    const wf = await this.get(workflowId);
+    let wf = await this.get(workflowId);
     if (!wf) return;
-    const find = (name: string) => wf.nodes.find((n) => n.name === name);
-    const parse = find('Parse Jobs');
-    const dedupe = find('Filter Duplicates');
-    const limit = find('Limit Jobs')
-      || wf.nodes.find((n) => n.type === 'transform' && n.config.action === 'limit');
-    const store = find('Store Job');
-    const ats = find('ATS Optimizer');
-    const latex = find('Build LaTeX');
-    if (!parse || !dedupe || !limit || !store || !ats || !latex) return;
 
-    let match = find('Match Score')
-      || wf.nodes.find((n) => n.type === 'transform' && n.config.action === 'match_score');
-    let nodes = [...wf.nodes];
-    if (!match) {
-      match = {
-        id: crypto.randomUUID(),
-        type: 'transform',
-        name: 'Match Score',
-        position: { x: ats.position.x + 200, y: ats.position.y },
-        config: { action: 'match_score' },
-      };
-      nodes.push(match);
-    } else if (match.position.x < ats.position.x) {
-      // Reposition an older pre-ATS Match Score so the graph reads correctly.
-      nodes = nodes.map((n) =>
-        n.id === match!.id
-          ? { ...n, position: { x: ats.position.x + 200, y: ats.position.y } }
-          : n
-      );
+    const seedNodes = DEFAULT_JOB_SEARCH_WORKFLOW.nodes;
+    const nodeByName = (graph: Workflow, name: string) => graph.nodes.find((n) => n.name === name);
+
+    // `Match Score` is the only node newer graphs can be missing entirely.
+    if (!nodeByName(wf, 'Match Score')) {
+      const legacy = wf.nodes.find((n) => n.type === 'transform' && n.config.action === 'match_score');
+      const ats = nodeByName(wf, 'ATS Optimizer');
+      if (!legacy && ats) {
+        const userId = await requireUserId();
+        const id = crypto.randomUUID();
+        const { error } = await supabase.from('workflow_nodes').insert({
+          id,
+          workflow_id: workflowId,
+          user_id: userId,
+          node_key: id,
+          type: 'transform',
+          name: 'Match Score',
+          position_x: ats.position.x + 200,
+          position_y: ats.position.y,
+          config: { action: 'match_score' },
+        });
+        // A concurrent caller may have inserted it first; re-read rather than fail.
+        if (error && error.code !== '23505') throw error;
+        wf = (await this.get(workflowId)) || wf;
+      } else if (legacy) {
+        // Older graphs named it differently and placed it before Store Job.
+        await supabase.from('workflow_nodes')
+          .update({
+            name: 'Match Score',
+            position_x: ats ? ats.position.x + 200 : legacy.position.x,
+            position_y: ats ? ats.position.y : legacy.position.y,
+          })
+          .eq('id', legacy.id);
+        wf = (await this.get(workflowId)) || wf;
+      }
     }
 
-    const desired: [string, string][] = [
-      [parse.id, dedupe.id],
-      [dedupe.id, limit.id],
-      [limit.id, store.id],
-      [store.id, ats.id],
-      [ats.id, match.id],
-      [match.id, latex.id],
-    ];
-    const hasEdge = (source: string, target: string) =>
-      wf.edges.some((e) => e.source === source && e.target === target);
-    const desiredSet = new Set(desired.map(([s, t]) => `${s}->${t}`));
-    const chainIds = new Set(desired.flat());
-    // Any edge between two chain nodes that isn't in `desired` is stale (e.g. the
-    // old limit→match, match→store, ats→latex) and must be dropped, otherwise a
-    // node would have two outgoing edges and the graph would fork.
-    const staleEdges = wf.edges.filter((e) =>
-      chainIds.has(e.source) && chainIds.has(e.target) && !desiredSet.has(`${e.source}->${e.target}`)
-    );
-    const alreadyRepaired = desired.every(([source, target]) => hasEdge(source, target));
-    if (alreadyRepaired && !staleEdges.length && nodes.length === wf.nodes.length) return;
+    const graph = wf;
+    const resolved = seedNodes.map((n) => nodeByName(graph, n.name));
+    const seedIds = new Set(resolved.filter(Boolean).map((n) => n!.id));
 
-    const kept = wf.edges.filter((e) => !chainIds.has(e.source) || !chainIds.has(e.target));
-    const repaired: WorkflowEdge[] = [
-      ...kept,
-      ...desired.map(([source, target]) => ({
-        id: crypto.randomUUID(),
-        source,
-        target,
-      })),
-    ];
-    await this.saveGraph(workflowId, nodes, repaired);
+    // Desired edges, by seed index, skipping any whose endpoints are absent.
+    const desired = buildSeedEdges([])
+      .map((e) => ({ source: resolved[e.source], target: resolved[e.target], label: e.label ?? null }))
+      .filter((e) => e.source && e.target) as { source: WorkflowNode; target: WorkflowNode; label: string | null }[];
+    if (!desired.length) return;
+
+    const key = (source: string, target: string, label: string | null) => `${source}->${target}#${label ?? ''}`;
+    const desiredKeys = new Set(desired.map((e) => key(e.source.id, e.target.id, e.label)));
+
+    // Stale = an edge between two seed nodes that the seed topology doesn't
+    // define (e.g. the old limit→match, match→store, ats→latex). Leaving it gives
+    // a node two outgoing edges and forks the run. Edges touching user-added
+    // nodes are never considered.
+    const staleIds = graph.edges
+      .filter((e) =>
+        seedIds.has(e.source) && seedIds.has(e.target)
+        && !desiredKeys.has(key(e.source, e.target, e.label ?? null))
+      )
+      .map((e) => e.id);
+
+    const existingKeys = new Set(graph.edges.map((e) => key(e.source, e.target, e.label ?? null)));
+    const missing = desired.filter((e) => !existingKeys.has(key(e.source.id, e.target.id, e.label)));
+
+    if (!staleIds.length && !missing.length) return;
+
+    if (staleIds.length) {
+      const { error } = await supabase.from('workflow_edges').delete().in('id', staleIds);
+      if (error) throw error;
+    }
+    if (missing.length) {
+      const userId = await requireUserId();
+      const { error } = await supabase.from('workflow_edges').insert(
+        missing.map((e) => ({
+          id: crypto.randomUUID(),
+          workflow_id: workflowId,
+          user_id: userId,
+          source_id: e.source.id,
+          target_id: e.target.id,
+          label: e.label,
+        })),
+      );
+      // 23505 = a concurrent repair inserted the same link; harmless.
+      if (error && error.code !== '23505') throw error;
+    }
   }
 
   async ensureTailorPipeline(): Promise<Workflow> {
