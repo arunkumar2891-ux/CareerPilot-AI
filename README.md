@@ -182,7 +182,7 @@ npm run preview    # serve the production build
 npm run version:bump  # 1.0 -> 1.1 -> ... -> 1.999 -> 2.0; run before each deploy
 ```
 
-The sidebar shows the current version as `beta v1` (sourced from `version` in `package.json`).
+The sidebar shows `beta v1.1 · 0913.1437` — the `version` from `package.json`, plus a build stamp (`MMDD.HHmm` UTC) that updates automatically on every build, so you can always tell which deploy you're looking at. Bump the version number itself with `npm run version:bump`. See [DEPLOY.md](DEPLOY.md#the-version-label).
 
 Do not put provider API keys in `.env` or expose them through `VITE_` variables. Configure those as Supabase Edge Function secrets instead.
 

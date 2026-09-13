@@ -174,9 +174,11 @@ Your URL will be `https://careerpilot-ai.onrender.com` (or similar).
 4. **Redirects/Rewrites** → add a **Rewrite** (not a Redirect): Source `/*`, Destination `/index.html`. Render ignores Netlify-style `public/_redirects` unless this is set (or you used the Blueprint `render.yaml` routes). The build also copies `dist/404.html` from `index.html` as a fallback.
 5. **Create Static Site**
 
-### Bump the app version before each deploy
+### The version label
 
-The sidebar shows `beta v1`, `beta v1.1`, … sourced from `version` in `package.json`. Bump it one step, then push — Render picks it up on the next build:
+The sidebar shows `beta v1.1 · 0913.1437` — the `package.json` version, then a **build stamp** (`MMDD.HHmm`, UTC) that changes automatically on every build. Hover it to see the exact build time.
+
+The build stamp is what tells you a deploy actually landed, and it needs no action from you. The `v1.1` part only changes when you bump it:
 
 ```bash
 npm run version:bump
@@ -185,6 +187,8 @@ git push
 ```
 
 `1.0 → 1.1 → 1.2 … 1.999 → 2.0`. The script keeps `package-lock.json` in sync so `npm ci` on the build host still works.
+
+> **Why the version number can't auto-increment on Render:** builds run on a depth-1 **shallow clone** (so `git rev-list --count HEAD` always returns `1`, and `git fetch --unshallow` is blocked), and the build container cannot commit a bumped `package.json` back to the repo. Adding `npm run version:bump` to the build command does **not** work — every build re-reads the same committed value, so the number would advance one step and then freeze. That is why the build timestamp carries the per-deploy signal instead. To get true sequential numbering, bump from CI (a GitHub Action that commits) rather than from the build command.
 
 ### After Render deploy
 

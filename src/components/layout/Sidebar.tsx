@@ -4,7 +4,7 @@ import { LogoMark } from '@/components/brand/LogoMark';
 import { NAV_ITEMS } from '@/constants';
 import { useUIStore, useAuthStore } from '@/store';
 import { cn } from '@/lib/utils';
-import { APP_VERSION_LABEL } from '@/lib/version';
+import { APP_BUILD_TIME, APP_VERSION_LABEL } from '@/lib/version';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,11 +44,15 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
           <LogoMark size={20} />
         </div>
         {!collapsed && (
-          <div className="overflow-hidden">
+          <div className="min-w-0 overflow-hidden">
             <p className="text-sm font-semibold leading-tight gradient-text">CareerPilot</p>
             <div className="flex items-center gap-1.5">
               <p className="truncate text-xs text-muted-foreground">AI Job Search</p>
-              <Badge variant="secondary" className="h-4 shrink-0 px-1 text-[10px] font-medium leading-none">
+              <Badge
+                variant="secondary"
+                className="h-4 shrink-0 px-1 text-[10px] font-medium leading-none tabular-nums"
+                title={APP_BUILD_TIME ? `Built ${APP_BUILD_TIME}` : undefined}
+              >
                 {APP_VERSION_LABEL}
               </Badge>
             </div>

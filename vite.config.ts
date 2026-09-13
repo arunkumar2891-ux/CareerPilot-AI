@@ -9,9 +9,15 @@ const appVersion = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'),
 ).version as string;
 
+// Evaluated once per build. This is the only monotonic signal available to a
+// Render build: the clone is shallow (so git history is unusable) and the build
+// container cannot commit a bumped package.json back. See DEPLOY.md.
+const buildTime = new Date().toISOString();
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
+    __BUILD_TIME__: JSON.stringify(buildTime),
   },
   plugins: [
     react(),
