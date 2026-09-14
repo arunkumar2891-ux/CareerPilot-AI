@@ -74,6 +74,14 @@ Import from `@/components/motion` or use shared components (`PageHeader`, `Metri
 - **Shared:** `StatusBadge` glow for running/generating states, `ExecutionGraph` orbital mini-loader on active nodes
 - **Pages:** All 15 routed pages use the motion kit for loading states, list entrances, or section fades (Dashboard through Settings, including Auth)
 
+## Jobs board
+
+`/jobs` has a kanban view with one column per job status (`discovered → queued → resume_ready → applied → interview → offer → rejected → withdrawn`). Cards can be **dragged between columns** to change a job's status, JIRA-style, with an optimistic update and an Undo action on the confirmation toast.
+
+Native HTML5 drag-and-drop is mouse-only, so every card also carries a **"Move to" menu** (the `⋮` button) that performs the same action from the keyboard and for screen readers. Both paths go through `services.jobSearch.updateStatus`. The column model, grouping, and optimistic cache update live in [src/utils/job-kanban.ts](src/utils/job-kanban.ts) as pure, unit-tested functions; [src/components/jobs/JobKanbanBoard.tsx](src/components/jobs/JobKanbanBoard.tsx) owns only the drag interaction.
+
+Moving a job is never blocked, but moving one to *Resume Ready* or *Applied* with no resume attached shows a warning in the toast.
+
 ## Job-search pipeline
 
 On first authenticated load, `BootstrapService` provisions default settings, the workflow, and a daily automation. Add a master resume on the Corpus page (Google Doc, upload, or paste) before tailoring.

@@ -27,7 +27,8 @@ For deeper feature context, see `docs/features/*.md`.
 ## Job Discovery
 
 - **Entry:** `src/pages/JobsPage.tsx`
-- **UI:** `src/pages/JobsPage.tsx`, `src/components/jobs/PasteJdDialog.tsx`, `src/components/jobs/ApplicationPackageWizard.tsx`
+- **UI:** `src/pages/JobsPage.tsx`, `src/components/jobs/JobKanbanBoard.tsx`, `src/components/jobs/PasteJdDialog.tsx`, `src/components/jobs/ApplicationPackageWizard.tsx`
+- **Kanban model:** `src/utils/job-kanban.ts` (columns, grouping, optimistic move; drag-and-drop + a keyboard-accessible "Move to" menu)
 - **Services:** `src/services/index.ts` → `JobSearchService`
 - **Backend:** `supabase/functions/workflow-run/index.ts` (triggers job search workflow)
 - **Workflow Engine:** `supabase/functions/_shared/workflow/executor.ts`, `job-discovery.ts`, `job-pipeline.ts`

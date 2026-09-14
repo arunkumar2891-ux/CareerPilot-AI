@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import {
   MapPin, DollarSign, Filter, Search, LayoutGrid,
   Table as TableIcon, Zap, ExternalLink, Copy, FileText, SearchX, Trash2, Cloud, Link2, Gauge, Plus, Target, MessageSquare,
-  Mail, Send, Loader2,
+  Mail, Send, Loader2, MoreVertical,
 } from 'lucide-react';
 import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
 import { transitionFast } from '@/lib/motion';
@@ -30,9 +30,19 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { ApplicationPackageWizard } from '@/components/jobs/ApplicationPackageWizard';
+import { JobKanbanBoard } from '@/components/jobs/JobKanbanBoard';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { JOB_KANBAN_COLUMNS, groupJobsByStatus, jobStatusLabel } from '@/utils/job-kanban';
 import { JdMatchPanel } from '@/components/resumes/JdMatchPanel';
 import { hasUsableMasterResume } from '@/utils/resume-classification';
-import type { Job } from '@/types';
+import type { Job, JobStatus } from '@/types';
 
 export function JobsPage() {
   const qc = useQueryClient();
@@ -109,20 +119,9 @@ export function JobsPage() {
     }
   };
 
-  const columns = [
-    { key: 'discovered', label: 'Discovered', status: 'discovered' },
-    { key: 'queued', label: 'Queued', status: 'queued' },
-    { key: 'resume_ready', label: 'Resume Ready', status: 'resume_ready' },
-    { key: 'applied', label: 'Applied', status: 'applied' },
-    { key: 'interview', label: 'Interview', status: 'interview' },
-    { key: 'offer', label: 'Offer', status: 'offer' },
-    { key: 'rejected', label: 'Rejected', status: 'rejected' },
-    { key: 'withdrawn', label: 'Withdrawn', status: 'withdrawn' },
-  ] as const;
-  const knownStatuses = new Set(columns.map((col) => col.status));
-  const kanbanJobs = filtered.filter((job) => knownStatuses.has(job.status));
-  const unfiledJobs = filtered.filter((job) => !knownStatuses.has(job.status));
-  const kanbanVisibleCount = kanbanJobs.length + unfiledJobs.length;
+  // Column definitions live in `@/utils/job-kanban` so the board, the "Move to"
+  // menu, and these counts cannot drift apart.
+  const { unfiled: unfiledJobs } = groupJobsByStatus(filtered);
 
   const toggleSelected = (id: string) => {
     setSelectedJobIds((prev) => {
@@ -328,8 +327,8 @@ export function JobsPage() {
       ) : jobs && jobs.length > 0 && (
         <p className="text-sm text-muted-foreground">
           Showing {filtered.length} of {jobs.length} jobs
-          {view === 'kanban' && kanbanVisibleCount < filtered.length && (
-            <span> · {filtered.length - kanbanVisibleCount} hidden from kanban</span>
+          {view === 'kanban' && unfiledJobs.length > 0 && (
+            <span> · {unfiledJobs.length} with an unrecognised status in “Other”</span>
           )}
           {filtered.length < jobs.length && (
             <Button
@@ -494,53 +493,19 @@ export function JobsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
-            {columns.map((col) => {
-              const colJobs = filtered.filter((j) => j.status === col.status);
-              return (
-                <div key={col.key} className="w-72 shrink-0">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium">{col.label}</span>
-                    <Badge variant="secondary">{colJobs.length}</Badge>
-                  </div>
-                  <ScrollArea className="h-[calc(100vh-340px)]">
-                    <div className="space-y-2 pr-2">
-                      {colJobs.map((job) => (
-                        <JobCard
-                          key={job.id}
-                          job={job}
-                          selected={selectedJobIds.has(job.id)}
-                          onToggleSelect={() => toggleSelected(job.id)}
-                          onClick={() => setSelectedJob(job)}
-                        />
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </div>
-              );
-            })}
-            {unfiledJobs.length > 0 && (
-              <div className="w-72 shrink-0">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-medium">Other</span>
-                  <Badge variant="secondary">{unfiledJobs.length}</Badge>
-                </div>
-                <ScrollArea className="h-[calc(100vh-340px)]">
-                  <div className="space-y-2 pr-2">
-                    {unfiledJobs.map((job) => (
-                      <JobCard
-                        key={job.id}
-                        job={job}
-                        selected={selectedJobIds.has(job.id)}
-                        onToggleSelect={() => toggleSelected(job.id)}
-                        onClick={() => setSelectedJob(job)}
-                      />
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
+          <JobKanbanBoard
+            jobs={filtered}
+            renderCard={({ job, dragging, onMoveTo }) => (
+              <JobCard
+                job={job}
+                selected={selectedJobIds.has(job.id)}
+                dragging={dragging}
+                onToggleSelect={() => toggleSelected(job.id)}
+                onClick={() => setSelectedJob(job)}
+                onMoveTo={onMoveTo}
+              />
             )}
-          </div>
+          />
         )
       ) : (
         <Card>
@@ -628,18 +593,24 @@ export function JobsPage() {
 function JobCard({
   job,
   selected,
+  dragging = false,
   onToggleSelect,
   onClick,
+  onMoveTo,
 }: {
   job: Job;
   selected: boolean;
+  dragging?: boolean;
   onToggleSelect: () => void;
   onClick: () => void;
+  onMoveTo?: (status: JobStatus) => void;
 }) {
   return (
     <StaggerItem
       as="article"
-      className={`glass-card cursor-pointer p-3 transition-colors hover:bg-accent/30 hover:shadow-glow-sm ${selected ? 'ring-2 ring-primary' : ''}`}
+      className={`glass-card p-3 transition-colors hover:bg-accent/30 hover:shadow-glow-sm ${
+        onMoveTo ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+      } ${selected ? 'ring-2 ring-primary' : ''} ${dragging ? 'opacity-40' : ''}`}
       onClick={onClick}
     >
       <div className="flex items-start justify-between gap-2">
@@ -655,8 +626,11 @@ function JobCard({
             <p className="truncate text-xs text-muted-foreground">{job.company}</p>
           </div>
         </div>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
-          {job.matchScore}
+        <div className="flex shrink-0 items-center gap-1">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+            {job.matchScore}
+          </div>
+          {onMoveTo && <JobMoveMenu job={job} onMoveTo={onMoveTo} />}
         </div>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
@@ -690,6 +664,45 @@ function JobCard({
         )}
       </div>
     </StaggerItem>
+  );
+}
+
+/**
+ * Keyboard- and screen-reader-accessible equivalent of dragging a card.
+ * Native HTML5 drag-and-drop is mouse-only, so this menu is the accessible path
+ * to the same action, not a decorative extra.
+ */
+function JobMoveMenu({ job, onMoveTo }: { job: Job; onMoveTo: (status: JobStatus) => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Move ${job.company} ${job.role} to another status. Currently ${jobStatusLabel(job.status)}.`}
+        >
+          <MoreVertical className="h-3.5 w-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuLabel>Move to</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {JOB_KANBAN_COLUMNS.map((col) => (
+          <DropdownMenuItem
+            key={col.status}
+            disabled={col.status === job.status}
+            onSelect={() => onMoveTo(col.status)}
+          >
+            {col.label}
+            {col.status === job.status && (
+              <span className="ml-auto pl-2 text-xs text-muted-foreground">Current</span>
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

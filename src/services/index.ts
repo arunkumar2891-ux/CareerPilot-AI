@@ -576,7 +576,15 @@ export class JobSearchService {
     return results;
   }
   async updateStatus(id: string, status: Job['status']): Promise<void> {
-    const { error } = await supabase.from('jobs').update({ status }).eq('id', id);
+    // Scoped by user_id as defence in depth. RLS should already prevent
+    // cross-tenant writes, but this is a user-triggered path (kanban drag and
+    // the "Move to" menu), so the filter is cheap insurance.
+    const userId = await requireUserId();
+    const { error } = await supabase
+      .from('jobs')
+      .update({ status })
+      .eq('id', id)
+      .eq('user_id', userId);
     if (error) throw error;
   }
   async deleteAll(): Promise<number> {

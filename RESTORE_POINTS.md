@@ -29,10 +29,10 @@ If you are not using tags, find the commit by its version bump: search the histo
 
 ---
 
-## v1.3.0 — Match Score gate before ATS Optimizer
+## v1.3.0 — Match Score gate + drag-and-drop kanban
 
 **Date:** 2026-09-14
-**Status:** ⏳ Implemented; awaiting end-to-end confirmation from a live run
+**Status:** ✅ Gate confirmed working by the user ("working for jobs > 80")
 
 ### What changed
 
@@ -70,6 +70,26 @@ Per-job fan-out (one slice per job)
 | `supabase/functions/_shared/workflow/nodes.ts` | `match_score` scores master + gates + persists status; `Store Job` inserts `discovered`; `email_summary` gained the below-threshold section and a Match column. |
 | `supabase/functions/_shared/workflow/job-pipeline.ts` | Detects the gate skip, halts the chain, emits the score logs. |
 | `src/pages/SettingsPage.tsx` | New **Minimum match score** field. |
+| `src/components/jobs/JobKanbanBoard.tsx` | **New.** Drag-and-drop kanban board. |
+| `src/utils/job-kanban.ts` + `_test.ts` | **New.** Column model, grouping, optimistic move, warnings. 10 tests. |
+| `src/services/index.ts` | `JobSearchService.updateStatus` now scopes by `user_id`. |
+| `tsconfig.app.json` | Excludes `src/**/*_test.ts` (Deno globals). |
+
+### Kanban drag-and-drop
+
+Cards can be dragged between status columns, JIRA-style. Implementation notes:
+
+- **Native HTML5 drag-and-drop**, no new dependency. A custom MIME type
+  (`application/x-careerpilot-job`) means foreign drags are never accepted.
+- **`dragenter`/`dragleave` are depth-counted per column.** Those events also fire for child
+  elements, so a naive boolean flickers as the pointer crosses each card.
+- **Optimistic update with rollback.** `withJobStatus` preserves array position, so a dropped
+  card does not jump; on failure the previous cache is restored and a toast explains why.
+- **Every move is allowed**, but `jobMoveWarning` adds a caveat when a job is moved to
+  `Resume Ready` or `Applied` with no resume attached.
+- **Accessibility:** native DnD is mouse-only, so each card also has a keyboard- and
+  screen-reader-accessible **"Move to"** menu. That menu is the a11y path, not a decorative
+  extra — do not remove it.
 
 ### Rollback
 

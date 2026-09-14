@@ -27,5 +27,8 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  // `*_test.ts` files run under Deno (see AGENTS.md → Validation Commands), so
+  // they reference the `Deno` global that the browser app has no types for.
+  "exclude": ["src/**/*_test.ts"]
 }

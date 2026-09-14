@@ -95,6 +95,7 @@ The job-search pipeline is the most failure-prone area of this codebase. Read
 | Google Drive integration | `supabase/functions/_shared/google-drive.ts` |
 | DB migrations | `supabase/migrations/` |
 | App version label | `src/lib/version.ts` |
+| Jobs kanban board | `src/components/jobs/JobKanbanBoard.tsx` + `src/utils/job-kanban.ts` |
 
 ## Bug-Fixing Workflow
 
@@ -134,6 +135,13 @@ Backend tests run under Deno:
 
 ```bash
 deno test --allow-all --no-check supabase/functions/_shared/workflow/
+```
+
+Some frontend *pure logic* is also tested under Deno (there is no browser test runner).
+`tsconfig.app.json` excludes `src/**/*_test.ts` so the `Deno` global does not break typecheck:
+
+```bash
+deno test --allow-all --no-check src/utils/
 ```
 
 Notes:
