@@ -1,38 +1,47 @@
 # Restore Points
 
 Known-good states you can return to. Each entry records what was verified, the exact
-commands used to verify it, and what to do if you need to roll back.
+commands used to verify it, and what to do if you need to roll back. **Newest first.**
 
-To restore, check out the tag (or the commit) and re-apply the listed migrations:
+To restore, check out the tag (or the commit) for the entry you want:
 
 ```bash
-git checkout v1.2.0-stable-pipeline
+git checkout v1.3.0-match-gate-kanban   # latest verified
 npm install
 npm run build
 ```
 
-If you are not using tags, find the commit by its version bump: search the history for
-`package.json` version `1.2.0`.
+If you are not using tags, find the commit by its version bump: search the history for the
+`package.json` version (`1.3.0`, `1.2.0`, …).
 
-> **The tag is not created yet.** `git` is not installed on the primary dev machine, so the
-> version bump and this file are the durable marker. Once you have git available, run:
+> **Tags are not created yet.** `git` is not installed on the primary dev machine, so the
+> version bump plus this file are the durable marker. Once you have git available:
 >
 > ```bash
 > git add -A
-> git commit -m "v1.2.0 — stable pipeline: batched per-role runs + self-healing graph"
-> git tag -a v1.2.0-stable-pipeline -m "Verified working: per-role batches, Match Score after ATS, self-healing graph"
+> git commit -m "v1.3.0 — Match Score gate before ATS Optimizer + drag-and-drop kanban"
+> git tag -a v1.3.0-match-gate-kanban -m "Verified working: match-score gate (>80), kanban drag-and-drop"
 > git push && git push --tags
 > ```
 >
-> Until then, you can still return to this state by finding the commit whose `package.json`
-> version is `1.2.0`.
+> The earlier 1.2.0 state is tagged `v1.2.0-stable-pipeline` by the same procedure. Until
+> tags exist, return to a state by finding the commit whose `package.json` version matches.
 
 ---
 
 ## v1.3.0 — Match Score gate + drag-and-drop kanban
 
 **Date:** 2026-09-14
-**Status:** ✅ Gate confirmed working by the user ("working for jobs > 80")
+**Version label in UI:** `beta v1.3 · <MMDD.HHmm>`
+**Status:** ✅ Verified working end-to-end by the user — the match-score gate ("working for
+jobs > 80") and the drag-and-drop kanban were both confirmed in the running app.
+
+### Why this is a restore point
+
+Both features of this release are confirmed working in the app, not just green in CI: the
+gate correctly skips low-scoring jobs before any AI spend while still reporting them, and
+the kanban board persists status changes by drag. This is the state to return to if a later
+change breaks scoring, the per-job chain, or the jobs board.
 
 ### What changed
 
@@ -98,6 +107,26 @@ re-running a job search so `repairDefaultPipelineGraph` rewires the edges.
 
 > **Caveat:** existing jobs already marked `resume_ready` under the old rule were left
 > untouched by explicit choice — no backfill migration was written.
+
+### Verification performed
+
+```bash
+npm run typecheck                                    # clean
+npx eslint .                                         # 38 problems (pre-existing baseline, none added)
+npm run build                                        # passes
+deno test --allow-all --no-check src/utils/          # 10 passed
+cd supabase/functions
+deno test --allow-all --no-check _shared/workflow/   # 93 passed
+```
+
+Plus manual confirmation in the running app: jobs scoring above 80 flow through the full
+chain, low scorers stop at the gate and stay in Discovered, and kanban cards drag between
+status columns.
+
+> **Not covered by automated tests:** the drag-and-drop interaction itself. No Chrome
+> DevTools MCP is configured on this machine, so the DnD event wiring (drop highlight,
+> empty-column drops, drag vs. click on a card) was verified by hand, not by a test. The
+> pure model in `src/utils/job-kanban.ts` *is* unit-tested.
 
 ---
 
