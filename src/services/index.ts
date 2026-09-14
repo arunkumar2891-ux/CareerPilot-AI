@@ -9,6 +9,7 @@ import type {
 import { supabase } from '@/lib/supabase';
 import { requireUserId } from '@/lib/auth';
 import { DEFAULT_JOB_SEARCH_WORKFLOW, DEFAULT_RESUME_TAILOR_WORKFLOW, buildSeedEdges, buildTailorSeedEdges } from '@/constants/workflow-seed';
+import { planPipelineRepair } from '@/utils/pipeline-repair';
 import { computeNextCronRun } from '@/utils/cron-schedule';
 import {
   MASTER_RESUME_NAME,
@@ -1305,107 +1306,94 @@ export class WorkflowService {
   }
   /** Ensure parse → filter → limit → match score → store → ATS (fixes legacy graph order). */
   /**
-   * Migrate/repair the built-in pipeline graph in place for existing users.
+   * Reconcile the built-in pipeline graph against the seed, in place.
    *
-   * Rebuilds the full seed topology by matching nodes on name, so it handles both
-   * the `Match Score` move (it now sits after `ATS Optimizer`, inside the per-job
-   * fan-out, to score the tailored resume rather than the generic master) and
-   * recovery of a graph whose edges were wiped by a half-applied `saveGraph`.
+   * Restores missing nodes *and* edges, so it recovers a graph left inconsistent by
+   * a half-applied `saveGraph`. See `src/utils/pipeline-repair.ts` for the matching
+   * rules and the reasoning; this method only executes the planned delta.
    *
    * Deliberately does NOT call `saveGraph`: that deletes and re-inserts every node
    * and edge. It is slow enough to hit the statement timeout (57014), and when the
-   * node delete failed the subsequent insert re-used the same primary keys and
-   * failed with `workflow_nodes_pkey` (23505) — after the edges had already been
-   * deleted, leaving an edge-less graph. Only rows that actually differ are
-   * touched here, and user-added nodes/edges are left alone.
+   * node delete failed the following insert re-used the same primary keys and
+   * failed with `workflow_nodes_pkey` (23505) — after the edge delete had already
+   * committed. Only rows that differ are touched; user-added nodes are left alone.
    */
   private async repairDefaultPipelineGraph(workflowId: string): Promise<void> {
-    let wf = await this.get(workflowId);
+    const wf = await this.get(workflowId);
     if (!wf) return;
 
-    const seedNodes = DEFAULT_JOB_SEARCH_WORKFLOW.nodes;
-    const nodeByName = (graph: Workflow, name: string) => graph.nodes.find((n) => n.name === name);
+    const plan = planPipelineRepair({
+      seedNodes: DEFAULT_JOB_SEARCH_WORKFLOW.nodes,
+      seedEdges: buildSeedEdges([]),
+      nodes: wf.nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        name: n.name,
+        position: n.position,
+        config: n.config,
+      })),
+      edges: wf.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.label,
+      })),
+      newId: () => crypto.randomUUID(),
+    });
+    if (plan.isNoop) return;
 
-    // `Match Score` is the only node newer graphs can be missing entirely.
-    if (!nodeByName(wf, 'Match Score')) {
-      const legacy = wf.nodes.find((n) => n.type === 'transform' && n.config.action === 'match_score');
-      const ats = nodeByName(wf, 'ATS Optimizer');
-      if (!legacy && ats) {
-        const userId = await requireUserId();
-        const id = crypto.randomUUID();
-        const { error } = await supabase.from('workflow_nodes').insert({
-          id,
+    const userId = await requireUserId();
+
+    if (plan.insertNodes.length) {
+      const { error } = await supabase.from('workflow_nodes').insert(
+        plan.insertNodes.map((n) => ({
+          id: n.id,
           workflow_id: workflowId,
           user_id: userId,
-          node_key: id,
-          type: 'transform',
-          name: 'Match Score',
-          position_x: ats.position.x + 200,
-          position_y: ats.position.y,
-          config: { action: 'match_score' },
-        });
-        // A concurrent caller may have inserted it first; re-read rather than fail.
-        if (error && error.code !== '23505') throw error;
-        wf = (await this.get(workflowId)) || wf;
-      } else if (legacy) {
-        // Older graphs named it differently and placed it before Store Job.
-        await supabase.from('workflow_nodes')
-          .update({
-            name: 'Match Score',
-            position_x: ats ? ats.position.x + 200 : legacy.position.x,
-            position_y: ats ? ats.position.y : legacy.position.y,
-          })
-          .eq('id', legacy.id);
-        wf = (await this.get(workflowId)) || wf;
-      }
+          node_key: n.id,
+          type: n.type,
+          name: n.name,
+          position_x: n.x,
+          position_y: n.y,
+          config: n.config,
+        })),
+      );
+      // 23505 = a concurrent repair inserted it first; harmless.
+      if (error && error.code !== '23505') throw error;
     }
 
-    const graph = wf;
-    const resolved = seedNodes.map((n) => nodeByName(graph, n.name));
-    const seedIds = new Set(resolved.filter(Boolean).map((n) => n!.id));
-
-    // Desired edges, by seed index, skipping any whose endpoints are absent.
-    const desired = buildSeedEdges([])
-      .map((e) => ({ source: resolved[e.source], target: resolved[e.target], label: e.label ?? null }))
-      .filter((e) => e.source && e.target) as { source: WorkflowNode; target: WorkflowNode; label: string | null }[];
-    if (!desired.length) return;
-
-    const key = (source: string, target: string, label: string | null) => `${source}->${target}#${label ?? ''}`;
-    const desiredKeys = new Set(desired.map((e) => key(e.source.id, e.target.id, e.label)));
-
-    // Stale = an edge between two seed nodes that the seed topology doesn't
-    // define (e.g. the old limit→match, match→store, ats→latex). Leaving it gives
-    // a node two outgoing edges and forks the run. Edges touching user-added
-    // nodes are never considered.
-    const staleIds = graph.edges
-      .filter((e) =>
-        seedIds.has(e.source) && seedIds.has(e.target)
-        && !desiredKeys.has(key(e.source, e.target, e.label ?? null))
-      )
-      .map((e) => e.id);
-
-    const existingKeys = new Set(graph.edges.map((e) => key(e.source, e.target, e.label ?? null)));
-    const missing = desired.filter((e) => !existingKeys.has(key(e.source.id, e.target.id, e.label)));
-
-    if (!staleIds.length && !missing.length) return;
-
-    if (staleIds.length) {
-      const { error } = await supabase.from('workflow_edges').delete().in('id', staleIds);
+    for (const update of plan.updatePositions) {
+      const { error } = await supabase.from('workflow_nodes')
+        .update({ position_x: update.x, position_y: update.y })
+        .eq('id', update.id);
       if (error) throw error;
     }
-    if (missing.length) {
-      const userId = await requireUserId();
+
+    if (plan.deleteEdgeIds.length) {
+      const { error } = await supabase.from('workflow_edges').delete().in('id', plan.deleteEdgeIds);
+      if (error) throw error;
+    }
+
+    // Retired steps (e.g. the old gdrive "Upload to Drive") must go, not just be
+    // unlinked: an orphaned node has no incoming edge, and `getEntryNodes()` treats
+    // any such node as an entry point, so it would run as a stray start node.
+    // Deleted after their edges so no foreign key can dangle.
+    if (plan.deleteNodeIds.length) {
+      const { error } = await supabase.from('workflow_nodes').delete().in('id', plan.deleteNodeIds);
+      if (error) throw error;
+    }
+
+    if (plan.insertEdges.length) {
       const { error } = await supabase.from('workflow_edges').insert(
-        missing.map((e) => ({
+        plan.insertEdges.map((e) => ({
           id: crypto.randomUUID(),
           workflow_id: workflowId,
           user_id: userId,
-          source_id: e.source.id,
-          target_id: e.target.id,
+          source_id: e.source,
+          target_id: e.target,
           label: e.label,
         })),
       );
-      // 23505 = a concurrent repair inserted the same link; harmless.
       if (error && error.code !== '23505') throw error;
     }
   }

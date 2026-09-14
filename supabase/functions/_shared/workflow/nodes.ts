@@ -192,7 +192,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           resumeName: master.name,
           userId: ctx.userId,
         });
-        const output = items.map((job, index) => ({
+        const output: Record<string, unknown>[] = items.map((job, index) => ({
           ...job,
           matchScore: scored[index]?.score ?? 0,
           matchScoreSource: scored[index]?.source || master.name,

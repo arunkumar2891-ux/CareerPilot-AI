@@ -148,4 +148,69 @@ Three compounding gaps:
 clean. `deno test` on `seed-graph_test.ts` + `run-batch_test.ts` — 14 passed / 0 failed.
 Migration 027 must be applied in Supabase before the next run.
 
+**Follow-up (same bug, second symptom):** The user's graph rendered with steps in impossible order
+(`Parse Jobs` before `Fetch Results` before `Start Apify Scrape`) and no per-job fan-out or fan-in.
+This is the downstream effect of the edge-less graph left by the half-applied `saveGraph`:
+`getEntryNodes()` treats any node without an incoming edge as an entry node, so with zero edges
+**every** node became a start node and ran once in arbitrary row order with nothing piped between
+them. No jobs were stored, so `jobExecutions` was empty, so `buildExecutionGraph` produced no
+`jobBranches` (fan-out) and no `fanInNodes`.
+
+A second latent defect was found while fixing it: the repair matched nodes **by name**, but the
+user's graph had a legacy `gdocs` node named `Get Resume` while the seed calls it
+`Sync Google Doc Resume`. Name matching would silently never resolve it, permanently leaving edges
+`0→1` and `1→2` missing.
+
+Additional changes:
+- `src/utils/pipeline-repair.ts` (new) — pure planner, `planPipelineRepair()`. Matches nodes by
+  `type` + `action`/`builtin` signature (3 passes: signature, then exact name, then sole node of
+  that type), restores missing **nodes** as well as edges, realigns drifted positions (positionX
+  drives the prefix / per-job / fan-in split in `execution-graph.ts`), and returns a minimal delta.
+- `supabase/functions/_shared/workflow/pipeline-repair_test.ts` (new) — 11 tests including the exact
+  reported state (nodes present, zero edges), the `Get Resume` rename, stale-edge removal, no
+  accidental fork, user-added nodes preserved, and convergence (applying the plan twice is a no-op).
+- `supabase/functions/_shared/workflow/nodes.ts` — fixed 2 type errors introduced by the earlier
+  `match_score` rewrite: `output` needed an explicit `Record<string, unknown>[]` annotation or
+  `single.jobId` / `single.id` were not typed, risking the score never being persisted.
+
+**Follow-up validation:** 11 new tests pass; full workflow suite 71 passed / 0 failed;
+`npm run typecheck` clean; `npm run build` passes; lint unchanged at 38 pre-existing problems.
+`deno check` errors dropped 8 → 6; the remaining 6 were verified to exist identically on
+`origin/main` (`resume-drive.ts:51`, `execution-persistence.ts:426`, `nodes.ts:725/994/999/1013`)
+and are out of scope.
+
+**Follow-up 2 — the graph was never migrated from an Aug-22 seed.** A screenshot of the working
+execution graph revealed two nodes that exist in *no* current code path: `Get Resume` and
+`Upload to Drive`. Walking the history of `src/constants/workflow-seed.ts` on GitHub placed the
+user's DB graph at the **Aug-22 seed (`4f3363e7`)** — 19 nodes, chain order
+`Limit → Dedupe → ATS → Store`, and a `gdrive` "Upload to Drive" step that was deliberately
+removed in `5d682c32` ("Drive sync is manual"). The `gdocs` step was later renamed
+`Get Resume` → `Sync Google Doc Resume`.
+
+This mattered because the repair reconciles against the *current* 18-node seed. `Upload to Drive`
+is not in it, so it would have been treated as user-added and left **orphaned** — and an orphan has
+no incoming edge, so `getEntryNodes()` would have run it as a stray start node, reproducing the
+original scrambled-order symptom. Confirmed with the user: drop the retired Drive node, keep the
+current dedupe-before-limit order, leave the `Get Resume` name alone.
+
+Additional changes:
+- `src/utils/pipeline-repair.ts` — added `RETIRED_SEED_SIGNATURES` (`gdrive#action:upload`) and
+  `deleteNodeIds` to the plan. Retired nodes are excluded before matching so they can never be
+  claimed or rewired; edges touching them are always deleted, and a deleted-but-existing edge no
+  longer suppresses a needed insert. Only signatures on that list are ever deleted — a user-added
+  `gdrive` node with `action: download` is preserved.
+- `src/services/index.ts` — executes `deleteNodeIds` *after* `deleteEdgeIds` so no foreign key
+  can dangle.
+- `supabase/functions/_shared/workflow/pipeline-repair_test.ts` — grew to 18 tests, including a
+  faithful reconstruction of the 19-node Aug-22 graph both edge-less and with its original edges,
+  a reachability test (every seed node reachable from the trigger — the direct regression test for
+  the scrambled order), a convergence test, and two rendering-contract tests asserting the per-job
+  fan-out is exactly
+  `Store Job → ATS Optimizer → Match Score → Build LaTeX → Compile PDF → Upload to Storage`
+  and that neither `ATS Optimizer` nor `Match Score` leaks into the shared prefix.
+
+**Follow-up 2 validation:** 18 pipeline-repair tests pass; full workflow suite **78 passed / 0
+failed**; `npm run typecheck` clean; `npm run build` passes; `eslint` clean on all three changed
+files with the repo total unchanged at 38 pre-existing problems.
+
 ---
