@@ -2,10 +2,11 @@ import { buildSeedEdges, DEFAULT_JOB_SEARCH_WORKFLOW } from '../../../../src/con
 
 /**
  * The per-job fan-out runs from the first `insert_job` node until the
- * `email_summary` aggregate node. `Match Score` must sit inside that window so
- * it scores the ATS-tailored resume rather than the generic master resume.
+ * `email_summary` aggregate node. `Match Score` must sit inside that window,
+ * and must come FIRST — it is the gate. Scoring against the master resume
+ * before `ATS Optimizer` is what lets a low-scoring job skip the AI spend.
  */
-Deno.test('seed places Match Score inside the fan-out, after ATS Optimizer', () => {
+Deno.test('seed places Match Score inside the fan-out, before ATS Optimizer', () => {
   const names = DEFAULT_JOB_SEARCH_WORKFLOW.nodes.map((n) => n.name);
   const store = names.indexOf('Store Job');
   const ats = names.indexOf('ATS Optimizer');
@@ -16,9 +17,13 @@ Deno.test('seed places Match Score inside the fan-out, after ATS Optimizer', () 
   for (const [label, idx] of Object.entries({ store, ats, match, latex, email })) {
     if (idx < 0) throw new Error(`missing node: ${label}`);
   }
-  if (!(ats < match)) throw new Error('Match Score must come after ATS Optimizer');
-  if (!(match < latex)) throw new Error('Match Score must come before Build LaTeX');
-  if (!(store < match && match < email)) throw new Error('Match Score must be inside the fan-out');
+  // The gate must precede every step it is meant to skip.
+  if (!(match < ats)) throw new Error('Match Score must come before ATS Optimizer');
+  if (!(ats < latex)) throw new Error('ATS Optimizer must come before Build LaTeX');
+  // It must still run after Store Job: the score is written back to the job row,
+  // and the fan-out itself begins at `insert_job`.
+  if (!(store < match)) throw new Error('Match Score must come after Store Job');
+  if (!(match < email)) throw new Error('Match Score must be inside the fan-out');
 });
 
 Deno.test('seed edges form one unbroken chain with a single poll loop', () => {

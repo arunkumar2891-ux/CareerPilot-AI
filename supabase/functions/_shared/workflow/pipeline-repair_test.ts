@@ -134,18 +134,20 @@ Deno.test('a missing node is created and its edges wired', () => {
 
 Deno.test('a stale chain edge from an older node order is removed', () => {
   const { nodes, edges } = healthyGraph();
+  const storeIndex = seedNodes.findIndex((s) => s.config.action === 'insert_job');
   const atsIndex = seedNodes.findIndex((s) => s.type === 'gemini');
-  const latexIndex = seedNodes.findIndex((s) => s.config.builtin === 'build_latex');
-  // Simulate the pre-Match-Score order, where ATS pointed straight at Build LaTeX.
+  // Simulate the previous order, where Match Score sat AFTER ATS Optimizer and
+  // Store Job therefore pointed straight at ATS. The gate now runs in between,
+  // so this edge would bypass it entirely and must be deleted.
   const stale: RepairEdgeRef = {
     id: 'stale-1',
-    source: `n${atsIndex}`,
-    target: `n${latexIndex}`,
+    source: `n${storeIndex}`,
+    target: `n${atsIndex}`,
   };
 
   const result = plan(nodes, [...edges, stale]);
   if (!result.deleteEdgeIds.includes('stale-1')) {
-    throw new Error('stale ats->latex edge should be deleted');
+    throw new Error('stale store->ats edge should be deleted so it cannot bypass the gate');
   }
   if (result.insertEdges.length) throw new Error('nothing missing, so nothing to insert');
 });
@@ -297,20 +299,54 @@ Deno.test('legacy Aug-22 graph WITH its old edges is rewired to the new order', 
       throw new Error(`edge ${id} touches the retired Drive node and must be deleted`);
     }
   }
-  // The old ATS→Store order must be replaced by Store→ATS→Match.
+  // The old ATS→Store order must be replaced by Store→Match→ATS: the gate now
+  // sits between them so a low scorer never reaches the Gemini call.
   const atsId = nodes[10].id;
   const storeId = nodes[11].id;
   const matchIndex = seedNodes.findIndex((s) => s.config.action === 'match_score');
   const matchId = result.resolvedIds[matchIndex];
   const has = (source: string, target: string) =>
     result.insertEdges.some((e) => e.source === source && e.target === target);
-  if (!has(storeId, atsId)) throw new Error('expected Store Job → ATS Optimizer');
-  if (!has(atsId, matchId)) throw new Error('expected ATS Optimizer → Match Score');
+  if (!has(storeId, matchId)) throw new Error('expected Store Job → Match Score');
+  if (!has(matchId, atsId)) throw new Error('expected Match Score → ATS Optimizer');
   if (!result.deleteEdgeIds.includes('o10')) {
     throw new Error('stale Filter Duplicates → ATS edge must be deleted');
   }
   if (!result.deleteEdgeIds.includes('o11')) {
     throw new Error('stale ATS → Store Job edge must be deleted');
+  }
+});
+
+Deno.test('the repaired fan-out puts the gate before every step it should skip', () => {
+  // The gate only saves work if it runs before the Gemini call, the LaTeX build,
+  // the PDF compile and the upload. Asserting on the *repaired* chain (not just
+  // the seed array) proves a drifted user graph is rewired the same way.
+  const { nodes } = healthyGraph();
+  const result = plan(nodes, []);
+  const nameById = new Map<string, string>(
+    result.resolvedIds.map((id, i) => [id, seedNodes[i].name]),
+  );
+  const nextFrom = (id: string): string | undefined => {
+    const out = result.insertEdges.filter((e) => e.source === id);
+    return (out.find((e) => e.label === 'true') ?? out.find((e) => !e.label) ?? out[0])?.target;
+  };
+
+  const storeIndex = seedNodes.findIndex((s) => s.config.action === 'insert_job');
+  const order: string[] = [];
+  let cursor: string | undefined = result.resolvedIds[storeIndex];
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    order.push(nameById.get(cursor) ?? cursor);
+    cursor = nextFrom(cursor);
+  }
+
+  const gate = order.indexOf('Match Score');
+  if (gate < 0) throw new Error('Match Score is not reachable from Store Job');
+  for (const costly of ['ATS Optimizer', 'Build LaTeX', 'Compile PDF', 'Upload to Storage']) {
+    const at = order.indexOf(costly);
+    if (at < 0) throw new Error(`${costly} missing from the repaired fan-out`);
+    if (at < gate) throw new Error(`${costly} runs before the Match Score gate: ${order.join(' → ')}`);
   }
 });
 
@@ -416,7 +452,7 @@ Deno.test('a user-added gdrive node is NOT deleted when it is not an upload step
  *   - aggregate/fan-in = the `function` node with `builtin: email_summary`
  *   - the per-job branch = follow edges from the pipeline start, stop at aggregate
  */
-Deno.test('after migration the per-job fan-out contains Match Score after ATS Optimizer', () => {
+Deno.test('after migration the per-job fan-out contains Match Score before ATS Optimizer', () => {
   const nodes = legacyAug22Graph();
   const result = plan(nodes, []);
   const idFor = (predicate: (s: typeof seedNodes[number]) => boolean) =>
@@ -445,8 +481,8 @@ Deno.test('after migration the per-job fan-out contains Match Score after ATS Op
 
   const expected = [
     'Store Job',
-    'ATS Optimizer',
     'Match Score',
+    'ATS Optimizer',
     'Build LaTeX',
     'Compile PDF',
     'Upload to Storage',

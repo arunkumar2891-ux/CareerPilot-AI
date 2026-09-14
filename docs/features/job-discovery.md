@@ -14,11 +14,17 @@ Automated job searching, scraping, deduplication, AI match scoring, and job mana
 
 ### Manual Job Search
 ```
-JobsPage (UI) → services.workflow.runWorkflow()
-  → supabase.functions.invoke('workflow-run')
-    → executor.ts → job-discovery.ts → role-loop.ts → job-pipeline.ts
-      → Apify (scraping) → Gemini (scoring) → PostgreSQL (store)
+JobsPage (UI) → services.workflow.ensureDefaultPipeline()   (reconciles the graph)
+  → services.execution.runWorkflow()
+    → supabase.functions.invoke('workflow-run')
+      → createRunBatch()   (one batch per search; one run per search target, linear)
+        → executor.ts → job-pipeline.ts (one slice per job)
+          → Apify (scraping) → Gemini (ATS + scoring) → PostgreSQL (store)
 ```
+
+Each search target (role × location, plus an India-remote variant when enabled) becomes its
+own workflow run and sends its own summary email. Roles are capped at 5
+(`MAX_SEARCH_ROLES`), so a day can produce up to 10 runs and 10 emails.
 
 ### Paste JD (single job)
 ```
@@ -41,7 +47,9 @@ ApplicationPackageWizard → resume generation + cover letter for a specific job
 - `supabase/functions/workflow-run/index.ts` — Workflow trigger endpoint
 - `supabase/functions/_shared/workflow/job-discovery.ts` — Multi-job discovery seed builder
 - `supabase/functions/_shared/workflow/job-pipeline.ts` — Per-job processing pipeline
-- `supabase/functions/_shared/workflow/role-loop.ts` — Role-based parallel search loop
+- `supabase/functions/_shared/workflow/role-loop.ts` — Read-only search-target context accessors (the in-run role loop was replaced by run batches)
+- `supabase/functions/_shared/workflow/run-batch.ts` — One workflow run per search target, executed linearly
+- `supabase/functions/_shared/job-search-roles.ts` — Search-target building, `MAX_SEARCH_ROLES = 5`
 - `supabase/functions/_shared/career-corpus/score.ts` — AI match scoring
 - `supabase/functions/_shared/job-dedupe.ts` — URL-based deduplication
 

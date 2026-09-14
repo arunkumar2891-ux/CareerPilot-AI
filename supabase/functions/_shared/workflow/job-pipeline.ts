@@ -18,6 +18,7 @@ import type { createAdminClient } from '../supabase-admin.ts';
 import { formatUnknownError, isJobPipelineStart } from './job-discovery.ts';
 import { shouldYieldForNextJob, shouldYieldMidChain } from './job-pipeline-slice.ts';
 import { isDuplicateSkipOutput } from '../job-dedupe.ts';
+import { isBelowMatchScoreSkip, matchScoreLogMessages } from './match-gate.ts';
 import { storedFileLogMessages } from '../resume-store.ts';
 import { currentSearchLabel } from './role-loop.ts';
 
@@ -178,6 +179,7 @@ export async function executePerJobPipeline(
   let itemData: unknown = jobExecution.checkpoint_data ?? item;
   let jobFailed = false;
   let jobSkippedDuplicate = false;
+  let jobSkippedBelowThreshold = false;
   let failedNodeId: string | undefined;
   let failedMessage: string | undefined;
 
@@ -246,6 +248,15 @@ export async function executePerJobPipeline(
           );
         }
       }
+      // Surfaces "company — score%" on the Match Score node in the execution
+      // graph, including the reason when the gate stops the chain.
+      for (const message of matchScoreLogMessages(itemData)) {
+        await helpers.logStep(
+          runId, userId, chainNode.id, 'info',
+          message,
+          { jobExecutionId, nodeExecutionId, jobIndex, attempt },
+        );
+      }
 
       await admin.from('workflow_job_executions').update({
         checkpoint_data: itemData,
@@ -258,6 +269,16 @@ export async function executePerJobPipeline(
           admin, runId, jobExecutionId, jobIndex, attempt, chain, chainNode.id, userId,
         );
         jobSkippedDuplicate = true;
+        break;
+      }
+
+      // Match-score gate: the job is stored and scored, but scored too low to
+      // justify resume generation. Halt this job's chain without failing it.
+      if (isBelowMatchScoreSkip(itemData)) {
+        await skipRemainingJobNodes(
+          admin, runId, jobExecutionId, jobIndex, attempt, chain, chainNode.id, userId,
+        );
+        jobSkippedBelowThreshold = true;
         break;
       }
 
@@ -320,6 +341,21 @@ export async function executePerJobPipeline(
       `Skipped job ${localIndex}/${total}: identical URL already stored`,
       { jobExecutionId, jobIndex, attempt },
     );
+  } else if (jobSkippedBelowThreshold) {
+    const row = (itemData || {}) as Record<string, unknown>;
+    const jobId = row.jobId as string | undefined;
+    await completeJobExecution(admin, runId, jobExecutionId, 'skipped', {
+      jobId,
+      checkpointData: itemData,
+      startedAt: jobStartedAt,
+    });
+    await helpers.logStep(
+      runId, userId, chain[0].id, 'info',
+      `Skipped job ${localIndex}/${total}: match score ${Number(row.matchScore ?? 0)}% is at or below `
+      + `the ${Number(row.matchThreshold ?? 0)}% threshold. Stored in Discovered — `
+      + `run resume generation manually to continue.`,
+      { jobExecutionId, jobIndex, attempt },
+    );
   } else if (!jobFailed && itemData != null) {
     pipelineResults.push(itemData);
     const jobId = (itemData as Record<string, unknown>)?.jobId as string | undefined;
@@ -358,7 +394,7 @@ export async function executePerJobPipeline(
     const sliceElapsedMs = Date.now() - Number(ctx.variables.pipelineSliceStartedAt);
     const yieldForNext = shouldYieldForNextJob({
       remainingCount: remaining.length,
-      jobFailed: jobFailed || jobSkippedDuplicate,
+      jobFailed: jobFailed || jobSkippedDuplicate || jobSkippedBelowThreshold,
       sliceElapsedMs,
     });
     if (yieldForNext) {
@@ -375,7 +411,9 @@ export async function executePerJobPipeline(
       ? 'failed'
       : jobSkippedDuplicate
         ? 'skipped (duplicate)'
-        : 'finished';
+        : jobSkippedBelowThreshold
+          ? 'skipped (below match threshold)'
+          : 'finished';
     await helpers.logStep(
       runId, userId, chain[0].id, 'info',
       `Job ${localIndex}/${total} ${outcome} — starting next job in this slice (${remaining.length} left).`,

@@ -20,6 +20,15 @@ In the Supabase SQL Editor, run **in order**:
 | 4 | `supabase/migrations/003_cron.sql` | pg_cron scheduler (edit placeholders first) |
 | 5 | `supabase/migrations/004_fix_integrations_security.sql` | SECURITY INVOKER integrations RPC |
 | 6 | `supabase/migrations/005_knowledge_chunks.sql` | Career evidence chunks for resume tailoring |
+| 7 | `supabase/migrations/006_*.sql` … `027_*.sql` | Remaining feature migrations, in filename order |
+
+Everything through **`027_workflow_edges_unique.sql`** must be applied. Two matter most for
+the job-search pipeline:
+
+| File | Why it matters |
+|------|----------------|
+| `026_run_batches.sql` | `workflow_run_batches` + batch columns on `workflow_runs`. The partial unique index on `(batch_id, batch_index)` is what stops a search target being spawned twice. |
+| `027_workflow_edges_unique.sql` | Dedupes `workflow_edges` and enforces uniqueness, so a duplicate edge cannot make the executor fork down the same branch twice. |
 
 ### Enable pg_cron and pg_net (required before 003)
 
@@ -176,9 +185,9 @@ Your URL will be `https://careerpilot-ai.onrender.com` (or similar).
 
 ### The version label
 
-The sidebar shows `beta v1.1 · 0913.1437` — the `package.json` version, then a **build stamp** (`MMDD.HHmm`, UTC) that changes automatically on every build. Hover it to see the exact build time.
+The sidebar shows `beta v1.2 · 0914.0815` — the `package.json` version, then a **build stamp** (`MMDD.HHmm`, UTC) that changes automatically on every build. Hover it to see the exact build time.
 
-The build stamp is what tells you a deploy actually landed, and it needs no action from you. The `v1.1` part only changes when you bump it:
+The build stamp is what tells you a deploy actually landed, and it needs no action from you. The `v1.2` part only changes when you bump it:
 
 ```bash
 npm run version:bump

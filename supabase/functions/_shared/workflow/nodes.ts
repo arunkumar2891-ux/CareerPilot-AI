@@ -32,6 +32,7 @@ import { extractEmailFromText } from '../apply-email.ts';
 import { loadMasterResumeText } from '../career-corpus/load.ts';
 import { scoreJobsAgainstResume } from '../career-corpus/score.ts';
 import { maxJobsPerRole } from '../job-search-roles.ts';
+import { belowMatchScoreSkip, belowThresholdEmailSection, minMatchScore, passesMatchGate } from './match-gate.ts';
 
 /** Apify status polling bounds — prevents an unfinished actor run from looping forever. */
 const APIFY_POLL_INTERVAL_MS = 10000;
@@ -172,9 +173,11 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         return { output: items.slice(0, max), status: 'success' };
       }
       if (action === 'match_score') {
-        // Runs inside the per-job fan-out (after ATS Optimizer), so `input` is
-        // normally a single job object. The array path is kept for pre-fan-out
-        // graphs and for `foreach` batches.
+        // Gate node: runs FIRST inside the per-job fan-out (right after
+        // `Store Job`) so the score is known before any AI spend. Scores the
+        // job against the MASTER resume — the tailored resume does not exist
+        // yet at this point in the chain. The array path is kept for
+        // pre-fan-out graphs and `foreach` batches.
         const isSingle = !Array.isArray(input) && Boolean(input) && typeof input === 'object';
         const items = (Array.isArray(input) ? input : (isSingle ? [input] : (Array.isArray(ctx.items) ? ctx.items : [])))
           .filter((item) => item && typeof item === 'object') as Record<string, unknown>[];
@@ -186,29 +189,54 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
             jobTitle: String(job.title || job.role || ''),
             company: String(job.company || job.companyName || ''),
           })),
-          // After ATS Optimizer the tailored resume is on `output`, so score
-          // that. Falls back to the master resume for pre-fan-out graphs.
-          resumeText: String((isSingle && items[0].output) || master.text),
+          resumeText: master.text,
           resumeName: master.name,
           userId: ctx.userId,
         });
+        const threshold = minMatchScore(ctx.settings.jobSearch as Record<string, unknown> | undefined);
         const output: Record<string, unknown>[] = items.map((job, index) => ({
           ...job,
           matchScore: scored[index]?.score ?? 0,
           matchScoreSource: scored[index]?.source || master.name,
+          matchThreshold: threshold,
         }));
         // Preserve the input shape: returning an array from inside the fan-out
         // would make the next node treat one job as a batch.
         if (isSingle) {
           const single = output[0];
+          const score = Number(single.matchScore ?? 0);
+          const passed = passesMatchGate(score, threshold);
           // `Store Job` already inserted this row, so the score has to be
-          // written back or it would never reach the jobs table.
+          // written back or it would never reach the jobs table. Jobs that beat
+          // the gate move on to resume generation (`queued`); the rest stay
+          // `discovered` so they only surface on that tab until the user
+          // generates a resume manually.
           const jobId = String(single.jobId || single.id || ctx.variables.lastJobId || '');
           if (jobId) {
             await createAdminClient().from('jobs').update({
-              match_score: single.matchScore,
+              match_score: score,
               match_score_source: single.matchScoreSource || null,
+              status: passed ? 'queued' : 'discovered',
+              resume_status: passed ? 'generating' : 'none',
             }).eq('id', jobId).eq('user_id', ctx.userId);
+          }
+          if (!passed) {
+            // Reported in the summary email even though the chain stops here.
+            const below = Array.isArray(ctx.variables.belowThresholdJobs)
+              ? ctx.variables.belowThresholdJobs as Record<string, unknown>[]
+              : [];
+            below.push({
+              company: single.company ?? single.companyName ?? '',
+              roleName: single.roleName ?? single.title ?? single.role ?? '',
+              title: single.title ?? single.role ?? '',
+              jobLink: single.jobLink ?? single.url ?? '',
+              matchScore: score,
+              matchScoreSource: single.matchScoreSource ?? '',
+              matchThreshold: threshold,
+              ...(jobId ? { jobId } : {}),
+            });
+            ctx.variables.belowThresholdJobs = below;
+            return { output: belowMatchScoreSkip(single, score, threshold), status: 'success' };
           }
           return { output: single, status: 'success' };
         }
@@ -336,6 +364,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       if (fn === 'email_summary') {
         const summaryBlock = await buildEmailSummaryBlock(createAdminClient(), ctx.runId);
         const items = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];
+        // Jobs stored but gated out by `Match Score`. They never reach
+        // `processedJobs` (no resume/PDF), so they get their own section.
+        const belowThreshold = Array.isArray(ctx.variables.belowThresholdJobs)
+          ? ctx.variables.belowThresholdJobs as Record<string, unknown>[]
+          : [];
+        const belowSection = belowThresholdEmailSection(belowThreshold);
         // One run per search target means one email per target. Without the label
         // in the subject, up to 10 same-day emails are indistinguishable.
         const label = currentSearchLabel(ctx.variables);
@@ -348,6 +382,18 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         if (items.length === 0) {
           const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
           const today = new Date().toISOString().slice(0, 10);
+          // Every job scoring below the gate is not an empty run — the jobs are
+          // in Discovered and must still be listed.
+          if (belowSection) {
+            return {
+              output: {
+                subject: `${belowThreshold.length} Job(s) Below Match Threshold${subjectTarget} — ${today}`,
+                body: `${summaryBlock}<p>No resumes were generated: every new job scored at or below your match threshold.</p>${belowSection}`,
+                to: email,
+              },
+              status: 'success',
+            };
+          }
           const detail = emptyJobRunDetail({
             scraped,
             parsed,
@@ -368,13 +414,14 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           };
         }
         const today = new Date().toISOString().slice(0, 10);
-        let body = `<div style="font-family:Arial,sans-serif"><h2>Your ATS resumes are ready (${items.length})${label ? ` — ${label}` : ''}</h2><table border="1" cellpadding="8"><tr><th>Company</th><th>Role</th><th>Job</th><th>Resume</th></tr>`;
+        let body = `<div style="font-family:Arial,sans-serif"><h2>Your ATS resumes are ready (${items.length})${label ? ` — ${label}` : ''}</h2><table border="1" cellpadding="8"><tr><th>Company</th><th>Role</th><th>Match</th><th>Job</th><th>Resume</th></tr>`;
         for (const it of items) {
           if (!it || typeof it !== 'object') continue;
           const row = it as Record<string, unknown>;
-          body += `<tr><td>${row.company ?? ''}</td><td>${row.roleName || row.title}</td><td><a href="${row.jobLink}">View</a></td><td><a href="${row.pdfLink || row.pdf_url}">PDF</a></td></tr>`;
+          const score = Number(row.matchScore ?? row.match_score ?? 0);
+          body += `<tr><td>${row.company ?? ''}</td><td>${row.roleName || row.title}</td><td>${score}%</td><td><a href="${row.jobLink}">View</a></td><td><a href="${row.pdfLink || row.pdf_url}">PDF</a></td></tr>`;
         }
-        body += `</table><p>Generated: ${new Date().toLocaleString()}</p></div>`;
+        body += `</table>${belowSection}<p>Generated: ${new Date().toLocaleString()}</p></div>`;
         const email = (ctx.settings.notifications as Record<string, string>)?.email || ctx.settings.userEmail;
         return {
           output: {
@@ -816,9 +863,12 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           hybrid: workplace.hybrid,
           experience: String(job.seniorityLevel || ''),
           duplicate: false,
-          resume_status: 'generating',
+          // The gate node (`Match Score`) runs next and promotes the job to
+          // `queued` only when it beats the threshold. Inserting as
+          // `discovered`/`none` means a skipped job needs no correction.
+          resume_status: 'none',
           application_status: 'draft',
-          status: 'queued',
+          status: 'discovered',
           url,
           content_fingerprint: fingerprint || null,
           apply_email: job.applyEmail ? String(job.applyEmail) : null,

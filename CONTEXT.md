@@ -24,6 +24,53 @@ Autonomous AI-powered job search platform. Users connect their resume corpus, co
 
 Data flow: `React UI → supabase-js → Supabase (PostgREST / Edge Functions) → PostgreSQL / AI APIs / Google Drive`
 
+### Job search: one run per search target
+
+A job search does **not** loop over roles inside a single run. `workflow-run` creates a
+**run batch** (`workflow_run_batches`) from the user's search targets and then spawns
+**one `workflow_runs` row per target**, strictly one at a time. Each run executes the
+pipeline for a single role/location and sends its own summary email.
+
+Linearity is enforced by query (a new target is only spawned when no sibling run is
+active), and double-spawning is prevented structurally by a partial unique index on
+`(batch_id, batch_index)`. Roles are capped at 5.
+
+### Two levels of fan-out (do not confuse them)
+
+| Level | What it is | Where |
+|-------|-----------|-------|
+| **Run batch** | One workflow run per search target, executed linearly | `_shared/workflow/run-batch.ts` |
+| **Per-job pipeline** | Within one run, one Edge Function invocation per job, to stay under the wall-clock limit | `_shared/workflow/job-pipeline.ts` |
+
+The per-job fan-out runs from the first `insert_job` node until the aggregate node
+(`email_summary`). It is the older of the two and is unrelated to roles.
+
+Its first step is `Match Score`, which acts as a **gate**: it scores the job against the
+master resume and, unless the score exceeds `settings.jobSearch.minMatchScore` (default 80),
+returns a skip output that halts the remaining steps for that job. Gated jobs keep their
+score, stay in the `discovered` state, and are still reported in the summary email. Because
+`executePerJobPipeline` walks the chain by array index and ignores `result.route`, this gate
+is a code-level skip rather than a `true`/`false` edge — see `_shared/workflow/match-gate.ts`.
+
+Job status progression: `discovered` (stored, or gated out) → `queued` (passed the gate /
+resume generating) → `resume_ready` (PDF in Storage) → `applied` → …
+
+### The built-in graph is self-healing
+
+`workflow_nodes` / `workflow_edges` rows are per-user data, so users provisioned from an
+older seed drift from `src/constants/workflow-seed.ts`. `repairDefaultPipelineGraph`
+reconciles them on load using the pure planner in `src/utils/pipeline-repair.ts`:
+
+- Matches nodes by **`type` + `action`/`builtin`**, never by name (names have drifted:
+  `Get Resume` → `Sync Google Doc Resume`).
+- Restores missing nodes **and** edges, removes retired steps, realigns positions.
+- Writes only a **delta**. It must never call `saveGraph`, which deletes and re-inserts
+  every node and edge — that caused duplicate-key and statement-timeout failures. See
+  `BUG_LOG.md` BUG-003.
+
+Node `positionX` is load-bearing: `src/utils/execution-graph.ts` uses it to split the
+shared prefix, the per-job branch, and the fan-in.
+
 ## Directory Structure
 
 | Directory | Responsibility |
@@ -46,13 +93,13 @@ Data flow: `React UI → supabase-js → Supabase (PostgREST / Edge Functions) �
 | `supabase/functions/_shared/ai/` | AI provider routing, usage tracking, error handling |
 | `supabase/functions/_shared/workflow/` | Workflow execution engine, job pipeline, graph traversal |
 | `supabase/functions/_shared/career-corpus/` | Resume corpus loading, generation, scoring |
-| `supabase/migrations/` | PostgreSQL migrations (024 files) |
+| `supabase/migrations/` | PostgreSQL migrations (through `027`) |
 | `scripts/` | Build utility scripts |
 | `.github/workflows/` | CI/CD (Edge Function deployment) |
 
 ## Key Architectural Conventions
 
-- **Single services file:** All frontend-to-backend communication is in `src/services/index.ts` (~2,400 lines). Each service class maps to a domain (jobs, resumes, workflows, etc.).
+- **Single services file:** All frontend-to-backend communication is in `src/services/index.ts` (~2,500 lines). Each service class maps to a domain (jobs, resumes, workflows, etc.).
 - **Single types file:** All TypeScript interfaces/types are in `src/types/index.ts`.
 - **Page = feature:** Each page in `src/pages/` is a self-contained feature entry point.
 - **Edge Functions = backend API:** Named functions in `supabase/functions/` with shared logic in `_shared/`.
@@ -70,3 +117,14 @@ Data flow: `React UI → supabase-js → Supabase (PostgREST / Edge Functions) �
 ## Feature Map
 
 See `docs/FEATURE_MAP.md` for detailed feature-to-file mappings.
+
+## Known-Good States
+
+`RESTORE_POINTS.md` records verified-working versions, what was validated, and how to roll
+back. Add an entry whenever a release is confirmed working end-to-end.
+
+## Bug History
+
+`BUG_LOG.md` records resolved bugs with root cause and validation. Read BUG-003 before
+touching workflow graph provisioning — it explains why the repair writes deltas instead of
+rewriting the graph.

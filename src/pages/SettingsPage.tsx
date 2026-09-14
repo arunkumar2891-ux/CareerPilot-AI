@@ -36,6 +36,7 @@ export function SettingsPage() {
   const [jobLocation, setJobLocation] = useState('San Francisco, CA');
   const [alsoSearchIndiaRemote, setAlsoSearchIndiaRemote] = useState(true);
   const [maxJobs, setMaxJobs] = useState('5');
+  const [minMatchScore, setMinMatchScore] = useState('80');
   const [postedWithin, setPostedWithin] = useState(DEFAULT_JOB_POSTED_WITHIN);
   const [resumeFileId, setResumeFileId] = useState('');
   const [driveFolderId, setDriveFolderId] = useState('');
@@ -64,6 +65,9 @@ export function SettingsPage() {
       if (js?.location) setJobLocation(String(js.location));
       setAlsoSearchIndiaRemote(js?.alsoSearchIndiaRemote !== false && js?.alsoSearchIndiaRemote !== 'false');
       if (js?.maxJobs) setMaxJobs(String(js.maxJobs));
+      if (js?.minMatchScore !== undefined && js?.minMatchScore !== null && js?.minMatchScore !== '') {
+        setMinMatchScore(String(js.minMatchScore));
+      } else setMinMatchScore('80');
       if (js?.postedWithin) setPostedWithin(String(js.postedWithin));
       else setPostedWithin(DEFAULT_JOB_POSTED_WITHIN);
       if (js?.resumeFileId) setResumeFileId(String(js.resumeFileId));
@@ -149,6 +153,7 @@ export function SettingsPage() {
         location: jobLocation,
         alsoSearchIndiaRemote,
         maxJobs,
+        minMatchScore,
         postedWithin,
         resumeFileId: parsedResumeId,
         driveFolderId: parsedFolderId,
@@ -328,6 +333,23 @@ export function SettingsPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Caps how many jobs are scored and tailored for each scrape (for example 10 in your location plus 10 India remote, per role).
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="min-match-score">Minimum match score</Label>
+                <Input
+                  id="min-match-score"
+                  value={minMatchScore}
+                  onChange={(e) => setMinMatchScore(e.target.value)}
+                  type="number"
+                  min={0}
+                  max={99}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Each job is scored against your master resume before any AI spend. Only jobs scoring
+                  <strong> above</strong> this number continue to the ATS Optimizer and get a tailored resume.
+                  The rest stay in <strong>Discovered</strong> with their score and are still listed in the
+                  summary email — you can generate a resume for them manually. Default is 80.
                 </p>
               </div>
               <div className="space-y-1.5">

@@ -25,10 +25,13 @@ export const DEFAULT_JOB_SEARCH_WORKFLOW = {
     { type: 'duplicate_checker', name: 'Filter Duplicates', x: 1400, y: 200, config: {} },
     { type: 'transform', name: 'Limit Jobs', x: 1600, y: 200, config: { action: 'limit', max: 10 } },
     { type: 'supabase', name: 'Store Job', x: 1800, y: 200, config: { action: 'insert_job' } },
-    { type: 'gemini', name: 'ATS Optimizer', x: 2000, y: 200, config: {} },
-    // Inside the per-job fan-out, after ATS optimization: scores the tailored
-    // resume against the job rather than the generic master resume.
-    { type: 'transform', name: 'Match Score', x: 2200, y: 200, config: { action: 'match_score' } },
+    // Gate node. Runs first inside the per-job fan-out so the score is known
+    // before any AI spend: it scores the job against the MASTER resume, then
+    // halts the rest of this job's chain when the score is at or below
+    // `settings.jobSearch.minMatchScore`. Low scorers stay `discovered` and are
+    // still reported in the summary email. See `_shared/workflow/match-gate.ts`.
+    { type: 'transform', name: 'Match Score', x: 2000, y: 200, config: { action: 'match_score' } },
+    { type: 'gemini', name: 'ATS Optimizer', x: 2200, y: 200, config: {} },
     { type: 'function', name: 'Build LaTeX', x: 2400, y: 200, config: { builtin: 'build_latex' } },
     { type: 'pdf', name: 'Compile PDF', x: 2600, y: 200, config: {} },
     { type: 'storage', name: 'Upload to Storage', x: 2800, y: 200, config: {} },

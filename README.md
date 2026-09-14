@@ -43,15 +43,15 @@ The dashboard uses a **Mission Control Premium** visual language: restrained cya
 
 | Location | Contents |
 | --- | --- |
-| [`src/lib/motion.ts`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/lib/motion.ts) | Shared easing (`EASE_OUT`), durations, page transitions, stagger variants, `useReducedMotion()` |
-| [`src/index.css`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/index.css) | `grid-bg`, `gradient-text`, `status-label`, `glow-border`, `animate-shimmer`, `animate-orbit`, `animate-scan`, `animate-status-pulse` |
-| [`tailwind.config.js`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/tailwind.config.js) | `shadow-glow-sm`, `shadow-glow-primary` |
+| [`src/lib/motion.ts`](src/lib/motion.ts) | Shared easing (`EASE_OUT`), durations, page transitions, stagger variants, `useReducedMotion()` |
+| [`src/index.css`](src/index.css) | `grid-bg`, `gradient-text`, `status-label`, `glow-border`, `animate-shimmer`, `animate-orbit`, `animate-scan`, `animate-status-pulse` |
+| [`tailwind.config.js`](tailwind.config.js) | `shadow-glow-sm`, `shadow-glow-primary` |
 
 Primary entrances use opacity + a short `y` translate (~450ms, decelerate easing). `prefers-reduced-motion` and mobile viewports disable orbit/scan animations and page transitions.
 
 ### Brand
 
-[`src/components/brand/LogoMark.tsx`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/components/brand/LogoMark.tsx) is a custom SVG (trajectory arc + node). It replaces the generic rocket icon in the sidebar, auth screen, Copilot header, setup guide, and boot loader. Lucide icons remain for navigation and actions.
+[`src/components/brand/LogoMark.tsx`](src/components/brand/LogoMark.tsx) is a custom SVG (trajectory arc + node). It replaces the generic rocket icon in the sidebar, auth screen, Copilot header, setup guide, and boot loader. Lucide icons remain for navigation and actions.
 
 ### Motion kit (`src/components/motion/`)
 
@@ -76,25 +76,39 @@ Import from `@/components/motion` or use shared components (`PageHeader`, `Metri
 
 ## Job-search pipeline
 
-On first authenticated load, `BootstrapService` provisions default settings, the workflow, and a daily automation. Add a master resume on the Corpus page (Google Doc, upload, or paste) before tailoring. The current default workflow has 17 nodes:
+On first authenticated load, `BootstrapService` provisions default settings, the workflow, and a daily automation. Add a master resume on the Corpus page (Google Doc, upload, or paste) before tailoring.
+
+A job search does **not** loop over roles inside one run. Each search target — a role, plus an optional India-wide remote variant — becomes **its own workflow run**, executed strictly one at a time, and each sends its own summary email. Roles are capped at 5 in Settings, so a day can produce up to 10 runs and 10 emails. Sequencing lives in `workflow_run_batches`; a partial unique index on `(batch_id, batch_index)` makes double-spawning a target impossible.
+
+Within a run, the default 18-node workflow has three phases:
 
 ```text
-Daily schedule
-  → optional Google Doc resume sync
-  → build LinkedIn query
-  → start and poll Apify scrape
-  → fetch and parse results
-  → limit and de-duplicate jobs
-  → store job
-  → ATS optimization
-  → build LaTeX and compile PDF
-  → store PDF
-  → assemble and send summary email
+Shared prefix (once per run)
+  daily schedule
+    → optional Google Doc resume sync   (skipped after the first run in a batch)
+    → build LinkedIn query
+    → start and poll Apify scrape
+    → fetch and parse results
+    → de-duplicate, then limit jobs
+
+Per-job fan-out (one Edge Function slice per job)
+  store job
+    → match score          (vs. master resume — GATE: stop here if not > threshold)
+    → ATS optimization
+    → build LaTeX → compile PDF → upload to Supabase Storage
+
+Fan-in (once per run)
+  assemble and send summary email
 ```
 
-Long-running work is checkpointed in `workflow_step_queue`. The scheduler resumes Apify polling, waiting nodes, and queued job slices, which keeps a multi-job run within Edge Function execution limits. A user can cancel a run or retry failed job slices from Execution History.
+Two details are deliberate and easy to reverse by accident:
 
-The default workflow definition is in [src/constants/workflow-seed.ts](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/src/constants/workflow-seed.ts). The workflow can be customized through the data model; the available node types cover triggers, AI, integrations, logic, and transforms.
+- **De-duplicate before limiting.** The other order would spend the limit on jobs you have already seen, so a limit of 10 could store only 3 new ones.
+- **Match score gates the pipeline.** It runs first inside the fan-out (right after `Store Job`), scores the job against your **master resume**, and writes back to `jobs.match_score`. Only jobs scoring **above** `Settings → Minimum match score` (default 80) continue to the ATS Optimizer; the rest stay in **Discovered** with their score, are still listed in the summary email, and can be processed manually later.
+
+Long-running work is checkpointed in `workflow_step_queue`. The scheduler resumes Apify polling, waiting nodes, and queued job slices, which keeps a multi-job run within Edge Function execution limits. A user can cancel a run or retry failed job slices from Execution History; cancelling one run cancels the rest of its batch.
+
+The default workflow definition is in [src/constants/workflow-seed.ts](src/constants/workflow-seed.ts). Because node rows are per-user data, graphs provisioned by older versions are reconciled on load by `repairDefaultPipelineGraph` (planner: [src/utils/pipeline-repair.ts](src/utils/pipeline-repair.ts)), which restores missing nodes and edges, removes retired steps, and realigns positions without rewriting the whole graph. Drive upload is **not** part of the pipeline — sync PDFs manually from the Resume workspace.
 
 ## Resume review and Copilot
 
@@ -133,18 +147,35 @@ src/
   services/index.ts            Typed Supabase-facing service layer and bootstrap logic
   content/career-corpus/       Master resume name constants and contact overlay helpers
   constants/workflow-seed.ts   Default workflows (daily pipeline + resume tailoring)
+  utils/
+    pipeline-repair.ts         Pure planner that reconciles a user's graph with the seed
+    execution-graph.ts         Prefix / per-job fan-out / fan-in layout for the UI
   lib/
     motion.ts                  Motion tokens and useReducedMotion
     supabase.ts                Supabase client and auth helpers
+    version.ts                 Version label + build stamp shown in the sidebar
   store/                       Zustand stores
 
 supabase/
   migrations/                  Ordered schema, RLS, storage, scheduler, and feature migrations
   functions/                   Deno Edge Functions and shared workflow/AI helpers
+    _shared/workflow/          Executor, graph, nodes, run batches, job pipeline, + tests
 
 scripts/
   bump-version.mjs             Increments package.json version before deploy
 ```
+
+Project documentation:
+
+| File | Contents |
+| --- | --- |
+| [CONTEXT.md](CONTEXT.md) | Architecture, stack, directory structure, conventions |
+| [AGENTS.md](AGENTS.md) | Instructions and guardrails for AI coding agents |
+| [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md) | Feature-to-file index |
+| [docs/features/](docs/features/) | Per-feature deep dives (workflow engine, job discovery, …) |
+| [RESTORE_POINTS.md](RESTORE_POINTS.md) | Verified-working versions and rollback steps |
+| [BUG_LOG.md](BUG_LOG.md) | Resolved bugs with root cause and validation |
+| [DEPLOY.md](DEPLOY.md) | Deployment, migrations, cron, and the version label |
 
 ## Prerequisites
 
@@ -182,7 +213,17 @@ npm run preview    # serve the production build
 npm run version:bump  # 1.0 -> 1.1 -> ... -> 1.999 -> 2.0; run before each deploy
 ```
 
-The sidebar shows `beta v1.1 · 0913.1437` — the `version` from `package.json`, plus a build stamp (`MMDD.HHmm` UTC) that updates automatically on every build, so you can always tell which deploy you're looking at. Bump the version number itself with `npm run version:bump`. See [DEPLOY.md](DEPLOY.md#the-version-label).
+Backend logic is tested with Deno (no npm script — the Edge Functions are a separate runtime):
+
+```bash
+deno test --allow-all --no-check supabase/functions/_shared/workflow/
+```
+
+`--no-check` skips a handful of pre-existing type errors in untouched files. See [AGENTS.md](AGENTS.md#validation-commands) for the details and required env stubs.
+
+The sidebar shows `beta v1.2 · 0914.0815` — the `version` from `package.json`, plus a build stamp (`MMDD.HHmm` UTC) that updates automatically on every build, so you can always tell which deploy you're looking at. Bump the version number itself with `npm run version:bump`. See [DEPLOY.md](DEPLOY.md#the-version-label).
+
+Verified-working versions are recorded in [RESTORE_POINTS.md](RESTORE_POINTS.md), with what each one validated and how to roll back.
 
 Do not put provider API keys in `.env` or expose them through `VITE_` variables. Configure those as Supabase Edge Function secrets instead.
 
@@ -199,8 +240,12 @@ Apply every SQL migration in filename order. Before `003_cron.sql`, enable the `
 | `017` | AI usage events |
 | `018` | Persisted ATS reviews and resume-linked Copilot conversations |
 | `019` | `corpus_type` / `corpus_source` plus DOCX uploads in the resumes bucket |
+| `020`–`022` | Interview prep, job de-duplication, and per-execution search role |
+| `023`–`025` | Scheduled run slots, `get_run_logs` RPC, and auto-apply |
+| `026` | **Run batches** — `workflow_run_batches` plus batch columns on `workflow_runs` |
+| `027` | **`workflow_edges` uniqueness** — dedupes edges so a duplicate edge cannot fork a run |
 
-For exact migration and scheduler instructions, see [DEPLOY.md](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/DEPLOY.md). The deployment guide is especially important for the cron endpoint, because scheduled and waiting workflows require `workflow-scheduler` to run every minute.
+For exact migration and scheduler instructions, see [DEPLOY.md](DEPLOY.md). The deployment guide is especially important for the cron endpoint, because scheduled and waiting workflows require `workflow-scheduler` to run every minute.
 
 ### Edge Function secrets
 
@@ -237,7 +282,7 @@ Deploy all functions after setting secrets:
 supabase functions deploy --project-ref YOUR_PROJECT_REF
 ```
 
-The repository also includes a GitHub Actions workflow that deploys Edge Functions after relevant changes land on `main`; it requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` repository secrets. See [`.github/workflows/deploy-supabase-functions.yml`](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/.github/workflows/deploy-supabase-functions.yml).
+The repository also includes a GitHub Actions workflow that deploys Edge Functions after relevant changes land on `main`; it requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` repository secrets. See [`.github/workflows/deploy-supabase-functions.yml`](.github/workflows/deploy-supabase-functions.yml).
 
 ## First-run checklist
 
@@ -258,9 +303,9 @@ Resume tailoring sends the selected source resume and the job description to Gem
 
 The frontend is a static Vite application and includes host configuration for Render, Vercel, and Netlify-style redirects:
 
-- [render.yaml](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/render.yaml) for Render Static Sites
-- [vercel.json](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/vercel.json) for Vercel SPA rewrites
-- [public/_redirects](/Users/arunkumarjs/Documents/GitHub/CareerPilot-AI/public/_redirects) for Netlify-compatible hosts
+- [render.yaml](render.yaml) for Render Static Sites
+- [vercel.json](vercel.json) for Vercel SPA rewrites
+- [public/_redirects](public/_redirects) for Netlify-compatible hosts
 
 Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` on the static host, update `APP_URL` in Supabase secrets to the deployed URL, and add that URL to Supabase Auth redirect settings.
 

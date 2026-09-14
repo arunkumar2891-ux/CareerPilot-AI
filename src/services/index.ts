@@ -2527,6 +2527,7 @@ export class BootstrapService {
           location: String(jobSearch.location || 'San Francisco, CA'),
           alsoSearchIndiaRemote: jobSearch.alsoSearchIndiaRemote !== false && jobSearch.alsoSearchIndiaRemote !== 'false',
           maxJobs: String(jobSearch.maxJobs || '5'),
+          minMatchScore: String(jobSearch.minMatchScore ?? '80'),
           postedWithin: String(jobSearch.postedWithin || '1d'),
           resumeFileId: String(jobSearch.resumeFileId ?? ''),
           driveFolderId: String(jobSearch.driveFolderId ?? ''),

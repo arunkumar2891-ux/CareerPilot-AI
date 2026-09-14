@@ -32,9 +32,11 @@ For deeper feature context, see `docs/features/*.md`.
 - **Backend:** `supabase/functions/workflow-run/index.ts` (triggers job search workflow)
 - **Workflow Engine:** `supabase/functions/_shared/workflow/executor.ts`, `job-discovery.ts`, `job-pipeline.ts`
 - **AI Scoring:** `supabase/functions/_shared/career-corpus/score.ts`, `score-batch.ts`
+- **Match gate:** `supabase/functions/_shared/workflow/match-gate.ts` (score > `settings.jobSearch.minMatchScore`, default 80, or the job's remaining steps are skipped and it stays `discovered`)
 - **Deduplication:** `supabase/functions/_shared/job-dedupe.ts`
-- **Utils:** `src/utils/jd-match.ts`, `src/utils/job-branch-status.ts`, `src/utils/job-search-roles.ts`
-- **DB:** `supabase/migrations/021_jobs_dedupe.sql`, `022_job_execution_role.sql`
+- **Utils:** `src/utils/jd-match.ts`, `src/utils/job-branch-status.ts`, `src/utils/job-search-roles.ts` (`MAX_SEARCH_ROLES = 5`)
+- **DB:** `supabase/migrations/021_jobs_dedupe.sql`, `022_job_execution_role.sql`, `026_run_batches.sql`
+- **Note:** Each search target runs as its own workflow run and sends its own email. See "Workflow Engine & Executions" below.
 
 ---
 
@@ -92,11 +94,14 @@ For deeper feature context, see `docs/features/*.md`.
 - **Services:** `src/services/index.ts` → `WorkflowService`, `ExecutionService`, `AutomationService`
 - **Backend:** `supabase/functions/workflow-run/`, `workflow-step/`, `workflow-cancel/`, `workflow-retry-failed/`, `workflow-scheduler/`
 - **Engine:** `supabase/functions/_shared/workflow/executor.ts`, `graph.ts`, `nodes.ts`, `run-lifecycle.ts`
-- **Job Pipeline:** `supabase/functions/_shared/workflow/job-pipeline.ts`, `job-pipeline-slice.ts`, `role-loop.ts`
+- **Run batches (one run per search target):** `supabase/functions/_shared/workflow/run-batch.ts` (+ `run-batch_test.ts`)
+- **Job Pipeline (per-job fan-out):** `supabase/functions/_shared/workflow/job-pipeline.ts`, `job-pipeline-slice.ts`
+- **Role context helpers:** `supabase/functions/_shared/workflow/role-loop.ts` (read-only accessors; the in-run role loop was replaced by run batches), `supabase/functions/_shared/job-search-roles.ts`
+- **Graph provisioning & repair:** `src/services/index.ts` → `ensureDefaultPipeline`, `repairDefaultPipelineGraph`; planner in `src/utils/pipeline-repair.ts` (+ `supabase/functions/_shared/workflow/pipeline-repair_test.ts`)
 - **Observability:** `supabase/functions/_shared/workflow/execution-persistence.ts`, `execution-status.ts`
 - **Frontend Utils:** `src/utils/execution-graph.ts`, `src/utils/execution.ts`, `src/utils/run-id.ts`
-- **Seed Config:** `src/constants/workflow-seed.ts`
-- **DB:** `supabase/migrations/011_execution_observability.sql`, `023_scheduled_run_slots.sql`, `024_get_run_logs.sql`
+- **Seed Config:** `src/constants/workflow-seed.ts` (+ `supabase/functions/_shared/workflow/seed-graph_test.ts`)
+- **DB:** `supabase/migrations/011_execution_observability.sql`, `023_scheduled_run_slots.sql`, `024_get_run_logs.sql`, `026_run_batches.sql`, `027_workflow_edges_unique.sql`
 
 ---
 

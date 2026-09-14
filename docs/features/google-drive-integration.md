@@ -40,6 +40,15 @@ resume-actions { action: 'sync_drive' }
       → Google Drive API upload
 ```
 
+> **Drive sync is manual, from the Resume workspace.** The job-search pipeline no longer
+> contains an `Upload to Drive` node — it was removed from the seed in `5d682c32`. The
+> `gdrive` node executor still exists (and self-skips unless `jobSearch.autoUploadDrive`
+> is `true`), but the built-in graph does not use it, and `repairDefaultPipelineGraph`
+> deletes leftover copies. See `src/utils/pipeline-repair.ts` → `RETIRED_SEED_SIGNATURES`.
+>
+> The pipeline's `gdocs` step (resume *import*) is unaffected and still runs first; note it
+> is skipped for every run after the first in a batch, so the doc is fetched once per search.
+
 ## Important Files
 
 - `src/pages/IntegrationsPage.tsx` — Integration management UI
