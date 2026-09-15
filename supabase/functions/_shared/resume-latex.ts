@@ -212,6 +212,10 @@ function looksLikeProjectTitle(line: string): boolean {
   return /\|/.test(trimmed) || /\s-\s/.test(trimmed) || /^[A-Z0-9][\w\s.&/-]{7,}$/.test(trimmed);
 }
 
+function isTechnologiesLine(line: string): boolean {
+  return /^Technologies:/i.test(stripProjectLineDecorators(line));
+}
+
 function normalizeProjectBlock(block: PersonalProjectBlock): PersonalProjectBlock {
   const meta = [...block.meta];
   const bullets: string[] = [];
@@ -240,39 +244,136 @@ function normalizeProjectBlock(block: PersonalProjectBlock): PersonalProjectBloc
   return { title, meta, bullets };
 }
 
-function findOrphanProjectTitleBeforeHeader(raw: string): string {
-  const headerMatch = raw.match(/(?:^|\n)PERSONAL PROJECTS\s*\n/i);
-  if (!headerMatch || headerMatch.index === undefined) return '';
+function splitBulletsByTitle(bullets: string[]): Array<{ title: string; bullets: string[] }> {
+  const groups: Array<{ title: string; bullets: string[] }> = [];
+  let current: { title: string; bullets: string[] } = { title: '', bullets: [] };
 
-  const before = raw.slice(0, headerMatch.index);
-  const lines = before.split('\n').map((line) => line.trim()).filter(Boolean);
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const rawLine = lines[i];
-    const candidate = stripProjectLineDecorators(rawLine);
+  const pushCurrent = () => {
+    if (!current.title && !current.bullets.length) return;
+    groups.push(current);
+    current = { title: '', bullets: [] };
+  };
+
+  for (const bullet of bullets) {
+    if (looksLikeProjectTitle(bullet)) {
+      if (current.bullets.length > 0 || current.title) pushCurrent();
+      if (!current.title) current.title = bullet;
+      else pushCurrent(), current = { title: bullet, bullets: [] };
+      continue;
+    }
+    current.bullets.push(bullet);
+  }
+  pushCurrent();
+  return groups;
+}
+
+function findProjectTitleBefore(lines: string[], technologiesIndex: number): string {
+  for (let j = technologiesIndex - 1; j >= 0; j--) {
+    const raw = lines[j];
+    const candidate = stripProjectLineDecorators(raw);
     if (!candidate) continue;
-    if (SECTION_HEADERS.includes(candidate.toUpperCase())) break;
-    if (/^(Technologies|Role|Duration):/i.test(candidate)) break;
-    if (isBulletLine(rawLine) && !looksLikeProjectTitle(candidate)) break;
-    if (looksLikeProjectTitle(candidate)) return candidate;
-    break;
+    if (isTechnologiesLine(raw)) break;
+
+    const taggedTitle = parseProjectTag(candidate);
+    if (taggedTitle) return taggedTitle;
+
+    if (/^(Duration|Role):/i.test(candidate)) continue;
+
+    if (isBulletLine(raw)) {
+      if (j === technologiesIndex - 1 && looksLikeProjectTitle(candidate)) return candidate;
+      break;
+    }
+
+    return candidate;
   }
   return '';
 }
 
-function extractPersonalProjectsSection(raw: string): string {
-  const section = extractSection(raw, 'PERSONAL PROJECTS');
-  if (!section) return '';
-
-  const trimmed = section.trim();
-  const startsWithTechnologies = /^(?:-\s*)?Technologies:/i.test(trimmed);
-  if (!startsWithTechnologies) return section;
-
-  const orphanTitle = findOrphanProjectTitleBeforeHeader(raw);
-  return orphanTitle ? `${orphanTitle}\n${section}` : section;
+function isConsecutiveTechnologiesRun(lines: string[], techIndices: number[]): boolean {
+  if (techIndices.length <= 1) return false;
+  const start = techIndices[0];
+  const end = techIndices[techIndices.length - 1];
+  for (let i = start; i <= end; i++) {
+    const candidate = stripProjectLineDecorators(lines[i]);
+    if (!/^(Technologies|Role|Duration):/i.test(candidate)) return false;
+  }
+  return true;
 }
 
-function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
-  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
+function parseConsecutiveTechnologiesProjects(lines: string[], techIndices: number[]): PersonalProjectBlock[] {
+  const leadingTitle = findProjectTitleBefore(lines, techIndices[0]);
+  const technologies = techIndices.map((index) => stripProjectLineDecorators(lines[index]));
+  const bulletStart = techIndices[techIndices.length - 1] + 1;
+  const bullets: string[] = [];
+
+  for (let i = bulletStart; i < lines.length; i++) {
+    const raw = lines[i];
+    const candidate = stripProjectLineDecorators(raw);
+    if (!candidate) continue;
+    if (isTechnologiesLine(raw)) break;
+    bullets.push(candidate);
+  }
+
+  const groups = splitBulletsByTitle(bullets);
+  while (groups.length < technologies.length) {
+    groups.push({ title: '', bullets: [] });
+  }
+
+  return technologies.map((technology, index) => {
+    const group = groups[index] || { title: '', bullets: [] };
+    const title = index === 0 ? (leadingTitle || group.title) : group.title;
+    const blockBullets = index === 0 && leadingTitle
+      ? group.bullets
+      : (group.title === title ? group.bullets : group.bullets);
+    return normalizeProjectBlock({
+      title,
+      meta: [technology],
+      bullets: blockBullets,
+    });
+  });
+}
+
+function parsePerTechnologiesProjects(lines: string[], techIndices: number[]): PersonalProjectBlock[] {
+  const blocks: PersonalProjectBlock[] = [];
+
+  for (let t = 0; t < techIndices.length; t++) {
+    const techIdx = techIndices[t];
+    const nextTechIdx = techIndices[t + 1] ?? lines.length;
+    const title = findProjectTitleBefore(lines, techIdx);
+    const meta: string[] = [];
+    let cursor = techIdx;
+
+    while (cursor < nextTechIdx) {
+      const candidate = stripProjectLineDecorators(lines[cursor]);
+      if (/^(Technologies|Role|Duration):/i.test(candidate)) {
+        meta.push(candidate);
+        cursor++;
+        continue;
+      }
+      break;
+    }
+
+    const bullets: string[] = [];
+    while (cursor < nextTechIdx) {
+      const raw = lines[cursor];
+      const candidate = stripProjectLineDecorators(raw);
+      if (!candidate) {
+        cursor++;
+        continue;
+      }
+      if (isTechnologiesLine(raw)) break;
+      if (!isBulletLine(raw) && looksLikeProjectTitle(candidate)) break;
+      bullets.push(candidate);
+      cursor++;
+    }
+
+    blocks.push(normalizeProjectBlock({ title, meta, bullets }));
+  }
+
+  return blocks;
+}
+
+function parsePersonalProjectBlocksSequential(lines: string[]): PersonalProjectBlock[] {
   const blocks: PersonalProjectBlock[] = [];
   let current: PersonalProjectBlock | null = null;
 
@@ -335,6 +436,55 @@ function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
 
   flush();
   return blocks;
+}
+
+function findOrphanProjectTitleBeforeHeader(raw: string): string {
+  const headerMatch = raw.match(/(?:^|\n)PERSONAL PROJECTS\s*\n/i);
+  if (!headerMatch || headerMatch.index === undefined) return '';
+
+  const before = raw.slice(0, headerMatch.index);
+  const lines = before.split('\n').map((line) => line.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const rawLine = lines[i];
+    const candidate = stripProjectLineDecorators(rawLine);
+    if (!candidate) continue;
+    if (SECTION_HEADERS.includes(candidate.toUpperCase())) break;
+    if (/^(Technologies|Role|Duration):/i.test(candidate)) break;
+    if (isBulletLine(rawLine) && !looksLikeProjectTitle(candidate)) break;
+    if (looksLikeProjectTitle(candidate)) return candidate;
+    break;
+  }
+  return '';
+}
+
+function extractPersonalProjectsSection(raw: string): string {
+  const section = extractSection(raw, 'PERSONAL PROJECTS');
+  if (!section) return '';
+
+  const trimmed = section.trim();
+  const startsWithTechnologies = /^(?:-\s*)?Technologies:/i.test(trimmed);
+  if (!startsWithTechnologies) return section;
+
+  const orphanTitle = findOrphanProjectTitleBeforeHeader(raw);
+  return orphanTitle ? `${orphanTitle}\n${section}` : section;
+}
+
+function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
+  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
+  const techIndices: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (isTechnologiesLine(lines[i])) techIndices.push(i);
+  }
+
+  if (!techIndices.length) {
+    return parsePersonalProjectBlocksSequential(lines);
+  }
+
+  if (isConsecutiveTechnologiesRun(lines, techIndices)) {
+    return parseConsecutiveTechnologiesProjects(lines, techIndices);
+  }
+
+  return parsePerTechnologiesProjects(lines, techIndices);
 }
 
 function parseCategorizedLines(raw: string): CategoryBlock[] {

@@ -355,6 +355,59 @@ B.S. Computer Science`;
   }
 });
 
+Deno.test('personal projects split consecutive Technologies into separate projects', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+- Technologies: React 18, TypeScript, Vite, Supabase/PostgreSQL
+- Technologies: React 19, TanStack Start, TypeScript 5.8, FFmpeg.wasm
+- Technologies: React, TypeScript, Vite, Tailwind CSS, Supabase/PostgreSQL
+- Built a unified GenAI application covering job discovery, ATS resume tailoring, cover letters, application tracking, and an AI Copilot.
+- Implemented a career corpus with a master ATS bullet bank, 2-page resume template, 6 role playbooks, and tagged evidence chunks that select existing bullets while preserving metrics.
+- Pic-Reel / FrameFlow Hyperlapse Tool | Solo GenAI Developer
+- Built a privacy-first browser application that converts photo sequences to MP4 without uploading images to a server.
+- Cric-Scorer / IPL 2026 Prediction App / PlanItX | Solo GenAI Developer
+- Built Cric-Scorer with 3 deterministic domain engines and a 14-table Supabase schema for ball-by-ball scoring.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('textbf{CareerPilot AI - Autonomous Job Search Platform | GenAI Developer \\& Forward Deployment Engineer}')) {
+    throw new Error('missing first project title');
+  }
+  if (!latex.includes('textbf{Pic-Reel / FrameFlow Hyperlapse Tool | Solo GenAI Developer}')) {
+    throw new Error('missing second project title');
+  }
+  if (!latex.includes('textbf{Cric-Scorer / IPL 2026 Prediction App / PlanItX | Solo GenAI Developer}')) {
+    throw new Error('missing third project title');
+  }
+  if (!latex.includes('React 19, TanStack Start, TypeScript 5.8, FFmpeg.wasm')) {
+    throw new Error('missing second project technologies');
+  }
+  if (latex.includes('\\item Pic-Reel / FrameFlow Hyperlapse Tool')) {
+    throw new Error('second project title rendered as bullet');
+  }
+  if (latex.includes('\\item CareerPilot AI - Autonomous Job Search Platform')) {
+    throw new Error('first project title rendered as bullet');
+  }
+});
+
 Deno.test('personal projects split on repeated Technologies lines', () => {
   const resume = `NAME
 Jane Doe
