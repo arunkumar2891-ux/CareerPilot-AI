@@ -742,8 +742,39 @@ export class ResumeService {
   }
   async update(id: string, content: string): Promise<void> {
     const sanitized = sanitizeExtractedResumeText(content);
-    const { error } = await supabase.from('resumes').update({ content: sanitized, updated_at: new Date().toISOString() }).eq('id', id);
+    const existing = await this.get(id);
+    if (!existing) throw new Error('Resume not found');
+    if (existing.content === sanitized) return;
+
+    const { error } = await supabase.from('resumes').update({
+      content: sanitized,
+      updated_at: new Date().toISOString(),
+    }).eq('id', id);
     if (error) throw error;
+
+    const userId = await requireUserId();
+    const { data: latest, error: latestError } = await supabase
+      .from('resume_versions')
+      .select('version, content')
+      .eq('resume_id', id)
+      .eq('user_id', userId)
+      .order('version', { ascending: false })
+      .limit(1);
+    if (latestError) throw latestError;
+
+    const latestRow = latest?.[0];
+    if (latestRow && String(latestRow.content || '') === sanitized) return;
+
+    const nextVersion = Number(latestRow?.version ?? 0) + 1;
+    const { error: versionError } = await supabase.from('resume_versions').insert({
+      user_id: userId,
+      resume_id: id,
+      version: nextVersion,
+      content: sanitized,
+      ats_score: existing.atsScore,
+      note: 'Manual edit',
+    });
+    if (versionError) throw versionError;
   }
   async updateScore(id: string, score: number, content?: string): Promise<void> {
     const patch: Record<string, unknown> = {

@@ -1,6 +1,6 @@
 import { createUserClient, createAdminClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { compileResumeContentToPdf } from '../_shared/resume-pdf.ts';
-import { linkResumePdf, markResumeDriveSync } from '../_shared/resume-store.ts';
+import { appendResumeVersion, linkResumePdf, markResumeDriveSync } from '../_shared/resume-store.ts';
 import { resolveDriveFolderId, resolveResumePdfFileName, uploadOrUpdateDrivePdf } from '../_shared/resume-drive.ts';
 import { repairResumeSync } from '../_shared/resume-repair.ts';
 import { GoogleAuthError } from '../_shared/credentials.ts';
@@ -139,7 +139,8 @@ async function loadPdfBytes(
   resume: ResumeRow,
   contentOverride?: string,
 ): Promise<Uint8Array> {
-  if (resume.storage_path) {
+  const contentChanged = Boolean(contentOverride && contentOverride !== resume.content);
+  if (resume.storage_path && !contentChanged) {
     const { data, error } = await admin.storage.from('resumes').download(resume.storage_path);
     if (!error && data) {
       return new Uint8Array(await data.arrayBuffer());
@@ -165,11 +166,24 @@ async function syncResumeToDrive(
   if (!resume) throw new Error('Resume not found');
 
   if (contentOverride && contentOverride !== resume.content) {
+    const { data: existing } = await admin
+      .from('resumes')
+      .select('ats_score')
+      .eq('id', resumeId)
+      .maybeSingle();
     await admin.from('resumes').update({
       content: contentOverride,
       updated_at: new Date().toISOString(),
     }).eq('id', resumeId);
     resume.content = contentOverride;
+    await appendResumeVersion(
+      admin,
+      userId,
+      resumeId,
+      contentOverride,
+      Number(existing?.ats_score ?? 0),
+      'Manual edit',
+    );
   }
 
   const pdfBytes = await loadPdfBytes(admin, userId, resume as ResumeRow, contentOverride);
@@ -227,11 +241,24 @@ Deno.serve(async (req) => {
 
       const contentOverride = body.content ? String(body.content) : undefined;
       if (contentOverride && contentOverride !== resume.content) {
+        const { data: existing } = await admin
+          .from('resumes')
+          .select('ats_score')
+          .eq('id', resumeId)
+          .maybeSingle();
         await admin.from('resumes').update({
           content: contentOverride,
           updated_at: new Date().toISOString(),
         }).eq('id', resumeId);
         resume.content = contentOverride;
+        await appendResumeVersion(
+          admin,
+          user.id,
+          resumeId,
+          contentOverride,
+          Number(existing?.ats_score ?? 0),
+          'Manual edit',
+        );
       }
 
       const templateOverride = body.template ? String(body.template) : undefined;

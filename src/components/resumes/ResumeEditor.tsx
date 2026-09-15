@@ -140,11 +140,9 @@ export function ResumeEditor({
   const downloadPdf = async () => {
     setDownloadingPdf(true);
     try {
-      if (content && content !== resume.content) {
-        await services.resume.update(resume.id, displayContent);
-      }
       await services.resume.downloadPdf(resume.id, displayContent, pdfTemplate || undefined);
       toast.success('PDF downloaded');
+      await qc.invalidateQueries({ queryKey: ['resumes'] });
       onResumeUpdated();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'PDF download failed');
@@ -156,9 +154,6 @@ export function ResumeEditor({
   const copyToDrive = async () => {
     setSyncingDrive(true);
     try {
-      if (content && content !== resume.content) {
-        await services.resume.update(resume.id, displayContent);
-      }
       const result = await services.resume.syncToDrive(resume.id, displayContent);
       setDriveFileId(result.driveFileId);
       await qc.invalidateQueries({ queryKey: ['resumes'] });

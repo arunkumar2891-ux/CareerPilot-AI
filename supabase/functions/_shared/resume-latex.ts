@@ -6,6 +6,42 @@ export interface ResumeLatexMeta {
 
 export type PdfTemplate = 'classic' | 'modern_single' | 'modern_two_column';
 
+const SECTION_HEADERS = [
+  'NAME',
+  'CONTACT',
+  'SUMMARY',
+  'SKILLS',
+  'PROFESSIONAL EXPERIENCE',
+  'PERSONAL PROJECTS',
+  'CERTIFICATION',
+  'CERTIFICATIONS',
+  'EDUCATION',
+  'TECHNICAL SKILLS',
+  'PROFESSIONAL SUMMARY',
+  'EXECUTIVE SUMMARY',
+  'CORE COMPETENCIES',
+  'WORK EXPERIENCE',
+];
+
+const MARKDOWN_SECTION_ALIASES: Record<string, string> = {
+  name: 'NAME',
+  contact: 'CONTACT',
+  summary: 'SUMMARY',
+  'professional summary': 'SUMMARY',
+  'executive summary': 'SUMMARY',
+  skills: 'SKILLS',
+  'technical skills': 'SKILLS',
+  'core competencies': 'SKILLS',
+  experience: 'PROFESSIONAL EXPERIENCE',
+  'work experience': 'PROFESSIONAL EXPERIENCE',
+  'professional experience': 'PROFESSIONAL EXPERIENCE',
+  'personal projects': 'PERSONAL PROJECTS',
+  projects: 'PERSONAL PROJECTS',
+  certification: 'CERTIFICATION',
+  certifications: 'CERTIFICATION',
+  education: 'EDUCATION',
+};
+
 function esc(s: string): string {
   return String(s ?? '')
     .replace(/\\/g, '\\textbackslash{}')
@@ -19,11 +55,46 @@ function esc(s: string): string {
     .replace(/\^/g, '\\textasciicircum{}');
 }
 
+function escUrl(s: string): string {
+  return String(s ?? '')
+    .replace(/\\/g, '%5C')
+    .replace(/%/g, '%25')
+    .replace(/#/g, '%23');
+}
+
+function sectionBoundaryPattern(): string {
+  return SECTION_HEADERS
+    .map((header) => header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+}
+
+/** Convert markdown headings and inline decoration to the ATS-style text the PDF parser expects. */
+export function normalizeResumeTextForPdf(raw: string): string {
+  const stripped = String(raw || '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1');
+
+  const lines = stripped.split('\n').map((line) => {
+    const trimmed = line.trim();
+    const markdownHeader = trimmed.match(/^#{1,2}\s+(.+)$/);
+    if (!markdownHeader) return line;
+
+    const label = markdownHeader[1].trim();
+    const key = label.toLowerCase();
+    const header = MARKDOWN_SECTION_ALIASES[key] || label.toUpperCase();
+    return header;
+  });
+
+  return lines.join('\n').trim();
+}
+
 function extractSection(raw: string, header: string): string {
   const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const boundary = sectionBoundaryPattern();
   const patterns = [
-    new RegExp(`(?:^|\\n)${escaped}\\s*\\n([\\s\\S]*?)(?=\\n(?:NAME|CONTACT|SUMMARY|SKILLS|PROFESSIONAL EXPERIENCE|CERTIFICATION|CERTIFICATIONS|EDUCATION|TECHNICAL SKILLS)\\s*\\n|$)`, 'i'),
-    new RegExp(`(?:^|\\n)${escaped}\\s*:?\\s*\\n([\\s\\S]*?)(?=\\n(?:NAME|CONTACT|SUMMARY|SKILLS|PROFESSIONAL EXPERIENCE|CERTIFICATION|CERTIFICATIONS|EDUCATION|TECHNICAL SKILLS)\\s*:?\\s*\\n|$)`, 'i'),
+    new RegExp(`(?:^|\\n)${escaped}\\s*\\n([\\s\\S]*?)(?=\\n(?:${boundary})\\s*\\n|$)`, 'i'),
+    new RegExp(`(?:^|\\n)${escaped}\\s*:?\\s*\\n([\\s\\S]*?)(?=\\n(?:${boundary})\\s*:?\\s*\\n|$)`, 'i'),
   ];
   for (const re of patterns) {
     const m = raw.match(re);
@@ -204,12 +275,61 @@ function formatTwoColumnExperience(experienceRaw: string): string {
   }).join('\n\n\\vspace{6pt}\n\n');
 }
 
-function buildClassicLatex(
-  sections: Record<string, string>,
+function formatTwoColumnBulletSection(title: string, raw: string): string {
+  if (!raw.trim()) return '';
+  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
+  const blocks: string[] = [`\\textbf{${esc(title)}}`, '\\vspace{4pt}'];
+  let bullets: string[] = [];
+
+  const flush = () => {
+    if (!bullets.length) return;
+    blocks.push(`\\begin{itemize}[leftmargin=*, nosep]\n${bullets.map((item) => `\\item ${esc(item)}`).join('\n')}\n\\end{itemize}`);
+    bullets = [];
+  };
+
+  for (const line of lines) {
+    if (line.startsWith('- ') || line.startsWith('• ')) {
+      bullets.push(line.replace(/^[-•]\s*/, '').trim());
+      continue;
+    }
+    flush();
+    blocks.push(`\\textbf{${esc(line)}}`);
+  }
+  flush();
+  blocks.push('\\vspace{12pt}');
+  return blocks.join('\n');
+}
+
+function appendModerncvSections(body: string[], sections: Record<string, string>): void {
+  if (sections.summary) {
+    body.push(`\\section{Summary}`);
+    body.push(`\\cvitem{}{${esc(sections.summary.replace(/\n+/g, ' ').trim())}}`);
+  }
+  if (sections.skills) {
+    body.push(`\\section{Skills}`);
+    body.push(formatSkillsLatex(sections.skills));
+  }
+  if (sections.experience) {
+    body.push(`\\section{Professional Experience}`);
+    body.push(formatExperienceLatex(sections.experience));
+  }
+  if (sections.projects) {
+    body.push(`\\section{Personal Projects}`);
+    body.push(formatExperienceLatex(sections.projects));
+  }
+  if (sections.certification) {
+    body.push(`\\section{Certification}`);
+    body.push(formatSkillsLatex(sections.certification));
+  }
+  if (sections.education) {
+    body.push(`\\section{Education}`);
+    body.push(`\\cvitem{}{${esc(sections.education.replace(/\n+/g, ' ').trim())}}`);
+  }
+}
+
+function buildModerncvHeader(
   contactFields: Record<string, string>,
-  first: string,
-  last: string,
-): string {
+): string[] {
   const titleLine = contactFields.title || '';
   const email = contactFields.email || '';
   const phone = contactFields.phone || '';
@@ -230,28 +350,17 @@ function buildClassicLatex(
     const url = github.startsWith('http') ? github : `https://${github}`;
     headerLines.push(`\\social[github]{${esc(url)}}`);
   }
+  return headerLines;
+}
 
+function buildClassicLatex(
+  sections: Record<string, string>,
+  contactFields: Record<string, string>,
+  first: string,
+  last: string,
+): string {
   const body: string[] = [];
-  if (sections.summary) {
-    body.push(`\\section{Summary}`);
-    body.push(`\\cvitem{}{${esc(sections.summary.replace(/\n+/g, ' ').trim())}}`);
-  }
-  if (sections.skills) {
-    body.push(`\\section{Skills}`);
-    body.push(formatSkillsLatex(sections.skills));
-  }
-  if (sections.experience) {
-    body.push(`\\section{Professional Experience}`);
-    body.push(formatExperienceLatex(sections.experience));
-  }
-  if (sections.certification) {
-    body.push(`\\section{Certification}`);
-    body.push(formatSkillsLatex(sections.certification));
-  }
-  if (sections.education) {
-    body.push(`\\section{Education}`);
-    body.push(`\\cvitem{}{${esc(sections.education.replace(/\n+/g, ' ').trim())}}`);
-  }
+  appendModerncvSections(body, sections);
 
   return `\\documentclass[11pt,a4paper,sans]{moderncv}
 \\moderncvstyle{banking}
@@ -259,7 +368,7 @@ function buildClassicLatex(
 \\usepackage[scale=0.88]{geometry}
 \\usepackage{enumitem}
 \\name{${first}}{${last}}
-${headerLines.join('\n')}
+${buildModerncvHeader(contactFields).join('\n')}
 \\begin{document}
 \\makecvtitle
 ${body.join('\n\n')}
@@ -272,56 +381,18 @@ function buildModernSingleLatex(
   first: string,
   last: string,
 ): string {
-  const titleLine = contactFields.title || '';
-  const email = contactFields.email || '';
-  const phone = contactFields.phone || '';
-  const location = contactFields.location || '';
-  const linkedin = contactFields.linkedin || '';
-  const github = contactFields.github || '';
-
-  const headerLines: string[] = [];
-  if (titleLine) headerLines.push(`\\quote{${esc(titleLine)}}`);
-  if (phone) headerLines.push(`\\phone[mobile]{${esc(phone)}}`);
-  if (email) headerLines.push(`\\email{${esc(email)}}`);
-  if (location) headerLines.push(`\\address{${esc(location)}}{}`);
-  if (linkedin) {
-    const url = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`;
-    headerLines.push(`\\social[linkedin]{${esc(url)}}`);
-  }
-  if (github) {
-    const url = github.startsWith('http') ? github : `https://${github}`;
-    headerLines.push(`\\social[github]{${esc(url)}}`);
-  }
-
   const body: string[] = [];
-  if (sections.summary) {
-    body.push(`\\section{Summary}`);
-    body.push(`\\cvitem{}{${esc(sections.summary.replace(/\n+/g, ' ').trim())}}`);
-  }
-  if (sections.skills) {
-    body.push(`\\section{Skills}`);
-    body.push(formatSkillsLatex(sections.skills));
-  }
-  if (sections.experience) {
-    body.push(`\\section{Professional Experience}`);
-    body.push(formatExperienceLatex(sections.experience));
-  }
-  if (sections.certification) {
-    body.push(`\\section{Certification}`);
-    body.push(formatSkillsLatex(sections.certification));
-  }
-  if (sections.education) {
-    body.push(`\\section{Education}`);
-    body.push(`\\cvitem{}{${esc(sections.education.replace(/\n+/g, ' ').trim())}}`);
-  }
+  appendModerncvSections(body, sections);
 
+  // `casual` reserves a photo sidebar and breaks badly without an image.
+  // `classic` keeps a clean single-column layout while still looking modern.
   return `\\documentclass[11pt,a4paper,sans]{moderncv}
-\\moderncvstyle{casual}
+\\moderncvstyle{classic}
 \\moderncvcolor{burgundy}
-\\usepackage[scale=0.85]{geometry}
+\\usepackage[scale=0.85,top=1.4cm,bottom=1.4cm]{geometry}
 \\usepackage{enumitem}
 \\name{${first}}{${last}}
-${headerLines.join('\n')}
+${buildModerncvHeader(contactFields).join('\n')}
 \\begin{document}
 \\makecvtitle
 ${body.join('\n\n')}
@@ -343,39 +414,31 @@ function buildModernTwoColumnLatex(
   const github = contactFields.github || '';
 
   const leftColumn: string[] = [];
-  leftColumn.push(`{\\Huge\\bfseries ${first} ${last}}`);
+  leftColumn.push(`{\\LARGE\\bfseries ${first} ${last}}`);
   if (titleLine) leftColumn.push(`\\vspace{4pt}\n{\\large ${esc(titleLine)}}`);
   leftColumn.push('\\vspace{12pt}');
 
   if (email || phone || location || linkedin || github) {
     leftColumn.push(`\\textbf{Contact}`);
     leftColumn.push('\\vspace{4pt}');
-    if (email) leftColumn.push(`\\href{mailto:${esc(email)}}{${esc(email)}}\\\\`);
-    if (phone) leftColumn.push(`${esc(phone)}\\\\`);
-    if (location) leftColumn.push(`${esc(location)}\\\\`);
+    leftColumn.push('\\begin{itemize}[leftmargin=*, nosep]');
+    if (email) leftColumn.push(`\\item \\href{mailto:${escUrl(email)}}{${esc(email)}}`);
+    if (phone) leftColumn.push(`\\item ${esc(phone)}`);
+    if (location) leftColumn.push(`\\item ${esc(location)}`);
     if (linkedin) {
       const url = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`;
-      leftColumn.push(`\\href{${esc(url)}}{LinkedIn}\\\\`);
+      leftColumn.push(`\\item \\href{${escUrl(url)}}{LinkedIn}`);
     }
     if (github) {
       const url = github.startsWith('http') ? github : `https://${github}`;
-      leftColumn.push(`\\href{${esc(url)}}{GitHub}\\\\`);
+      leftColumn.push(`\\item \\href{${escUrl(url)}}{GitHub}`);
     }
+    leftColumn.push('\\end{itemize}');
     leftColumn.push('\\vspace{12pt}');
   }
 
   if (sections.skills) {
-    leftColumn.push(`\\textbf{Skills}`);
-    leftColumn.push('\\vspace{4pt}');
-    const skillLines = sections.skills.split('\n').map((l) => l.trim()).filter(Boolean);
-    for (const line of skillLines) {
-      if (line.startsWith('- ')) {
-        leftColumn.push(`\\textbullet\\ ${esc(line.slice(2).trim())}\\\\`);
-      } else {
-        leftColumn.push(`\\textbf{${esc(line)}}\\\\`);
-      }
-    }
-    leftColumn.push('\\vspace{12pt}');
+    leftColumn.push(formatTwoColumnBulletSection('Skills', sections.skills));
   }
 
   if (sections.education) {
@@ -386,17 +449,7 @@ function buildModernTwoColumnLatex(
   }
 
   if (sections.certification) {
-    leftColumn.push(`\\textbf{Certifications}`);
-    leftColumn.push('\\vspace{4pt}');
-    const certLines = sections.certification.split('\n').map((l) => l.trim()).filter(Boolean);
-    for (const line of certLines) {
-      if (line.startsWith('- ')) {
-        leftColumn.push(`\\textbullet\\ ${esc(line.slice(2).trim())}\\\\`);
-      } else {
-        leftColumn.push(`\\textbf{${esc(line)}}\\\\`);
-      }
-    }
-    leftColumn.push('\\vspace{12pt}');
+    leftColumn.push(formatTwoColumnBulletSection('Certifications', sections.certification));
   }
 
   const rightColumn: string[] = [];
@@ -411,35 +464,47 @@ function buildModernTwoColumnLatex(
     rightColumn.push(`\\textbf{Professional Experience}`);
     rightColumn.push('\\vspace{4pt}');
     rightColumn.push(formatTwoColumnExperience(sections.experience));
+    rightColumn.push('\\vspace{12pt}');
+  }
+
+  if (sections.projects) {
+    rightColumn.push(`\\textbf{Personal Projects}`);
+    rightColumn.push('\\vspace{4pt}');
+    rightColumn.push(formatTwoColumnExperience(sections.projects));
   }
 
   return `\\documentclass[11pt,a4paper]{article}
 \\usepackage[utf8]{inputenc}
 \\usepackage[T1]{fontenc}
-\\usepackage{sourcesanspro}
+\\usepackage{lmodern}
+\\usepackage{helvet}
 \\renewcommand{\\familydefault}{\\sfdefault}
 \\usepackage[margin=1.5cm]{geometry}
-\\usepackage{paracol}
 \\usepackage{titlesec}
 \\usepackage{enumitem}
 \\usepackage{hyperref}
+\\hypersetup{colorlinks=true, linkcolor=black, urlcolor=black}
 \\titleformat{\\section}{\\Large\\bfseries}{}{0em}{}[\\titlerule]
 \\titlespacing{\\section}{0pt}{12pt}{6pt}
 \\setlength{\\parindent}{0pt}
 \\setlength{\\parskip}{4pt}
-\\columnratio{0.32}
-\\begin{document}
 \\pagestyle{empty}
-\\begin{paracol}{2}
+\\begin{document}
+\\noindent
+\\begin{minipage}[t]{0.30\\textwidth}
+\\raggedright
 ${leftColumn.join('\n')}
-\\switchcolumn
+\\end{minipage}
+\\hfill
+\\begin{minipage}[t]{0.66\\textwidth}
+\\raggedright
 ${rightColumn.join('\n')}
-\\end{paracol}
+\\end{minipage}
 \\end{document}`;
 }
 
 export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): string {
-  const text = raw.trim();
+  const text = normalizeResumeTextForPdf(raw.trim());
   if (!text) {
     throw new Error('ATS optimizer returned empty resume text');
   }
@@ -451,6 +516,7 @@ export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): 
   const skillsSection = extractSection(text, 'SKILLS')
     || extractSection(text, 'TECHNICAL SKILLS');
   const experienceSection = extractSection(text, 'PROFESSIONAL EXPERIENCE');
+  const projectsSection = extractSection(text, 'PERSONAL PROJECTS');
   const certificationSection = extractSection(text, 'CERTIFICATION')
     || extractSection(text, 'CERTIFICATIONS');
   const educationSection = extractSection(text, 'EDUCATION');
@@ -466,13 +532,14 @@ export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): 
     summary: summarySection,
     skills: skillsSection,
     experience: experienceSection,
+    projects: projectsSection,
     certification: certificationSection,
     education: educationSection,
   };
 
-  if (!summarySection && !experienceSection) {
+  if (!summarySection && !experienceSection && !projectsSection) {
     throw new Error(
-      'ATS output is missing SUMMARY and PROFESSIONAL EXPERIENCE sections. Expected ALL CAPS headers per ATS format.',
+      'Resume is missing SUMMARY, PROFESSIONAL EXPERIENCE, and PERSONAL PROJECTS sections. Expected ALL CAPS headers or markdown ## headings.',
     );
   }
 
