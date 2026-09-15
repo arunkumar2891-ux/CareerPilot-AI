@@ -215,6 +215,47 @@ B.S. Computer Science`;
   }
 });
 
+Deno.test('personal projects render user bullet-technologies format with title', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+- Technologies: React 18, TypeScript, Vite, Supabase/PostgreSQL, Edge Functions/Deno, Gemini 3.6 Flash, Groq, Apify, Google Drive OAuth2, Resend, LaTeX, Render.com
+- Built a unified GenAI application covering job discovery, ATS resume tailoring, cover letters, application tracking, and an AI Copilot.
+- Implemented a career corpus with a master ATS bullet bank, 2-page resume template, 6 role playbooks, and tagged evidence chunks that select existing bullets while preserving metrics.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('CareerPilot AI - Autonomous Job Search Platform | GenAI Developer')) {
+    throw new Error('project title missing from user-format resume');
+  }
+  if (!latex.includes('Technologies: React 18, TypeScript, Vite, Supabase/PostgreSQL')) {
+    throw new Error('technologies line missing from user-format resume');
+  }
+  if (latex.includes('\\item Technologies: React 18')) {
+    throw new Error('technologies line incorrectly rendered as bullet');
+  }
+  if (!latex.includes('Built a unified GenAI application')) {
+    throw new Error('achievement bullets missing from user-format resume');
+  }
+});
+
 Deno.test('personal projects use bullet line directly above Technologies as title', () => {
   const resume = `NAME
 Jane Doe

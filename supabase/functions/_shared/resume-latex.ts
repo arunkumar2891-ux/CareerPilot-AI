@@ -192,14 +192,6 @@ function stripProjectLineDecorators(line: string): string {
     .trim();
 }
 
-function isProjectMetaLine(line: string): boolean {
-  return /^(Technologies|Role|Duration):/i.test(stripProjectLineDecorators(line));
-}
-
-function isTechnologiesLine(line: string): boolean {
-  return /^Technologies:/i.test(stripProjectLineDecorators(line));
-}
-
 function isBulletLine(line: string): boolean {
   const trimmed = String(line || '').trim();
   return /^[-•]\s/.test(trimmed) || /^[-•]\s/.test(stripProjectLineDecorators(trimmed));
@@ -212,95 +204,44 @@ function parseProjectTag(line: string): string | null {
   return projectTag?.[1]?.trim() || null;
 }
 
-function findProjectTitleBefore(lines: string[], technologiesIndex: number): string {
-  for (let j = technologiesIndex - 1; j >= 0; j--) {
-    const raw = lines[j];
-    const candidate = stripProjectLineDecorators(raw);
-    if (!candidate) continue;
-    if (isTechnologiesLine(raw)) break;
+function normalizeProjectBlock(block: PersonalProjectBlock): PersonalProjectBlock {
+  const meta = [...block.meta];
+  const bullets: string[] = [];
+  let title = block.title;
 
-    const taggedTitle = parseProjectTag(candidate);
-    if (taggedTitle) return taggedTitle;
-
-    const roleMatch = candidate.match(/^Role:\s*(.+)$/i);
-    if (roleMatch?.[1]?.trim()) return roleMatch[1].trim();
-
-    if (isProjectMetaLine(candidate)) continue;
-
-    // Project titles are often markdown bullets immediately above Technologies.
-    if (isBulletLine(raw)) {
-      if (j === technologiesIndex - 1) return candidate;
+  for (const item of block.bullets) {
+    if (/^Technologies:/i.test(item) || /^Duration:/i.test(item)) {
+      meta.push(item);
       continue;
     }
-
-    return candidate;
+    const roleMatch = item.match(/^Role:\s*(.+)$/i);
+    if (roleMatch) {
+      if (!title && roleMatch[1]?.trim()) title = roleMatch[1].trim();
+      else meta.push(item);
+      continue;
+    }
+    bullets.push(item);
   }
-  return '';
-}
 
-function promoteLeadingTitleBullet(block: PersonalProjectBlock): PersonalProjectBlock {
-  if (block.title || block.bullets.length === 0) return block;
-  const first = block.bullets[0];
-  const looksLikeTitle = first.length >= 24 && (/\s-\s/.test(first) || /\|/.test(first) || /^[A-Z0-9].*\s-\s/.test(first));
-  if (!looksLikeTitle) return block;
-  return {
-    title: first,
-    meta: block.meta,
-    bullets: block.bullets.slice(1),
-  };
+  return { title, meta, bullets };
 }
 
 function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
   const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
   const blocks: PersonalProjectBlock[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    if (!isTechnologiesLine(lines[i])) continue;
-
-    const title = findProjectTitleBefore(lines, i);
-    const meta: string[] = [];
-    let cursor = i;
-
-    while (cursor < lines.length) {
-      const candidate = stripProjectLineDecorators(lines[cursor]);
-      if (!/^(Technologies|Role|Duration):/i.test(candidate)) break;
-      meta.push(candidate);
-      cursor++;
-    }
-
-    const bullets: string[] = [];
-    while (cursor < lines.length && !isTechnologiesLine(lines[cursor])) {
-      const rawLine = lines[cursor];
-      const candidate = stripProjectLineDecorators(rawLine);
-      if (!candidate) {
-        cursor++;
-        continue;
-      }
-      if (isTechnologiesLine(rawLine)) break;
-      if (isBulletLine(rawLine)) {
-        bullets.push(candidate);
-        cursor++;
-        continue;
-      }
-      if (cursor + 1 < lines.length && isTechnologiesLine(lines[cursor + 1])) {
-        break;
-      }
-      cursor++;
-    }
-
-    blocks.push(promoteLeadingTitleBullet({ title, meta, bullets }));
-    i = cursor - 1;
-  }
-
-  if (blocks.length > 0) return blocks.map(promoteLeadingTitleBullet);
-
-  // Fallback for projects that omit a Technologies line.
   let current: PersonalProjectBlock | null = null;
+
   const flush = () => {
-    if (current && (current.title || current.meta.length || current.bullets.length)) {
-      blocks.push(current);
+    if (!current) return;
+    const normalized = normalizeProjectBlock(current);
+    if (normalized.title || normalized.meta.length || normalized.bullets.length) {
+      blocks.push(normalized);
     }
     current = null;
+  };
+
+  const ensureProject = () => {
+    if (!current) current = { title: '', meta: [], bullets: [] };
   };
 
   for (const rawLine of lines) {
@@ -314,20 +255,32 @@ function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
       continue;
     }
 
-    const meta = candidate.match(/^(Technologies|Role|Duration):\s*(.*)$/i);
-    if (meta) {
-      if (!current) current = { title: '', meta: [], bullets: [] };
-      if (meta[1].toLowerCase() === 'role' && !current.title && meta[2].trim()) {
-        current.title = meta[2].trim();
+    if (/^Technologies:/i.test(candidate)) {
+      ensureProject();
+      current!.meta.push(candidate);
+      continue;
+    }
+
+    if (/^Duration:/i.test(candidate)) {
+      ensureProject();
+      current!.meta.push(candidate);
+      continue;
+    }
+
+    const roleMatch = candidate.match(/^Role:\s*(.+)$/i);
+    if (roleMatch) {
+      ensureProject();
+      if (!current!.title && roleMatch[1]?.trim()) {
+        current!.title = roleMatch[1].trim();
         continue;
       }
-      current.meta.push(candidate);
+      current!.meta.push(candidate);
       continue;
     }
 
     if (isBulletLine(rawLine)) {
-      if (!current) current = { title: '', meta: [], bullets: [] };
-      current.bullets.push(candidate);
+      ensureProject();
+      current!.bullets.push(candidate);
       continue;
     }
 
@@ -374,6 +327,20 @@ function parseCategorizedLines(raw: string): CategoryBlock[] {
   return blocks;
 }
 
+function renderProjectBlockParts(block: PersonalProjectBlock): string[] {
+  const parts: string[] = [];
+  if (block.title) {
+    parts.push(`{\\bfseries ${esc(block.title)}\\par}`);
+    parts.push('\\vspace{3pt}');
+  }
+  for (const meta of block.meta) {
+    parts.push(`${esc(meta)}\\par`);
+  }
+  if (block.meta.length) parts.push('\\vspace{4pt}');
+  if (block.bullets.length) parts.push(formatBulletList(block.bullets));
+  return parts;
+}
+
 function formatProjectsLatex(raw: string): string {
   const blocks = parsePersonalProjectBlocks(raw);
   if (!blocks.length) {
@@ -382,11 +349,8 @@ function formatProjectsLatex(raw: string): string {
   }
 
   return blocks.map((block) => {
-    const parts: string[] = [];
-    if (block.title) parts.push(`\\textbf{${esc(block.title)}}`);
-    for (const meta of block.meta) parts.push(esc(meta));
-    if (block.bullets.length) parts.push(formatBulletList(block.bullets));
-    return `\\cvitem{}{${parts.join('\n\n')}}`;
+    const parts = renderProjectBlockParts(block);
+    return `\\cvitem{}{\\begin{minipage}[t]{\\linewidth}\n${parts.join('\n')}\n\\end{minipage}}`;
   }).join('\n\n');
 }
 
@@ -399,17 +363,7 @@ function formatTwoColumnProjects(raw: string): string {
       : '';
   }
 
-  return blocks.map((block) => {
-    const parts: string[] = [];
-    if (block.title) parts.push(`\\textbf{${esc(block.title)}}`);
-    for (const meta of block.meta) parts.push(esc(meta));
-    if (block.bullets.length) {
-      parts.push(
-        `\\begin{itemize}[leftmargin=*, nosep]\n${block.bullets.map((b) => `\\item ${esc(b)}`).join('\n')}\n\\end{itemize}`,
-      );
-    }
-    return parts.join('\n');
-  }).join('\n\n\\vspace{6pt}\n\n');
+  return blocks.map((block) => renderProjectBlockParts(block).join('\n')).join('\n\n\\vspace{6pt}\n\n');
 }
 
 function formatExperienceLatex(experienceRaw: string): string {
