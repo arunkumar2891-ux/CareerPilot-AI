@@ -140,6 +140,47 @@ Deno.test('buildLatexFromAtsText uses canonical URLs in modern two-column templa
   }
 });
 
+Deno.test('skills preserve category headings and nested bullets', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+GenAI & Agentic AI:
+ - Vertex AI, RAG Architecture, Prompt Engineering, AI Agents, Tool Use
+ - Embeddings, Vector Retrieval, Chain-of-Thought, Token Optimization, Context Window Management
+
+Cloud:
+ - Azure Functions, Azure APIM, Azure Application Insights
+ - GCP (Pub/Sub, BigQuery, Cloud Functions, Vertex AI)
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('GenAI \\& Agentic AI:')) {
+    throw new Error('skills category heading missing or not escaped');
+  }
+  if (!latex.includes('Vertex AI, RAG Architecture, Prompt Engineering, AI Agents, Tool Use')) {
+    throw new Error('skills bullet missing');
+  }
+  if (latex.includes('\\item GenAI \\& Agentic AI:')) {
+    throw new Error('skills category rendered as bullet instead of heading');
+  }
+  if (!latex.includes('Cloud:')) {
+    throw new Error('second skills category missing');
+  }
+});
+
 Deno.test('personal projects render markdown bullet lines as project titles', () => {
   const resume = `NAME
 Jane Doe
@@ -171,6 +212,37 @@ B.S. Computer Science`;
   }
   if (latex.includes('\\item CareerPilot AI - Autonomous Job Search Platform')) {
     throw new Error('project title was rendered as a bullet instead of a heading');
+  }
+});
+
+Deno.test('personal projects use bullet line directly above Technologies as title', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+- CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+Technologies: React 18, TypeScript, Vite
+- Built an autonomous job-search workflow with Supabase and React.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('textbf{CareerPilot AI - Autonomous Job Search Platform | GenAI Developer \\& Forward Deployment Engineer}')) {
+    throw new Error('bullet line above Technologies was not promoted to title');
   }
 });
 
