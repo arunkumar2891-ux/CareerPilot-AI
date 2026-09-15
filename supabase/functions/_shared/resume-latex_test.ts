@@ -285,6 +285,74 @@ B.S. Computer Science`;
   if (!latex.includes('textbf{CareerPilot AI - Autonomous Job Search Platform | GenAI Developer \\& Forward Deployment Engineer}')) {
     throw new Error('bullet line above Technologies was not promoted to title');
   }
+  if (latex.includes('\\item CareerPilot AI - Autonomous Job Search Platform')) {
+    throw new Error('promoted project title still rendered as bullet');
+  }
+});
+
+Deno.test('personal projects recover orphan title before section header', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+PERSONAL PROJECTS
+- Technologies: React 18, TypeScript, Vite
+- Built an autonomous job-search workflow with Supabase and React.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('textbf{CareerPilot AI - Autonomous Job Search Platform | GenAI Developer \\& Forward Deployment Engineer}')) {
+    throw new Error('orphan title before PERSONAL PROJECTS was not recovered');
+  }
+});
+
+Deno.test('personal projects render titles with textbf not bfseries groups', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+- Technologies: React 18, TypeScript, Vite
+- Built an autonomous job-search workflow with Supabase and React.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('\\textbf{CareerPilot AI - Autonomous Job Search Platform | GenAI Developer \\& Forward Deployment Engineer}')) {
+    throw new Error('project title not rendered with textbf');
+  }
+  if (latex.includes('{\\bfseries CareerPilot AI')) {
+    throw new Error('project title still uses bfseries group that moderncv drops');
+  }
 });
 
 Deno.test('personal projects split on repeated Technologies lines', () => {

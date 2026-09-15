@@ -204,6 +204,14 @@ function parseProjectTag(line: string): string | null {
   return projectTag?.[1]?.trim() || null;
 }
 
+function looksLikeProjectTitle(line: string): boolean {
+  const trimmed = String(line || '').trim();
+  if (!trimmed || trimmed.length < 8) return false;
+  if (/^(Technologies|Role|Duration):/i.test(trimmed)) return false;
+  if (/^(Built|Implemented|Designed|Developed|Created|Led|Managed)\b/i.test(trimmed)) return false;
+  return /\|/.test(trimmed) || /\s-\s/.test(trimmed) || /^[A-Z0-9][\w\s.&/-]{7,}$/.test(trimmed);
+}
+
 function normalizeProjectBlock(block: PersonalProjectBlock): PersonalProjectBlock {
   const meta = [...block.meta];
   const bullets: string[] = [];
@@ -223,7 +231,44 @@ function normalizeProjectBlock(block: PersonalProjectBlock): PersonalProjectBloc
     bullets.push(item);
   }
 
+  const hasTechnologies = meta.some((line) => /^Technologies:/i.test(line));
+  if (!title && hasTechnologies && bullets.length > 0 && looksLikeProjectTitle(bullets[0])) {
+    title = bullets[0];
+    bullets.shift();
+  }
+
   return { title, meta, bullets };
+}
+
+function findOrphanProjectTitleBeforeHeader(raw: string): string {
+  const headerMatch = raw.match(/(?:^|\n)PERSONAL PROJECTS\s*\n/i);
+  if (!headerMatch || headerMatch.index === undefined) return '';
+
+  const before = raw.slice(0, headerMatch.index);
+  const lines = before.split('\n').map((line) => line.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const rawLine = lines[i];
+    const candidate = stripProjectLineDecorators(rawLine);
+    if (!candidate) continue;
+    if (SECTION_HEADERS.includes(candidate.toUpperCase())) break;
+    if (/^(Technologies|Role|Duration):/i.test(candidate)) break;
+    if (isBulletLine(rawLine) && !looksLikeProjectTitle(candidate)) break;
+    if (looksLikeProjectTitle(candidate)) return candidate;
+    break;
+  }
+  return '';
+}
+
+function extractPersonalProjectsSection(raw: string): string {
+  const section = extractSection(raw, 'PERSONAL PROJECTS');
+  if (!section) return '';
+
+  const trimmed = section.trim();
+  const startsWithTechnologies = /^(?:-\s*)?Technologies:/i.test(trimmed);
+  if (!startsWithTechnologies) return section;
+
+  const orphanTitle = findOrphanProjectTitleBeforeHeader(raw);
+  return orphanTitle ? `${orphanTitle}\n${section}` : section;
 }
 
 function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
@@ -330,13 +375,12 @@ function parseCategorizedLines(raw: string): CategoryBlock[] {
 function renderProjectBlockParts(block: PersonalProjectBlock): string[] {
   const parts: string[] = [];
   if (block.title) {
-    parts.push(`{\\bfseries ${esc(block.title)}\\par}`);
-    parts.push('\\vspace{3pt}');
+    // moderncv drops grouped {\\bfseries ...\\par} inside \\cvitem; \\textbf + line break renders reliably.
+    parts.push(`\\textbf{${esc(block.title)}}\\\\[3pt]`);
   }
   for (const meta of block.meta) {
-    parts.push(`${esc(meta)}\\par`);
+    parts.push(`${esc(meta)}\\\\[2pt]`);
   }
-  if (block.meta.length) parts.push('\\vspace{4pt}');
   if (block.bullets.length) parts.push(formatBulletList(block.bullets));
   return parts;
 }
@@ -783,7 +827,7 @@ export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): 
   const skillsSection = extractSection(text, 'SKILLS')
     || extractSection(text, 'TECHNICAL SKILLS');
   const experienceSection = extractSection(text, 'PROFESSIONAL EXPERIENCE');
-  const projectsSection = extractSection(text, 'PERSONAL PROJECTS');
+  const projectsSection = extractPersonalProjectsSection(text);
   const certificationSection = extractSection(text, 'CERTIFICATION')
     || extractSection(text, 'CERTIFICATIONS');
   const educationSection = extractSection(text, 'EDUCATION');
