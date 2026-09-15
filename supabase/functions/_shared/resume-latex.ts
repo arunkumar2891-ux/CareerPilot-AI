@@ -62,6 +62,42 @@ function escUrl(s: string): string {
     .replace(/#/g, '%23');
 }
 
+function stripUrlScheme(raw: string): string {
+  return String(raw || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+}
+
+/** moderncv \\social[linkedin] prepends linkedin.com/in/ — pass the handle only. */
+export function extractLinkedInHandle(raw: string): string {
+  const cleaned = stripUrlScheme(raw).replace(/\/+$/, '');
+  const inMatch = cleaned.match(/(?:^|\/)linkedin\.com\/in\/([^/?#]+)/i);
+  if (inMatch?.[1]) return inMatch[1];
+  const pubMatch = cleaned.match(/(?:^|\/)linkedin\.com\/pub\/([^/?#]+)/i);
+  if (pubMatch?.[1]) return pubMatch[1];
+  if (/linkedin\.com\//i.test(cleaned)) {
+    const parts = cleaned.split('/').filter(Boolean);
+    return parts[parts.length - 1] || cleaned;
+  }
+  return cleaned.replace(/^@/, '').split('/')[0].trim();
+}
+
+/** moderncv \\social[github] prepends github.com/ — pass the handle only. */
+export function extractGitHubHandle(raw: string): string {
+  const cleaned = stripUrlScheme(raw).replace(/\/+$/, '');
+  const match = cleaned.match(/(?:^|\/)github\.com\/([^/?#]+)/i);
+  if (match?.[1]) return match[1];
+  return cleaned.replace(/^@/, '').replace(/^github\.com\//i, '').split('/')[0].trim();
+}
+
+export function buildLinkedInUrl(raw: string): string {
+  const handle = extractLinkedInHandle(raw);
+  return `https://www.linkedin.com/in/${handle}`;
+}
+
+export function buildGitHubUrl(raw: string): string {
+  const handle = extractGitHubHandle(raw);
+  return `https://github.com/${handle}`;
+}
+
 function sectionBoundaryPattern(): string {
   return SECTION_HEADERS
     .map((header) => header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -135,6 +171,102 @@ function formatBulletList(items: string[]): string {
   return `\\begin{itemize}[leftmargin=*, nosep]\n${body}\n\\end{itemize}`;
 }
 
+interface PersonalProjectBlock {
+  title: string;
+  meta: string[];
+  bullets: string[];
+}
+
+function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
+  const blocks: PersonalProjectBlock[] = [];
+  let current: PersonalProjectBlock | null = null;
+
+  const flush = () => {
+    if (current && (current.title || current.meta.length || current.bullets.length)) {
+      blocks.push(current);
+    }
+    current = null;
+  };
+
+  const startProject = (title: string) => {
+    flush();
+    current = { title, meta: [], bullets: [] };
+  };
+
+  const ensureProject = () => {
+    if (!current) current = { title: '', meta: [], bullets: [] };
+  };
+
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t) continue;
+
+    if (t.startsWith('- ') || t.startsWith('• ')) {
+      ensureProject();
+      current!.bullets.push(t.replace(/^[-•]\s*/, '').trim());
+      continue;
+    }
+
+    const projectTag = t.match(/^PROJECT:\s*(.+)$/i)
+      || t.match(/^---\s*Project:\s*(.+?)---\s*$/i)
+      || t.match(/^---\s*Project:\s*(.+)$/i);
+    if (projectTag) {
+      startProject(projectTag[1].trim());
+      continue;
+    }
+
+    const meta = t.match(/^(Technologies|Role|Duration):\s*(.*)$/i);
+    if (meta) {
+      ensureProject();
+      current!.meta.push(`${meta[1]}: ${meta[2].trim()}`);
+      continue;
+    }
+
+    startProject(t);
+  }
+
+  flush();
+  return blocks;
+}
+
+function formatProjectsLatex(raw: string): string {
+  const blocks = parsePersonalProjectBlocks(raw);
+  if (!blocks.length) {
+    const fallback = raw.trim();
+    return fallback ? `\\cvitem{}{${esc(fallback.slice(0, 12000))}}` : '';
+  }
+
+  return blocks.map((block) => {
+    const parts: string[] = [];
+    if (block.title) parts.push(`\\textbf{${esc(block.title)}}`);
+    for (const meta of block.meta) parts.push(esc(meta));
+    if (block.bullets.length) parts.push(formatBulletList(block.bullets));
+    return `\\cvitem{}{${parts.join('\n\n')}}`;
+  }).join('\n\n');
+}
+
+function formatTwoColumnProjects(raw: string): string {
+  const blocks = parsePersonalProjectBlocks(raw);
+  if (!blocks.length) {
+    const fallback = raw.trim();
+    return fallback
+      ? `\\begin{itemize}[leftmargin=*, nosep]\n\\item ${esc(fallback.slice(0, 12000))}\n\\end{itemize}`
+      : '';
+  }
+
+  return blocks.map((block) => {
+    const parts: string[] = [];
+    if (block.title) parts.push(`\\textbf{${esc(block.title)}}`);
+    for (const meta of block.meta) parts.push(esc(meta));
+    if (block.bullets.length) {
+      parts.push(
+        `\\begin{itemize}[leftmargin=*, nosep]\n${block.bullets.map((b) => `\\item ${esc(b)}`).join('\n')}\n\\end{itemize}`,
+      );
+    }
+    return parts.join('\n');
+  }).join('\n\n\\vspace{6pt}\n\n');
+}
+
 function formatExperienceLatex(experienceRaw: string): string {
   if (!experienceRaw.trim()) return '';
   const lines = experienceRaw.split('\n');
@@ -164,13 +296,18 @@ function formatExperienceLatex(experienceRaw: string): string {
       continue;
     }
 
-    const projectMatch = t.match(/^(?:PROJECT|Role|Technologies|Duration):\s*(.*)$/i)
+    const metaMatch = t.match(/^(Technologies|Role|Duration):\s*(.*)$/i);
+    if (metaMatch) {
+      bullets.push(`${metaMatch[1]}: ${metaMatch[2].trim()}`);
+      continue;
+    }
+
+    const projectMatch = t.match(/^PROJECT:\s*(.*)$/i)
       || t.match(/^---\s*Project:\s*(.+?)---\s*$/i)
       || t.match(/^---\s*Project:\s*(.+)$/i);
     if (projectMatch) {
       flush();
-      const label = projectMatch[1]?.trim() || t;
-      currentLabel = label.slice(0, 72);
+      currentLabel = (projectMatch[1]?.trim() || t).slice(0, 72);
       continue;
     }
 
@@ -240,7 +377,13 @@ function formatTwoColumnExperience(experienceRaw: string): string {
       continue;
     }
 
-    const projectMatch = t.match(/^(?:PROJECT|Role|Technologies|Duration):\s*(.*)$/i)
+    const metaMatch = t.match(/^(Technologies|Role|Duration):\s*(.*)$/i);
+    if (metaMatch) {
+      bullets.push(`${metaMatch[1]}: ${metaMatch[2].trim()}`);
+      continue;
+    }
+
+    const projectMatch = t.match(/^PROJECT:\s*(.*)$/i)
       || t.match(/^---\s*Project:\s*(.+?)---\s*$/i)
       || t.match(/^---\s*Project:\s*(.+)$/i);
     if (projectMatch) {
@@ -315,7 +458,7 @@ function appendModerncvSections(body: string[], sections: Record<string, string>
   }
   if (sections.projects) {
     body.push(`\\section{Personal Projects}`);
-    body.push(formatExperienceLatex(sections.projects));
+    body.push(formatProjectsLatex(sections.projects));
   }
   if (sections.certification) {
     body.push(`\\section{Certification}`);
@@ -343,12 +486,10 @@ function buildModerncvHeader(
   if (email) headerLines.push(`\\email{${esc(email)}}`);
   if (location) headerLines.push(`\\address{${esc(location)}}{}`);
   if (linkedin) {
-    const url = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`;
-    headerLines.push(`\\social[linkedin]{${esc(url)}}`);
+    headerLines.push(`\\social[linkedin]{${esc(extractLinkedInHandle(linkedin))}}`);
   }
   if (github) {
-    const url = github.startsWith('http') ? github : `https://${github}`;
-    headerLines.push(`\\social[github]{${esc(url)}}`);
+    headerLines.push(`\\social[github]{${esc(extractGitHubHandle(github))}}`);
   }
   return headerLines;
 }
@@ -426,12 +567,10 @@ function buildModernTwoColumnLatex(
     if (phone) leftColumn.push(`\\item ${esc(phone)}`);
     if (location) leftColumn.push(`\\item ${esc(location)}`);
     if (linkedin) {
-      const url = linkedin.startsWith('http') ? linkedin : `https://${linkedin}`;
-      leftColumn.push(`\\item \\href{${escUrl(url)}}{LinkedIn}`);
+      leftColumn.push(`\\item \\href{${escUrl(buildLinkedInUrl(linkedin))}}{LinkedIn}`);
     }
     if (github) {
-      const url = github.startsWith('http') ? github : `https://${github}`;
-      leftColumn.push(`\\item \\href{${escUrl(url)}}{GitHub}`);
+      leftColumn.push(`\\item \\href{${escUrl(buildGitHubUrl(github))}}{GitHub}`);
     }
     leftColumn.push('\\end{itemize}');
     leftColumn.push('\\vspace{12pt}');
@@ -470,7 +609,7 @@ function buildModernTwoColumnLatex(
   if (sections.projects) {
     rightColumn.push(`\\textbf{Personal Projects}`);
     rightColumn.push('\\vspace{4pt}');
-    rightColumn.push(formatTwoColumnExperience(sections.projects));
+    rightColumn.push(formatTwoColumnProjects(sections.projects));
   }
 
   return `\\documentclass[11pt,a4paper]{article}

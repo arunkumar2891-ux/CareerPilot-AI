@@ -1,4 +1,11 @@
-import { buildLatexFromAtsText, normalizeResumeTextForPdf } from './resume-latex.ts';
+import {
+  buildGitHubUrl,
+  buildLatexFromAtsText,
+  buildLinkedInUrl,
+  extractGitHubHandle,
+  extractLinkedInHandle,
+  normalizeResumeTextForPdf,
+} from './resume-latex.ts';
 
 const SAMPLE_RESUME = `NAME
 Jane Doe
@@ -66,6 +73,113 @@ Deno.test('buildLatexFromAtsText includes Personal Projects in modern templates'
   }
   if (twoCol.includes('sourcesanspro')) {
     throw new Error('modern_two_column should not use sourcesanspro');
+  }
+});
+
+Deno.test('social links extract handles from full profile URLs', () => {
+  const linkedin = 'https://www.linkedin.com/in/arunkumar-j-s-05164393/';
+  const github = 'https://github.com/arunkumar2891-ux/';
+  if (extractLinkedInHandle(linkedin) !== 'arunkumar-j-s-05164393') {
+    throw new Error(`unexpected linkedin handle: ${extractLinkedInHandle(linkedin)}`);
+  }
+  if (extractGitHubHandle(github) !== 'arunkumar2891-ux') {
+    throw new Error(`unexpected github handle: ${extractGitHubHandle(github)}`);
+  }
+  if (buildLinkedInUrl(linkedin) !== 'https://www.linkedin.com/in/arunkumar-j-s-05164393') {
+    throw new Error(`unexpected linkedin url: ${buildLinkedInUrl(linkedin)}`);
+  }
+  if (buildGitHubUrl(github) !== 'https://github.com/arunkumar2891-ux') {
+    throw new Error(`unexpected github url: ${buildGitHubUrl(github)}`);
+  }
+});
+
+const RESUME_WITH_SOCIAL = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+LinkedIn: https://www.linkedin.com/in/arunkumar-j-s-05164393/
+GitHub: https://github.com/arunkumar2891-ux/
+
+SUMMARY
+Integration architect.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+EDUCATION
+B.S. Computer Science`;
+
+Deno.test('buildLatexFromAtsText passes social handles to moderncv, not full URLs', () => {
+  const latex = buildLatexFromAtsText(RESUME_WITH_SOCIAL, { template: 'classic' });
+  if (latex.includes('https://www.linkedin.com/in/https://')) {
+    throw new Error('linkedin URL was doubled in moderncv output');
+  }
+  if (latex.includes('https://github.com/https://')) {
+    throw new Error('github URL was doubled in moderncv output');
+  }
+  if (!latex.includes('\\social[linkedin]{arunkumar-j-s-05164393}')) {
+    throw new Error('expected linkedin handle in moderncv social command');
+  }
+  if (!latex.includes('\\social[github]{arunkumar2891-ux}')) {
+    throw new Error('expected github handle in moderncv social command');
+  }
+});
+
+Deno.test('buildLatexFromAtsText uses canonical URLs in modern two-column template', () => {
+  const latex = buildLatexFromAtsText(RESUME_WITH_SOCIAL, { template: 'modern_two_column' });
+  if (!latex.includes('href{https://www.linkedin.com/in/arunkumar-j-s-05164393}')) {
+    throw new Error('expected canonical linkedin href in two-column template');
+  }
+  if (!latex.includes('href{https://github.com/arunkumar2891-ux}')) {
+    throw new Error('expected canonical github href in two-column template');
+  }
+});
+
+Deno.test('personal projects preserve full Technologies lines in PDF output', () => {
+  const techLine = 'React 18, TypeScript, Vite, Supabase/PostgreSQL, Edge Functions/Deno, Gemini 3.6 Flash, Groq, Apify, Google Drive OAuth2, Resend, LaTeX, Render.com';
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+Technologies: ${techLine}
+- Built an autonomous job-search workflow with Supabase and React.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const classic = buildLatexFromAtsText(resume, { template: 'classic' });
+  const twoCol = buildLatexFromAtsText(resume, { template: 'modern_two_column' });
+
+  if (!classic.includes(techLine)) {
+    throw new Error('classic template truncated Technologies line');
+  }
+  if (classic.includes('Edge Functions/Deno, Ge')) {
+    throw new Error('classic template still shows 72-char Technologies truncation');
+  }
+  if (!twoCol.includes(techLine)) {
+    throw new Error('two-column template truncated Technologies line');
+  }
+  if (!classic.includes('CareerPilot AI - Autonomous Job Search Platform')) {
+    throw new Error('classic template missing project title');
   }
 });
 
