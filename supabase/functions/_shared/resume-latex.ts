@@ -113,13 +113,15 @@ export function normalizeResumeTextForPdf(raw: string): string {
 
   const lines = stripped.split('\n').map((line) => {
     const trimmed = line.trim();
-    const markdownHeader = trimmed.match(/^#{1,2}\s+(.+)$/);
+    const markdownHeader = trimmed.match(/^#{1,3}\s+(.+)$/);
     if (!markdownHeader) return line;
 
     const label = markdownHeader[1].trim();
     const key = label.toLowerCase();
-    const header = MARKDOWN_SECTION_ALIASES[key] || label.toUpperCase();
-    return header;
+    const known = MARKDOWN_SECTION_ALIASES[key];
+    if (known) return known;
+    // Project titles often use ##/### headings — keep original casing, not ALL CAPS.
+    return label;
   });
 
   return lines.join('\n').trim();
@@ -177,7 +179,27 @@ interface PersonalProjectBlock {
   bullets: string[];
 }
 
+function stripProjectLineDecorators(line: string): string {
+  return String(line || '')
+    .trim()
+    .replace(/^#{1,3}\s+/, '')
+    .replace(/^[-•]\s+/, '')
+    .trim();
+}
+
+function isProjectMetaLine(line: string): boolean {
+  return /^(Technologies|Role|Duration):/i.test(line);
+}
+
+function parseProjectTag(line: string): string | null {
+  const projectTag = line.match(/^PROJECT:\s*(.+)$/i)
+    || line.match(/^---\s*Project:\s*(.+?)---\s*$/i)
+    || line.match(/^---\s*Project:\s*(.+)$/i);
+  return projectTag?.[1]?.trim() || null;
+}
+
 function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
+  const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
   const blocks: PersonalProjectBlock[] = [];
   let current: PersonalProjectBlock | null = null;
 
@@ -190,35 +212,66 @@ function parsePersonalProjectBlocks(raw: string): PersonalProjectBlock[] {
 
   const startProject = (title: string) => {
     flush();
-    current = { title, meta: [], bullets: [] };
+    current = { title: title.trim(), meta: [], bullets: [] };
   };
 
   const ensureProject = () => {
     if (!current) current = { title: '', meta: [], bullets: [] };
   };
 
-  for (const line of raw.split('\n')) {
-    const t = line.trim();
+  const nextMeaningfulLine = (fromIndex: number): string => {
+    for (let j = fromIndex + 1; j < lines.length; j++) {
+      const candidate = stripProjectLineDecorators(lines[j]);
+      if (candidate) return candidate;
+    }
+    return '';
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const t = stripProjectLineDecorators(rawLine);
     if (!t) continue;
 
-    if (t.startsWith('- ') || t.startsWith('• ')) {
-      ensureProject();
-      current!.bullets.push(t.replace(/^[-•]\s*/, '').trim());
-      continue;
-    }
-
-    const projectTag = t.match(/^PROJECT:\s*(.+)$/i)
-      || t.match(/^---\s*Project:\s*(.+?)---\s*$/i)
-      || t.match(/^---\s*Project:\s*(.+)$/i);
-    if (projectTag) {
-      startProject(projectTag[1].trim());
+    const taggedTitle = parseProjectTag(t);
+    if (taggedTitle) {
+      startProject(taggedTitle);
       continue;
     }
 
     const meta = t.match(/^(Technologies|Role|Duration):\s*(.*)$/i);
     if (meta) {
+      const metaKey = meta[1];
+      const metaValue = meta[2].trim();
+      const shouldSplitProject = Boolean(
+        current && (current.meta.length > 0 || current.bullets.length > 0),
+      );
+      if (metaKey.toLowerCase() === 'technologies' && shouldSplitProject) {
+        flush();
+      }
       ensureProject();
-      current!.meta.push(`${meta[1]}: ${meta[2].trim()}`);
+      if (metaKey.toLowerCase() === 'role' && !current!.title && metaValue) {
+        current!.title = metaValue;
+        continue;
+      }
+      current!.meta.push(metaValue ? `${metaKey}: ${metaValue}` : `${metaKey}:`);
+      continue;
+    }
+
+    const isBullet = /^[-•]\s/.test(rawLine.trim());
+    if (isBullet) {
+      const bulletText = t;
+      const upcoming = nextMeaningfulLine(i);
+      if (isProjectMetaLine(upcoming) && !upcoming.toLowerCase().startsWith('role:')) {
+        startProject(bulletText);
+        continue;
+      }
+      ensureProject();
+      current!.bullets.push(bulletText);
+      continue;
+    }
+
+    if (current && !current.meta.length && !current.bullets.length && current.title) {
+      current.title = `${current.title} ${t}`.replace(/\s+/g, ' ').trim();
       continue;
     }
 

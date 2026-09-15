@@ -140,6 +140,75 @@ Deno.test('buildLatexFromAtsText uses canonical URLs in modern two-column templa
   }
 });
 
+Deno.test('personal projects render markdown bullet lines as project titles', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+- CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+Technologies: React 18, TypeScript, Vite
+- Built an autonomous job-search workflow with Supabase and React.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer')) {
+    throw new Error('bullet-style project title missing from classic template');
+  }
+  if (latex.includes('\\item CareerPilot AI - Autonomous Job Search Platform')) {
+    throw new Error('project title was rendered as a bullet instead of a heading');
+  }
+});
+
+Deno.test('personal projects split on repeated Technologies lines', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+CareerPilot AI
+Technologies: React 18, TypeScript
+- Built CareerPilot.
+
+Frames to Video
+Technologies: React 19, FFmpeg.wasm
+- Built a privacy-first video converter.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('CareerPilot AI')) throw new Error('missing first project title');
+  if (!latex.includes('Frames to Video')) throw new Error('missing second project title');
+  if (!latex.includes('React 19, FFmpeg.wasm')) throw new Error('missing second project technologies');
+});
+
 Deno.test('personal projects preserve full Technologies lines in PDF output', () => {
   const techLine = 'React 18, TypeScript, Vite, Supabase/PostgreSQL, Edge Functions/Deno, Gemini 3.6 Flash, Groq, Apify, Google Drive OAuth2, Resend, LaTeX, Render.com';
   const resume = `NAME
