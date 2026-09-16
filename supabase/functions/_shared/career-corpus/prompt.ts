@@ -25,47 +25,65 @@ CONTENT CONTRACT:
 - Do not repeat the same achievement in SUMMARY and PROFESSIONAL EXPERIENCE.
 - Reorder and emphasize experience that matches the job. Drop or shorten less relevant projects.
 - Target TWO PAGES. Keep experience at or below the source bullet count. Do not invent extra bullets.
-- Company, role, and date lines are headers: do not start them with "- ". Only achievement lines use "- ".
+- Company, role, date, and project title lines are headers: do not start them with "- ". Only achievement lines use "- ".
 - Fill NAME and CONTACT from the supplied contact block. Keep contact labels.
 - SUMMARY: first-person professional tone (I / my), 2-3 sentences, no buzzword stacking, no opening slogan of the target title.
-- SKILLS: list actual technologies and tools from the source resume. Do not pad with generic soft skills unless they appear in the source.
+- SKILLS: group skills into categories. Write each category as a heading line ending in ":" (for example "Cloud:"), then one or more "- " item lines of comma-separated tools beneath it. List actual technologies and tools from the source resume. Do not pad with generic soft skills unless they appear in the source. Use at most 6 categories.
+- PROFESSIONAL EXPERIENCE: write each entry as "COMPANY | Role" on one line, then "Dates | Location" on the next line, then the achievement bullets. Keep employers, titles, and dates exactly as the source has them.
+- PERSONAL PROJECTS: keep the projects the source resume lists. Write each project as a plain title line ("Project Name | Role"), then "- Technologies: <comma-separated stack>", then the achievement bullets. Do not wrap project titles in asterisks or any other markup.
+- CERTIFICATION and EDUCATION: one "- " bullet per entry.
 - Prefer action verbs the candidate already uses; only substitute when needed for JD keyword alignment.
 - Never write that the resume was tailored, optimized, generated, or customized.
 
 Final Output (STRICT):
 Return ONLY plain text. No Markdown. No preamble.
-Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION
+Use ONLY these section headers (ALL CAPS), in this exact order: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, PERSONAL PROJECTS, CERTIFICATION, EDUCATION
 For bullets use: - (hyphen + space)
-Each section header may appear exactly once. SKILLS and EDUCATION must never be empty. Include CERTIFICATION when the source lists certifications; omit the section when none exist.
-Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, or CORE COMPETENCIES as headers.
+Each section header may appear exactly once. SKILLS and EDUCATION must never be empty. Include PERSONAL PROJECTS when the source lists projects and CERTIFICATION when the source lists certifications; omit either section when none exist.
+Do not use === separators, PROFESSIONAL SUMMARY, EXECUTIVE SUMMARY, TECHNICAL SKILLS, CORE COMPETENCIES, or PROJECTS as headers.
 
 OUTPUT SKELETON:
 NAME
 <full name from contact>
 
 CONTACT
-<email, phone, location, linkedin, github from contact>
+Email: <email>
+Phone: <phone>
+Location: <location>
+LinkedIn: <linkedin url>
+GitHub: <github url>
 
 SUMMARY
 <2-3 sentences in the candidate's voice, grounded in the source resume>
 
 SKILLS
-<compact skill lines from the source resume, ordered for the JD>
+<Category>:
+- <comma-separated tools from the source resume>
+- <second item line for this category, when the source has more>
+
+<Next Category>:
+- <comma-separated tools from the source resume>
 
 PROFESSIONAL EXPERIENCE
-<company/project headers from the source resume>
-<source bullets with light edits — keep metrics and employers unchanged>
+<COMPANY> | <Role>
+<Start> - <End> | <Location>
+- <source bullet with light edits — keep metrics and employers unchanged>
+
+PERSONAL PROJECTS
+<Project Name> | <Role>
+- Technologies: <comma-separated stack from the source resume>
+- <source project bullet with light edits>
 
 CERTIFICATION
-<certifications from the source, or omit this section if none exist>
+- <certification from the source, or omit this section if none exist>
 
 EDUCATION
-<education from the source resume>`;
+- <degree, institution, year, location from the source resume>`;
 
-export const HUMANIZE_RETRY_PROMPT = `The previous draft sounded AI-generated. Rewrite it more naturally in the candidate's original voice. Keep the 7-section format. Do not use banned cliche verbs. Vary bullet openings. Keep every fact and metric from the source resume.`;
+export const HUMANIZE_RETRY_PROMPT = `The previous draft sounded AI-generated. Rewrite it more naturally in the candidate's original voice. Keep the 8-section format. Do not use banned cliche verbs. Vary bullet openings. Keep every fact and metric from the source resume.`;
 
 export function groundingRetryPrompt(reason: string): string {
-  return `The previous draft failed validation (${reason}). Delete the rejected line, or replace it with a near-verbatim copy of one source resume bullet. Do not add facts, tools, or metrics. Do not merge two source bullets. Do not repeat the same achievement in SUMMARY and PROFESSIONAL EXPERIENCE. Keep the 7-section format.`;
+  return `The previous draft failed validation (${reason}). Delete the rejected line, or replace it with a near-verbatim copy of one source resume bullet. Do not add facts, tools, or metrics. Do not merge two source bullets. Do not repeat the same achievement in SUMMARY and PROFESSIONAL EXPERIENCE. Keep the 8-section format.`;
 }
 
 export function buildResumeUserPrompt(input: {
@@ -101,7 +119,8 @@ export function buildGroqResumeUserPrompt(input: {
 
   return [
     `TARGET ROLE: ${input.jobTitle || '(unknown)'} at ${input.company || '(unknown)'}`,
-    `Keep the 7-header contract: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION.`,
+    `Keep the 8-header contract: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, PERSONAL PROJECTS, CERTIFICATION, EDUCATION.`,
+    `SKILLS uses "Category:" heading lines with "- " item lines. PROFESSIONAL EXPERIENCE uses "COMPANY | Role" then "Dates | Location" then "- " bullets. PERSONAL PROJECTS uses a plain title line, then "- Technologies: ...", then "- " bullets.`,
     `JOB DESCRIPTION (excerpt):\n${jobDescription}`,
     input.contactBlock ? `CONTACT (copy labeled values):\n${input.contactBlock}` : '',
     `RESUME:\n${sourceResume}`,

@@ -20,6 +20,42 @@ EDUCATION
 B.S. Computer Science
 `;
 
+/** The full eight-section contract: categorized skills, company/date headers, and projects. */
+const VALID_ATS_WITH_PROJECTS = `NAME
+Jane Doe
+
+CONTACT
+Email: email@example.com
+Location: Chennai, Tamil Nadu
+
+SUMMARY
+Senior engineer with distributed systems experience.
+
+SKILLS
+
+Cloud:
+- Azure Functions, Azure APIM, GCP Pub/Sub
+
+Backend & APIs:
+- REST API Design, Node.js, Express.js
+
+PROFESSIONAL EXPERIENCE
+
+ACME CORP | Staff Engineer
+Jul 2024 - Present | Chennai
+- Shipped APIs used by millions of users.
+- Reduced pipeline maintenance burden by consolidating 20 pipelines into 3.
+
+PERSONAL PROJECTS
+
+Frames to Video | Solo Developer
+- Technologies: React 19, TypeScript, FFmpeg.wasm
+- Built a privacy-first browser converter that never uploads source images.
+
+EDUCATION
+- B.S. Computer Science, SASTRA University, 2016
+`;
+
 function mockAdapter(
   name: AiProviderName,
   impl: {
@@ -470,6 +506,38 @@ Deno.test('Groq first call receives the grounding repair hint after paid Gemini 
   if (groq.calls !== 1) throw new Error(`expected groq once, got ${groq.calls}`);
   if (!groqPrompts[0]?.includes('unsupported_source_line')) {
     throw new Error(`groq should see the rejected line:\n${groqPrompts[0]}`);
+  }
+});
+
+Deno.test('router validation passes an eight-section resume through without a retry', async () => {
+  const { generateWithProviders } = await import('./router.ts');
+  const fallback = mockAdapter('gemini_fallback', {
+    generate: async () => ({ text: VALID_ATS_WITH_PROJECTS, tokensInput: 10, tokensOutput: 10 }),
+  });
+  const groq = mockAdapter('groq', {});
+  const result = await generateWithProviders(
+    {
+      systemPrompt: 's',
+      userPrompt: 'Tailor this resume',
+      operation: 'resume_tailoring',
+      groundingSource: VALID_ATS_WITH_PROJECTS,
+    },
+    {
+      adapters: { gemini_fallback: fallback, groq },
+      providerChain: ['gemini_fallback', 'groq'],
+      log: () => {},
+    },
+  );
+  if (fallback.calls !== 1) throw new Error(`expected a single call, got ${fallback.calls}`);
+  if (groq.calls !== 0) throw new Error('groq should not run when validation passes');
+  if (!result.text.includes('PERSONAL PROJECTS')) {
+    throw new Error(`router dropped PERSONAL PROJECTS\n${result.text}`);
+  }
+  if (!result.text.includes('- Technologies: React 19, TypeScript, FFmpeg.wasm')) {
+    throw new Error(`router dropped the project technologies line\n${result.text}`);
+  }
+  if (!result.text.includes('Cloud:')) {
+    throw new Error(`router dropped categorized skills headings\n${result.text}`);
   }
 });
 

@@ -5,14 +5,26 @@ export function stripModelFences(text: string): string {
     .trim();
 }
 
-const REQUIRED_HEADERS = ['NAME', 'CONTACT', 'SUMMARY', 'SKILLS', 'PROFESSIONAL EXPERIENCE', 'CERTIFICATION', 'EDUCATION'];
-const OPTIONAL_HEADERS = new Set(['CERTIFICATION']);
+const REQUIRED_HEADERS = [
+  'NAME',
+  'CONTACT',
+  'SUMMARY',
+  'SKILLS',
+  'PROFESSIONAL EXPERIENCE',
+  'PERSONAL PROJECTS',
+  'CERTIFICATION',
+  'EDUCATION',
+];
+const OPTIONAL_HEADERS = new Set(['PERSONAL PROJECTS', 'CERTIFICATION']);
 const HEADER_ALIASES: Record<string, string> = {
   'PROFESSIONAL SUMMARY': 'SUMMARY',
   'EXECUTIVE SUMMARY': 'SUMMARY',
   'TECHNICAL SKILLS': 'SKILLS',
   'CORE COMPETENCIES': 'SKILLS',
   'WORK EXPERIENCE': 'PROFESSIONAL EXPERIENCE',
+  PROJECTS: 'PERSONAL PROJECTS',
+  'KEY PROJECTS': 'PERSONAL PROJECTS',
+  'SIDE PROJECTS': 'PERSONAL PROJECTS',
   CERTIFICATIONS: 'CERTIFICATION',
 };
 const KEYWORD_REFERENCE_RE = /(?:^|\s)[\w\s/&.-]+\s+Keywords:/i;
@@ -393,9 +405,13 @@ function validateGrounding(
     if (!normalized) continue;
     if (!isGroundedLine(normalized, allowedLines, {
       allowParaphrase: options?.allowParaphrase,
+      // Project titles and `- Technologies: ...` lists are bullets in the project format,
+      // so the whole section needs aggregate matching rather than the non-bullet rule
+      // that PROFESSIONAL EXPERIENCE uses for its company/date headers.
       allowAggregate: current === 'SUMMARY'
         || current === 'SKILLS'
         || current === 'CERTIFICATION'
+        || current === 'PERSONAL PROJECTS'
         || (current === 'PROFESSIONAL EXPERIENCE' && !/^\s*[-•]\s+/.test(line)),
       sourceText: groundingSource,
     })) {
@@ -477,7 +493,9 @@ function validateTwoPageShape(
   const maxBullets = Math.max(22, sourceBullets);
 
   if (summary.length > 1400) return { ok: false, reason: 'summary_too_long' };
-  if (skills.length > 2500 || skillLines.length > 10) return { ok: false, reason: 'skills_too_long' };
+  // Categorized skills use one line per `Category:` heading plus one per item list,
+  // so the line budget must accommodate ~6 categories; the char cap is the real guard.
+  if (skills.length > 2500 || skillLines.length > 24) return { ok: false, reason: 'skills_too_long' };
   if (experienceBullets > maxBullets) return { ok: false, reason: 'too_many_experience_bullets' };
   return { ok: true };
 }
@@ -541,6 +559,15 @@ function salvageGrounding(
   return last;
 }
 
+/**
+ * An optional section is only mandatory when the caller supplied source content for it.
+ * PERSONAL PROJECTS has no source option, so it may always be absent.
+ */
+function optionalHeaderSource(header: string, options?: { certificationSource?: string }): string | undefined {
+  if (header === 'CERTIFICATION') return options?.certificationSource;
+  return undefined;
+}
+
 /** Same contract as LaTeX builder: ATS text must include SUMMARY and PROFESSIONAL EXPERIENCE. */
 export function validateResumeOutput(
   raw: string,
@@ -582,7 +609,7 @@ export function validateResumeOutput(
     const headerCount = headerCounts[header];
     if (headerCount === 1) continue;
     if (headerCount > 1) return { ok: false, reason: 'duplicate_ats_section' };
-    if (OPTIONAL_HEADERS.has(header) && !options?.certificationSource?.trim()) continue;
+    if (OPTIONAL_HEADERS.has(header) && !optionalHeaderSource(header, options)?.trim()) continue;
     return { ok: false, reason: rawHeaderCounts[header] ? 'empty_section' : 'missing_ats_section' };
   }
 

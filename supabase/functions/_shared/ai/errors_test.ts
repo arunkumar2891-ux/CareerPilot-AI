@@ -322,8 +322,8 @@ B.Tech in Information Technology
   if (!ok.ok) throw new Error(`expected truncated summary to pass: ${ok.ok ? '' : ok.reason}`);
 });
 
-Deno.test('validateResumeOutput treats CERTIFICATION as optional and keeps 7-header order when present', () => {
-  const withoutCert = `NAME
+Deno.test('validateResumeOutput treats PERSONAL PROJECTS and CERTIFICATION as optional and keeps 8-header order', () => {
+  const withoutOptional = `NAME
 Jane Doe
 
 CONTACT
@@ -342,25 +342,213 @@ Acme
 EDUCATION
 B.S. Computer Science
 `;
-  const missing = validateResumeOutput(withoutCert, { skipGrounding: true });
-  if (!missing.ok) throw new Error(`CERTIFICATION should be optional: ${missing.reason}`);
+  const missing = validateResumeOutput(withoutOptional, { skipGrounding: true });
+  if (!missing.ok) throw new Error(`optional sections should be omittable: ${missing.reason}`);
 
-  const withCert = `${withoutCert.trim()}
+  const withOptional = `NAME
+Jane Doe
+
+CONTACT
+jane@example.com
+
+SUMMARY
+Distributed systems engineer.
+
+SKILLS
+TypeScript, Python
+
+PROFESSIONAL EXPERIENCE
+Acme
+- Shipped APIs used by millions of users.
+
+PERSONAL PROJECTS
+Frames to Video | Solo Developer
+- Technologies: React, FFmpeg.wasm
+- Built a privacy-first video converter that runs fully in the browser.
 
 CERTIFICATION
 Google Cloud Professional Architect
+
+EDUCATION
+B.S. Computer Science
 `;
-  const present = validateResumeOutput(withCert, {
+  const present = validateResumeOutput(withOptional, {
     skipGrounding: true,
     certificationSource: 'Google Cloud Professional Architect',
   });
-  if (!present.ok) throw new Error(`expected certification resume to validate: ${present.reason}`);
+  if (!present.ok) throw new Error(`expected optional-section resume to validate: ${present.reason}`);
   const skillsAt = present.text.indexOf('SKILLS');
   const experienceAt = present.text.indexOf('PROFESSIONAL EXPERIENCE');
+  const projectsAt = present.text.indexOf('PERSONAL PROJECTS');
   const certAt = present.text.indexOf('CERTIFICATION');
   const educationAt = present.text.indexOf('EDUCATION');
-  if (!(skillsAt < experienceAt && experienceAt < certAt && certAt < educationAt)) {
-    throw new Error(`wrong 7-header order\n${present.text}`);
+  if (!(skillsAt < experienceAt && experienceAt < projectsAt && projectsAt < certAt && certAt < educationAt)) {
+    throw new Error(`wrong 8-header order\n${present.text}`);
+  }
+});
+
+Deno.test('canonicalizeAtsResumeOutput maps project header drift to PERSONAL PROJECTS', () => {
+  for (const alias of ['PROJECTS', 'KEY PROJECTS', 'SIDE PROJECTS']) {
+    const text = `NAME
+Jane Doe
+
+CONTACT
+jane@example.com
+
+SUMMARY
+Distributed systems engineer.
+
+SKILLS
+TypeScript, Python
+
+PROFESSIONAL EXPERIENCE
+Acme
+- Shipped APIs used by millions of users.
+
+${alias}
+Frames to Video | Solo Developer
+- Technologies: React, FFmpeg.wasm
+- Built a privacy-first video converter.
+
+EDUCATION
+B.S. Computer Science
+`;
+    const canonical = canonicalizeAtsResumeOutput(text);
+    if (!/^PERSONAL PROJECTS$/m.test(canonical)) {
+      throw new Error(`${alias} did not map to PERSONAL PROJECTS\n${canonical}`);
+    }
+    const checked = validateResumeOutput(text, { skipGrounding: true });
+    if (!checked.ok) throw new Error(`${alias} resume failed validation: ${checked.reason}`);
+  }
+});
+
+const EIGHT_SECTION_RESUME = `NAME
+ARUNKUMAR JS
+
+CONTACT
+Email: arunkumar2891@gmail.com
+Phone: +91 6380069156
+Location: Chennai, Tamil Nadu
+LinkedIn: https://www.linkedin.com/in/arunkumar-j-s-05164393/
+GitHub: https://github.com/arunkumar2891-ux/
+
+SUMMARY
+I am an Integration Architect and GenAI developer with over 10 years of experience in enterprise software engineering, focusing on cloud solutions, REST API design, and AI-augmented application development. I specialize in translating complex technical requirements into production-ready software and debugging distributed cloud systems.
+
+SKILLS
+
+GenAI & Agentic AI:
+- Vertex AI, RAG Architecture, Prompt Engineering, AI Agents, Tool Use
+- Embeddings, Vector Retrieval, Chain-of-Thought, Token Optimization, Context Window Management
+
+Cloud:
+- Azure Functions, Azure APIM, Azure Application Insights
+- GCP (Pub/Sub, BigQuery, Cloud Functions, Vertex AI)
+- Salesforce
+
+Backend & APIs:
+- REST API Design, Node.js, Express.js, WebSockets, API Governance
+
+Integration & Databases:
+- SnapLogic iPaaS, Dell Boomi, Kafka, Event-Driven Architecture
+- PostgreSQL, Supabase, MySQL, BigQuery
+
+DevOps & Observability:
+- Git, GitHub, GitHub Actions, CI/CD, Harness
+- GCP Cloud Functions CI, Vault
+- Datadog APM, Chronosphere, GCP Logging
+
+PROFESSIONAL EXPERIENCE
+
+PALO ALTO NETWORKS | Integration Architect - Integration Center of Excellence
+Jul 2024 - Present | Bengaluru
+- Redesigned a fragmented enterprise integration architecture from 20 independently maintained pipelines into 3 reusable common pipelines and 9 simplified worker pipelines.
+- Reduced total worker-pipeline snaps by 66% (278 to 94), eliminating 164 redundant components and reducing ongoing maintenance burden by two-thirds.
+- Architected migration of critical integration state from Datadog to BigQuery, removing a 15-day data retention risk and improving query latency 4-10x.
+- Mentored 5+ engineers, trained 30+ team members, and coordinated work across 5+ cross-functional teams.
+
+INFOSYS | Senior Consultant / Consultant / Senior Associate Consultant
+Feb 2021 - Jul 2024 | India
+- Delivered enterprise SnapLogic and Dell Boomi integration solutions across GCP, Azure, Oracle, SAP, and Salesforce environments for manufacturing and telecom clients.
+- Implemented API-led pipeline governance, common error-logging frameworks, automated reprocessing, and monitoring with Kafka, GitHub, and Azure Functions.
+
+TATA CONSULTANCY SERVICES (TCS) | Systems Engineer
+Jun 2016 - Feb 2021 | India
+- Built integration solutions across manufacturing, telecom, and enterprise domains using Dell Boomi and SnapLogic, including B2B interfaces and monitoring frameworks.
+
+PERSONAL PROJECTS
+
+CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer
+- Technologies: React 18, TypeScript, Vite, Supabase/PostgreSQL, Edge Functions/Deno, Gemini 3.6 Flash, Groq, Apify, Google Drive OAuth2, Resend, LaTeX, Render.com
+- Built a unified GenAI application covering job discovery, ATS resume tailoring, cover letters, application tracking, and an AI Copilot.
+- Implemented a career corpus with a master ATS bullet bank, 2-page resume template, 6 role playbooks, and tagged evidence chunks that select existing bullets while preserving metrics.
+
+Pic-Reel / FrameFlow Hyperlapse Tool | Solo GenAI Developer
+- Technologies: React 19, TanStack Start, TypeScript 5.8, Vite 7.3, Tailwind CSS v4, FFmpeg.wasm, Render.com
+- Built a privacy-first browser application that converts photo sequences to MP4 without uploading images to a server.
+
+Cric-Scorer / IPL 2026 Prediction App / PlanItX | Solo GenAI Developer
+- Technologies: React, TypeScript, Vite, Tailwind CSS, Supabase/PostgreSQL, Node.js, Express.js, Bolt.new, Cursor AI, Lovable.dev
+- Built Cric-Scorer with 3 deterministic domain engines and a 14-table Supabase schema for ball-by-ball scoring, statistics, and conflict prevention.
+
+CERTIFICATION
+- SnapLogic Certified Enterprise Automation Professional (Mar 2024)
+- SnapLogic Partner Integrator Library (Feb 2024)
+- Dell Boomi Professional Developer (2021)
+- Dell Boomi Associate Developer (2020)
+
+EDUCATION
+- B.Tech - Information Technology, SASTRA University, 2016, Thanjavur
+`;
+
+Deno.test('canonicalizeAtsResumeOutput keeps PERSONAL PROJECTS as its own section', () => {
+  const canonical = canonicalizeAtsResumeOutput(EIGHT_SECTION_RESUME);
+  if (!/^PERSONAL PROJECTS$/m.test(canonical)) {
+    throw new Error(`PERSONAL PROJECTS header was lost or merged\n${canonical}`);
+  }
+  const experienceAt = canonical.indexOf('PROFESSIONAL EXPERIENCE');
+  const projectsAt = canonical.indexOf('PERSONAL PROJECTS');
+  const certAt = canonical.indexOf('CERTIFICATION');
+  if (!(experienceAt < projectsAt && projectsAt < certAt)) {
+    throw new Error(`PERSONAL PROJECTS is out of order\n${canonical}`);
+  }
+  if (canonical.includes('PERSONAL PROJECTS\n\nCareerPilot')) return;
+  if (!canonical.includes('Technologies: React 18')) {
+    throw new Error('project technologies line was dropped');
+  }
+});
+
+Deno.test('validateResumeOutput accepts the categorized eight-section resume format', () => {
+  const checked = validateResumeOutput(EIGHT_SECTION_RESUME, {
+    groundingSource: EIGHT_SECTION_RESUME,
+    certificationSource: 'SnapLogic Certified Enterprise Automation Professional (Mar 2024)',
+  });
+  if (!checked.ok) throw new Error(`eight-section resume failed validation: ${checked.reason}`);
+
+  for (const marker of [
+    'GenAI & Agentic AI:',
+    'PALO ALTO NETWORKS | Integration Architect - Integration Center of Excellence',
+    'Jul 2024 - Present | Bengaluru',
+    'CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer',
+    '- Technologies: React 18',
+    '- B.Tech - Information Technology, SASTRA University, 2016, Thanjavur',
+  ]) {
+    if (!checked.text.includes(marker)) {
+      throw new Error(`validated output dropped "${marker}"\n${checked.text}`);
+    }
+  }
+});
+
+Deno.test('validateResumeOutput keeps project bullets out of the experience bullet budget', () => {
+  const checked = validateResumeOutput(EIGHT_SECTION_RESUME, { skipGrounding: true });
+  if (!checked.ok) throw new Error(`expected resume to validate: ${checked.reason}`);
+  const projectsAt = checked.text.indexOf('PERSONAL PROJECTS');
+  const experience = checked.text.slice(
+    checked.text.indexOf('PROFESSIONAL EXPERIENCE'),
+    projectsAt,
+  );
+  if (experience.includes('Technologies: React 18')) {
+    throw new Error('project content leaked into PROFESSIONAL EXPERIENCE');
   }
 });
 
