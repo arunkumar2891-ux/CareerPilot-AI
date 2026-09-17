@@ -22,6 +22,7 @@ import { IntegrationsPage } from '@/pages/IntegrationsPage';
 import { SetupPage } from '@/pages/SetupPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { AppLoader } from '@/components/motion';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, refetchOnWindowFocus: false, retry: 1 } },
@@ -84,7 +85,10 @@ function App() {
       <TooltipProvider delayDuration={200}>
         <BrowserRouter>
           <OAuthReturnRedirect />
-          <Routes>
+          {/* Outer net: catches crashes in AuthPage and in AppLayout's own chrome,
+              which sit outside the per-route boundary inside AppLayout's <main>. */}
+          <ErrorBoundary>
+            <Routes>
             <Route path="/auth" element={<AuthPage />} />
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/" element={<DashboardPage />} />
@@ -103,7 +107,8 @@ function App() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
-          </Routes>
+            </Routes>
+          </ErrorBoundary>
         </BrowserRouter>
         <Toaster richColors position="bottom-right" />
       </TooltipProvider>

@@ -20,6 +20,7 @@ import { services } from '@/services';
 import { computeRunDurationMs, formatDurationMs, formatExecutionStart, timeAgo, describeTriggerType } from '@/utils';
 import { getActiveExecutionStep } from '@/utils/execution';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { toast } from 'sonner';
 import { resolveRunIdLookup } from '@/utils/run-id';
 import type { WorkflowRun, WorkflowRunStatus } from '@/types';
@@ -27,7 +28,7 @@ import type { WorkflowRun, WorkflowRunStatus } from '@/types';
 export function ExecutionsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { data: runs, isLoading, error: runsError } = useQuery({
+  const { data: runs, isLoading, error: runsError, refetch: refetchRuns } = useQuery({
     queryKey: ['runs'],
     queryFn: () => services.execution.listRuns(),
     refetchInterval: (query) => {
@@ -227,23 +228,19 @@ export function ExecutionsPage() {
         <Card><CardContent className="pt-6"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Activity className="h-5 w-5 text-primary" /></div><div><p className="text-xs text-muted-foreground">Avg Duration</p><p className="text-xl font-semibold">{allRuns.length > 0 ? formatDurationMs(allRuns.reduce((a, r) => a + computeRunDurationMs(r), 0) / allRuns.length) : '0.0s'}</p></div></div></CardContent></Card>
       </div>
 
-      {runsError && (
-        <Card className="border-destructive/50">
-          <CardContent className="py-3 text-sm text-destructive">
-            Could not load executions: {runsError instanceof Error ? runsError.message : 'Unknown error'}
-          </CardContent>
-        </Card>
-      )}
-
       <div className="space-y-2">
         {isLoading ? (
           <PageLoader label="Loading executions…" />
+        ) : runsError ? (
+          /* Distinct from the empty state below: a failed fetch must not read as
+             "you have no executions yet". */
+          <Card><CardContent><ErrorState title="Could not load executions" error={runsError} onRetry={() => void refetchRuns()} /></CardContent></Card>
         ) : allRuns.length === 0 ? (
           <Card><CardContent><EmptyState icon={Inbox} title="No executions yet" description="Workflow runs will appear here once you execute them." /></CardContent></Card>
         ) : (
-        <StaggerList className="space-y-2">
+        <StaggerList as="ul" label="Workflow runs" className="space-y-2">
         {allRuns.map((run) => (
-          <StaggerItem key={run.id}>
+          <StaggerItem as="li" key={run.id}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => navigate(`/executions/${run.id}`)}>
               <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
                 <div className="flex min-w-0 items-start gap-3 sm:flex-1 sm:items-center">

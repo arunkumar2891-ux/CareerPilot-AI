@@ -24,12 +24,13 @@ import { services } from '@/services';
 import { APPLICATION_STATUSES } from '@/constants';
 import { formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { toast } from 'sonner';
 import type { Application } from '@/types';
 
 export function ApplicationsPage() {
   const qc = useQueryClient();
-  const { data: apps } = useQuery({ queryKey: ['applications'], queryFn: () => services.application.list() });
+  const { data: apps, error: appsError, refetch: refetchApps } = useQuery({ queryKey: ['applications'], queryFn: () => services.application.list() });
   const [selected, setSelected] = useState<Application | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newApp, setNewApp] = useState({ company: '', role: '', recruiter: '', notes: '' });
@@ -85,12 +86,14 @@ export function ApplicationsPage() {
         </TabsList>
 
         <TabsContent value="list" className="space-y-2">
-          {(!apps || apps.length === 0) ? (
+          {appsError ? (
+            <Card><CardContent><ErrorState title="Could not load applications" error={appsError} onRetry={() => void refetchApps()} /></CardContent></Card>
+          ) : (!apps || apps.length === 0) ? (
             <Card><CardContent><EmptyState icon={Inbox} title="No applications yet" description="Add your first application to start tracking your job search progress." /></CardContent></Card>
           ) : (
-          <StaggerList className="space-y-2">
+          <StaggerList as="ul" label="Applications" className="space-y-2">
           {apps.map((app) => (
-            <StaggerItem key={app.id}>
+            <StaggerItem as="li" key={app.id}>
               <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(app)}>
                 <CardContent className="flex items-center gap-4 py-4">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -205,9 +208,9 @@ function ApplicationDetail({ app, onClose }: { app: Application; onClose: () => 
             <span className="text-sm text-muted-foreground">{app.role}</span>
             <StatusBadge status={status} />
           </div>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div><p className="text-xs text-muted-foreground">Applied</p><p className="font-medium">{formatDate(app.applicationDate)}</p></div>
-            <div><p className="text-xs text-muted-foreground">Recruiter</p><p className="font-medium">{app.recruiter || '—'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Recruiter</p><p className="font-medium break-words">{app.recruiter || '—'}</p></div>
           </div>
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Update Status</p>

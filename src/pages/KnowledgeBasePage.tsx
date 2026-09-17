@@ -106,9 +106,9 @@ export function KnowledgeBasePage() {
               {results.length === 0 ? (
                 <Card><CardContent><EmptyState icon={SearchX} title="No results found" description="Try a different query, or sync a Google Doc to add evidence chunks." /></CardContent></Card>
               ) : (
-              <StaggerList className="space-y-3">
+              <StaggerList as="ul" label="Search results" className="space-y-3">
               {results.map((r, i) => (
-                <StaggerItem key={`${r.chunk.slice(0, 24)}-${i}`}>
+                <StaggerItem as="li" key={`${r.chunk.slice(0, 24)}-${i}`}>
                   <Card>
                     <CardContent className="pt-6">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -131,9 +131,9 @@ export function KnowledgeBasePage() {
           {(!collections || collections.length === 0) ? (
                 <Card><CardContent><EmptyState icon={BookOpen} title="No evidence yet" description="Sync a Google Doc from this page to extract quantified bullets into the knowledge base." /></CardContent></Card>
           ) : (
-            <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <StaggerList as="ul" label="Evidence collections" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {collections.map((c) => (
-                <StaggerItem key={c.collection}>
+                <StaggerItem as="li" key={c.collection}>
                   <Card>
                     <CardContent className="pt-6">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">

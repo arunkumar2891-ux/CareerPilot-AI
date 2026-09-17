@@ -137,13 +137,13 @@ export function IntegrationsPage() {
         description="Only two connections exist: Apify for job scrape, Google Drive for optional PDF upload. Gemini and email use Edge Function secrets, not this page."
       />
 
-      <StaggerList className="grid gap-4 md:grid-cols-2">
+      <StaggerList as="ul" label="Integrations" className="grid gap-4 md:grid-cols-2">
         {CORE.map((core) => {
           const int = byName.get(core.name);
           const connected = int?.status === 'connected';
           const Icon = core.icon;
           return (
-            <StaggerItem key={core.name}>
+            <StaggerItem as="li" key={core.name}>
               <Card className={int ? 'cursor-pointer transition-colors hover:bg-accent/30' : ''} onClick={() => int && setSelected(int)}>
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between">

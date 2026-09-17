@@ -23,12 +23,13 @@ import { ResumeEditor } from '@/components/resumes/ResumeEditor';
 import { services } from '@/services';
 import { formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { toast } from 'sonner';
 import type { Resume } from '@/types';
 
 export function ResumesPage() {
   const qc = useQueryClient();
-  const { data: resumes, isLoading } = useQuery({
+  const { data: resumes, isLoading, error: resumesError, refetch: refetchResumes } = useQuery({
     queryKey: ['resumes', 'job'],
     queryFn: () => services.resume.list({ kind: 'job' }),
   });
@@ -207,6 +208,8 @@ export function ResumesPage() {
           )}
           {isLoading ? (
             <SkeletonCard count={6} columns={3} />
+          ) : resumesError ? (
+            <Card><CardContent><ErrorState title="Could not load resumes" error={resumesError} onRetry={() => void refetchResumes()} /></CardContent></Card>
           ) : !resumes || resumes.length === 0 ? (
             <Card>
               <CardContent>
@@ -223,9 +226,9 @@ export function ResumesPage() {
               </CardContent>
             </Card>
           ) : (
-          <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <StaggerList as="ul" label="Tailored resumes" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {resumes.map((r) => (
-              <StaggerItem key={r.id}>
+              <StaggerItem as="li" key={r.id}>
                 <Card
                   className={`cursor-pointer transition-colors hover:bg-accent/30 ${selectedIds.has(r.id) ? 'ring-2 ring-primary' : ''}`}
                   onClick={() => setSelected(r)}

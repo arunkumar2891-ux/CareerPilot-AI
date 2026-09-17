@@ -7,14 +7,32 @@ interface FadeInProps {
   className?: string;
   delay?: number;
   as?: 'div' | 'section' | 'header';
+  /** Forwarded to the rendered element — e.g. `role`, `aria-*`, `id`. */
+  role?: React.AriaRole;
+  'aria-label'?: string;
+  'aria-live'?: 'off' | 'polite' | 'assertive';
+  id?: string;
 }
 
-export function FadeIn({ children, className, delay = 0, as = 'div' }: FadeInProps) {
+export function FadeIn({
+  children,
+  className,
+  delay = 0,
+  as = 'div',
+  ...rest
+}: FadeInProps) {
   const reduceMotion = useReducedMotion();
   const Component = motion[as];
 
   if (reduceMotion) {
-    return <div className={className}>{children}</div>;
+    // Render the requested tag, not a hardcoded div: `as="header"` must stay a
+    // landmark element when motion is off, and forwarded a11y props must survive.
+    const Tag = as;
+    return (
+      <Tag className={className} {...rest}>
+        {children}
+      </Tag>
+    );
   }
 
   return (
@@ -24,6 +42,7 @@ export function FadeIn({ children, className, delay = 0, as = 'div' }: FadeInPro
       initial="initial"
       animate="animate"
       transition={{ ...transitionBase, delay }}
+      {...rest}
     >
       {children}
     </Component>

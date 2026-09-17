@@ -6,6 +6,7 @@ import { Sidebar, MobileNav } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { RequireGoogleDocGate } from '@/components/RequireGoogleDocGate';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { useUIStore } from '@/store';
 import { services } from '@/services';
 import { pageTransition, transitionBase, useReducedMotion } from '@/lib/motion';
@@ -45,7 +46,15 @@ export function AppLayout() {
     return () => window.removeEventListener('keydown', handler);
   }, [commandOpen, setCommandOpen]);
 
-  const pageContent = <Outlet />;
+  /* Keyed on pathname so navigating away from a crashed screen clears the
+     fallback. Placed inside <main> rather than around the whole layout so a
+     page-level crash leaves the sidebar and topbar usable — the user can
+     navigate out instead of being stranded. */
+  const pageContent = (
+    <ErrorBoundary resetKey={location.pathname}>
+      <Outlet />
+    </ErrorBoundary>
+  );
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">

@@ -13,6 +13,7 @@ import { services } from '@/services';
 import { supabase } from '@/lib/supabase';
 import { timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InlineLoader } from '@/components/motion';
@@ -20,7 +21,7 @@ import type { CoverLetter } from '@/types';
 
 export function CoverLettersPage() {
   const qc = useQueryClient();
-  const { data: letters } = useQuery({ queryKey: ['cover-letters'], queryFn: () => services.coverLetter.list() });
+  const { data: letters, error: lettersError, refetch: refetchLetters } = useQuery({ queryKey: ['cover-letters'], queryFn: () => services.coverLetter.list() });
   const [selected, setSelected] = useState<CoverLetter | null>(null);
   const [showJobPicker, setShowJobPicker] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -81,12 +82,14 @@ export function CoverLettersPage() {
         </DialogContent>
       </Dialog>
 
-      {(!letters || letters.length === 0) ? (
+      {lettersError ? (
+        <Card><CardContent><ErrorState title="Could not load cover letters" error={lettersError} onRetry={() => void refetchLetters()} /></CardContent></Card>
+      ) : (!letters || letters.length === 0) ? (
         <Card><CardContent><EmptyState icon={FileX} title="No cover letters yet" description="Generate a cover letter to get started with your applications." action={<Button onClick={() => setShowJobPicker(true)} className="gap-2"><Sparkles className="h-4 w-4" /> Generate</Button>} /></CardContent></Card>
       ) : (
-      <StaggerList className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <StaggerList as="ul" label="Cover letters" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {letters.map((cl) => (
-          <StaggerItem key={cl.id}>
+          <StaggerItem as="li" key={cl.id}>
             <Card className="cursor-pointer transition-colors hover:bg-accent/30" onClick={() => setSelected(cl)}>
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between">

@@ -138,6 +138,33 @@
   }
 }
 
+/* --- Press feedback --------------------------------------------------------
+   Every button acknowledges being pressed, not just hovered. Hover-only
+   interactivity is what makes a UI feel like a mockup.
+
+   Written unlayered on purpose: unlayered CSS outranks Tailwind's `@layer
+   utilities`, so `transform` is actually transitioned even on elements carrying
+   `transition-colors` (which would otherwise restrict the property list and
+   leave the press snapping).
+
+   Lives here rather than in `ui/button.tsx` because `src/components/ui/` is
+   shadcn-generated and must not be hand-edited (AGENTS.md). Targeting the
+   element also covers native buttons and Radix triggers that never go through
+   the `Button` component.
+
+   Scoped to real `button` elements only — clickable cards get their press from
+   framer-motion's `pressable`, and matching `[role="button"]` here too would
+   compound the two scales. */
+button:not(:disabled) {
+  transition-property: transform, color, background-color, border-color, opacity, box-shadow;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -192,6 +219,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active {
+    transform: none;
+  }
   .animate-orbit,
   .animate-orbit-reverse,
   .animate-scan,

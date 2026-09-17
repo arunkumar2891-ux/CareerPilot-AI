@@ -159,12 +159,14 @@ export function Sidebar() {
       )}
     >
       <SidebarNav collapsed={sidebarCollapsed} />
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={toggleSidebar}
-        className="absolute -right-4 top-20 z-30 hidden h-8 w-8 rounded-full border border-border bg-background shadow-md lg:flex"
-      >
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleSidebar}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!sidebarCollapsed}
+          className="absolute -right-4 top-20 z-30 hidden h-8 w-8 rounded-full border border-border bg-background shadow-md lg:flex"
+        >
         <ChevronLeft className={cn('h-4 w-4 transition-transform', sidebarCollapsed && 'rotate-180')} />
       </Button>
     </aside>

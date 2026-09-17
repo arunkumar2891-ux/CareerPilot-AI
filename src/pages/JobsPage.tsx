@@ -26,6 +26,7 @@ import { services } from '@/services';
 import { EXPERIENCE_LEVELS } from '@/constants';
 import { formatCurrency, formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -72,7 +73,7 @@ export function JobsPage() {
     maxJobs: '30',
   });
 
-  const { data: jobs, isLoading, error: jobsError } = useQuery({ queryKey: ['jobs'], queryFn: () => services.jobSearch.list() });
+  const { data: jobs, isLoading, error: jobsError, refetch: refetchJobs } = useQuery({ queryKey: ['jobs'], queryFn: () => services.jobSearch.list() });
   const { data: corpusResumes } = useQuery({
     queryKey: ['resumes', 'corpus'],
     queryFn: () => services.resume.list({ kind: 'corpus' }),
@@ -314,14 +315,6 @@ export function JobsPage() {
         </DialogContent>
       </Dialog>
 
-      {jobsError && (
-        <Card className="border-destructive/50">
-          <CardContent className="py-3 text-sm text-destructive">
-            Could not load jobs: {jobsError instanceof Error ? jobsError.message : 'Unknown error'}
-          </CardContent>
-        </Card>
-      )}
-
       {isLoading ? (
         <SkeletonCard count={6} columns={3} />
       ) : jobs && jobs.length > 0 && (
@@ -476,7 +469,20 @@ export function JobsPage() {
         </div>
       )}
 
-      {!isLoading && (view === 'kanban' ? (
+      {/* A failed fetch is not an empty result set. Before this branch existed, an
+          error left `jobs` undefined, which fell through to the "No jobs found —
+          run a search" empty state and told the user their data did not exist. */}
+      {!isLoading && (jobsError ? (
+        <Card>
+          <CardContent>
+            <ErrorState
+              title="Could not load jobs"
+              error={jobsError}
+              onRetry={() => void refetchJobs()}
+            />
+          </CardContent>
+        </Card>
+      ) : view === 'kanban' ? (
         filtered.length === 0 ? (
           <Card>
             <CardContent>
