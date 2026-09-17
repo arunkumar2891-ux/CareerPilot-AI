@@ -22,7 +22,12 @@ npm run build
 > ### Tags still do not exist
 >
 > Commits exist; only the tags are missing, so `git checkout v1.3.0-...` will fail until they are
-> created. Until then, find a state with `git log` by the `package.json` version in that commit.
+> created.
+>
+> **Do not identify a state by its `package.json` version.** Three commits
+> (`ea9b51b`, `2f2e42c`, `bdd22c4`) plus the earlier v1.3.0 restore point all carry version
+> `1.3.0`, so the version is ambiguous. Use the commit SHA recorded in each entry, or create the
+> tags below.
 >
 > ```bash
 > git tag -a v1.3.0-match-gate-kanban <commit> -m "Verified working: match-score gate (>80), kanban drag-and-drop"
@@ -40,52 +45,107 @@ npm run build
 
 ---
 
-## Uncommitted — brand/theme retheme + UI production-readiness pass (2026-09-17)
+## Working state — forest brand + UI production-readiness (phases 1–4)
 
-### What this is
+**Commit:** `bdd22c4` · **Branch:** `main` (in sync with `origin/main`) · **Version:**
+`1.3.0` · **Confirmed working by the user:** 2026-09-17
 
-Not a restore point. Recorded so the work is discoverable before it is committed and tagged.
+> ⚠️ **Version collides with the entry below.** This state and the earlier
+> "v1.3.0 — Match Score gate + drag-and-drop kanban" restore point both carry
+> `package.json` version `1.3.0`, so the "identify releases by the version in that commit"
+> method at the top of this file **cannot distinguish them**. Use the commit SHA, or bump and
+> tag — see *Outstanding release steps* below.
 
-Two related bodies of work sit uncommitted on the Windows box:
+### Why this is a restore point
 
-1. **Brand + theme.** Forest-green retheme of `src/index.css` (light + dark), new plane
-   `LogoMark`, new `LogoLockup` horizontal lockup, gradient tiles removed from 6 call sites,
-   new `public/` brand assets, rewritten `index.html`, and the first webfont the app has ever
-   loaded (Inter Tight + JetBrains Mono).
-2. **UI production-readiness, phases 1–4.** Motion foundation (`src/lib/motion.ts`), global
-   press feedback, `ErrorBoundary` + `ErrorState` wired into 6 pages, list/heading semantics,
-   and three user-reported responsive fixes. Fully described in `BUG_LOG.md` → BUG-006,
-   BUG-007, and the UI audit table.
+The user exercised the app and confirmed it behaves as expected. This is the first state where
+the brand, theme, typography, motion system, and error handling are all in their current shape,
+and it is the baseline for the deferred phase-5 work.
 
-### Why it is not a restore point yet
+### What changed
 
-- **Nothing has been verified in a browser.** No browser-automation tooling exists in the
-  agent environment, so every visual and interaction change is unverified at runtime. That
-  includes the dark-mode palette, the press feel, the recovered mobile motion, the
-  `ErrorBoundary` fallback, and all three responsive fixes.
-- **The two suites that need Deno have not run** (`_shared/workflow/apify-poll_test.ts`,
-  `_shared/ai/router_test.ts`). Both are untouched by this work, but the suite is not green
-  by observation.
-- Phase 5 was deliberately skipped: `src/pages/JobsPage.tsx` is still 1073 lines and ~75
-  arbitrary bracket values remain.
+Three commits, oldest first:
 
-### What was verified
+| Commit | Scope | Size |
+|---|---|---|
+| `ea9b51b` | Brand + theme: forest retheme of `src/index.css` (light + dark), plane `LogoMark`, new `LogoLockup`, gradient tiles removed from 6 call sites, `public/` brand assets, rewritten `index.html`, first webfont ever loaded (Inter Tight + JetBrains Mono), BUG-005 tailor-repair fix, dead-code removal, doc audit | 22 files, +860 / −487 |
+| `2f2e42c` | UI production-readiness phases 1–4: motion foundation, global press feedback, `ErrorBoundary` + `ErrorState` across 6 pages, list/heading semantics | 19 files, +537 / −96 |
+| `bdd22c4` | Mobile responsiveness (`HeaderActions`, Dashboard cards, Settings tab overflow) + documentation | 12 files, +692 / −89 |
+
+Detail lives in `BUG_LOG.md` → BUG-005, BUG-006, BUG-007, and the two 2026-09-17 audit tables.
+
+**Deliberately out of scope.** Phase 5 of the UI audit was skipped at the user's direction:
+`src/pages/JobsPage.tsx` is 1073 lines (5x the 200-line red flag) and ~75 arbitrary `[...]`
+bracket values remain off the spacing and type scales. Restoring to this point restores that
+debt too.
+
+### Load-bearing code — change with care
+
+- `src/lib/motion.ts` — `useReducedMotion()` is a **preference** check with no viewport clause;
+  the viewport gate is `useHeavyMotionEnabled()`. Re-merging them silences all motion on mobile.
+- `src/index.css` — the `:active` press rule is **unlayered on purpose** so it outranks
+  Tailwind's `transition-colors`, and targets `button` only so it does not compound with
+  framer's `pressable` on cards.
+- `collapseVariants` uses `scaleY`, not `height`. Callers need `overflow-hidden`.
+- `staggerItem` clamps its delay to `MAX_STAGGER_INDEX`; framer's raw `staggerChildren` must not
+  be used for server-driven lists.
+- `--brand-jade` is intentionally absent from `.dark`.
+
+### Verification performed
+
+**By the user:** exercised the running app and confirmed expected behaviour, including the three
+reported mobile issues (Dashboard `Execution Queue` / `Recent Activity`, Job Discovery and
+Resumes header buttons, Settings tab overflow).
+
+**Automated, on the Windows box:**
 
 ```bash
-npm run typecheck   # clean
-npm run build       # passes
-npx eslint <changed files>   # clean; repo total unchanged at 38 pre-existing
-node --experimental-strip-types scripts/run-deno-tests.mjs <suites>   # 39 passed / 0 failed
+npm run typecheck    # clean
+npm run build        # passes
+npx eslint <changed files>   # clean; repo total unchanged at 38 pre-existing problems
+node --experimental-strip-types scripts/run-deno-tests.mjs \
+  supabase/functions/_shared/workflow/pipeline-repair_test.ts \
+  supabase/functions/_shared/workflow/tailor-pipeline-repair_test.ts \
+  src/utils/job-kanban_test.ts          # 39 passed / 0 failed
 ```
 
-### Before making this a restore point
+### What is still NOT verified
 
-1. Check the app by hand at **320px, 768px, 1024px, 1440px**, in both themes.
-2. Confirm the `collapseVariants` change did not break any expander — it moved from `height`
-   to `scaleY`, so a caller lacking `overflow-hidden` will briefly spill content.
-3. Confirm the Dashboard status-badge indent (`pl-7`, hand-matched to the icon width) lines up.
-4. Run the full Deno suites on the MacBook.
-5. Then bump, commit as focused commits (brand/theme, then each UI phase), and tag.
+State this plainly rather than treating the entry as a full green light:
+
+- **The two Deno-only suites have not run** — `_shared/workflow/apify-poll_test.ts` and
+  `_shared/ai/router_test.ts` cannot load under the Node shim (remote `https://esm.sh` import
+  via `supabase-admin.ts`). Both are untouched by this work, but the backend suite is not green
+  by observation. Run on the MacBook:
+  `deno test --allow-all --no-check supabase/functions/_shared/workflow/ && deno test --allow-all --no-check supabase/functions/_shared/ai/`
+- **No end-to-end job-search or tailoring run** was performed against the BUG-005 repair path.
+- **`collapseVariants`' `overflow-hidden` requirement** was not exercised — if some expander
+  lacks it, content spills mid-transition.
+- **Webfont dependency is untested offline.** If `fonts.googleapis.com` is blocked, layout
+  metrics shift (see `DEPLOY.md` → Static assets and the webfont).
+
+### Outstanding release steps
+
+Steps 2 and 4 of `AGENTS.md` → Releasing were not done:
+
+```bash
+npm run version:bump            # 1.3.0 -> 1.4.0, resolves the collision above
+git commit -am "Bump version"
+git tag -a v1.4.0-brand-ui-hardening bdd22c4 -m "Verified working: forest brand, motion system, error states, mobile fixes"
+git push && git push --tags
+```
+
+The two retroactive tags noted at the top of this file are also still missing.
+
+### Rollback
+
+```bash
+git checkout bdd22c4        # this state
+git checkout 5c87106        # the 8-section resume commit, before any of this work
+npm install && npm run build
+```
+
+To drop only the UI work but keep the brand/theme: `git revert bdd22c4 2f2e42c`.
 
 ---
 

@@ -428,10 +428,11 @@ around `<Routes>` in `App.tsx`, which covers `AuthPage` and `AppLayout`'s own ch
 
 **Validation:** `npm run typecheck` clean; `npm run build` passes; 39 tests pass under the Node
 shim (`pipeline-repair`, `tailor-pipeline-repair`, `job-kanban`); `npx eslint` clean on all
-changed files with no new problems. **Not verified in a browser** — no browser automation is
-available in the agent environment, so the boundary's fallback UI and each error branch are
-unexercised at runtime. The `ErrorBoundary` catches render-phase throws only; async rejections
-and event-handler errors still rely on local `toast` handling.
+changed files with no new problems. **Confirmed working by the user** on 2026-09-17 (see
+`RESTORE_POINTS.md` → `bdd22c4`); the automated checks above were run by the agent, which has no
+browser automation, so runtime behaviour rests on that manual confirmation. The `ErrorBoundary`
+catches render-phase throws only; async rejections and event-handler errors still rely on local
+`toast` handling.
 
 ---
 
@@ -469,8 +470,9 @@ rows above the page content.
 
 **Validation:** `npm run typecheck` clean; `npm run build` passes; `npx eslint` clean on the
 changed files; 29 tests pass under the Node shim. Grep confirms zero remaining
-`className="flex gap-2"` action rows under `src/pages/`. **Not verified in a browser** — the
-320px behaviour, the overflow menu, and the detached dialog need manual confirmation.
+`className="flex gap-2"` action rows under `src/pages/`. **Confirmed working by the user** on
+2026-09-17 — the reported buttons are reachable on mobile again (see `RESTORE_POINTS.md` →
+`bdd22c4`).
 
 ---
 
