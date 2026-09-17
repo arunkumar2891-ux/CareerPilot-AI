@@ -40,6 +40,55 @@ npm run build
 
 ---
 
+## Uncommitted — brand/theme retheme + UI production-readiness pass (2026-09-17)
+
+### What this is
+
+Not a restore point. Recorded so the work is discoverable before it is committed and tagged.
+
+Two related bodies of work sit uncommitted on the Windows box:
+
+1. **Brand + theme.** Forest-green retheme of `src/index.css` (light + dark), new plane
+   `LogoMark`, new `LogoLockup` horizontal lockup, gradient tiles removed from 6 call sites,
+   new `public/` brand assets, rewritten `index.html`, and the first webfont the app has ever
+   loaded (Inter Tight + JetBrains Mono).
+2. **UI production-readiness, phases 1–4.** Motion foundation (`src/lib/motion.ts`), global
+   press feedback, `ErrorBoundary` + `ErrorState` wired into 6 pages, list/heading semantics,
+   and three user-reported responsive fixes. Fully described in `BUG_LOG.md` → BUG-006,
+   BUG-007, and the UI audit table.
+
+### Why it is not a restore point yet
+
+- **Nothing has been verified in a browser.** No browser-automation tooling exists in the
+  agent environment, so every visual and interaction change is unverified at runtime. That
+  includes the dark-mode palette, the press feel, the recovered mobile motion, the
+  `ErrorBoundary` fallback, and all three responsive fixes.
+- **The two suites that need Deno have not run** (`_shared/workflow/apify-poll_test.ts`,
+  `_shared/ai/router_test.ts`). Both are untouched by this work, but the suite is not green
+  by observation.
+- Phase 5 was deliberately skipped: `src/pages/JobsPage.tsx` is still 1073 lines and ~75
+  arbitrary bracket values remain.
+
+### What was verified
+
+```bash
+npm run typecheck   # clean
+npm run build       # passes
+npx eslint <changed files>   # clean; repo total unchanged at 38 pre-existing
+node --experimental-strip-types scripts/run-deno-tests.mjs <suites>   # 39 passed / 0 failed
+```
+
+### Before making this a restore point
+
+1. Check the app by hand at **320px, 768px, 1024px, 1440px**, in both themes.
+2. Confirm the `collapseVariants` change did not break any expander — it moved from `height`
+   to `scaleY`, so a caller lacking `overflow-hidden` will briefly spill content.
+3. Confirm the Dashboard status-badge indent (`pl-7`, hand-matched to the icon width) lines up.
+4. Run the full Deno suites on the MacBook.
+5. Then bump, commit as focused commits (brand/theme, then each UI phase), and tag.
+
+---
+
 ## Pre-change anchor — before the 8-section resume AI contract
 
 **Commit:** `1d5803d` ("classic template fix")

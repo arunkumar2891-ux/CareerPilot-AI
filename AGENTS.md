@@ -130,6 +130,90 @@ the other either rejects valid output or lets drift through.
   `_shared/career-corpus/generation-contract_test.ts` green, and needs an edge-function deploy
   (`workflow-run`, `workflow-step`, `ai-chat`) before tailored resumes pick it up.
 
+## Frontend UI & Motion Guardrails
+
+The UI was hardened in a four-phase pass (see `BUG_LOG.md` → BUG-006/BUG-007 and the
+2026-09-17 UI audit table). These rules encode what that pass established — breaking them
+reintroduces defects that were specifically fixed.
+
+### Motion
+
+All motion primitives live in `src/lib/motion.ts`. Do not hand-roll durations or curves
+in components.
+
+- **`useReducedMotion()` is a *user preference* check only.** It must never include a
+  viewport width. An earlier version matched `(max-width: 1023px)` too, which silenced
+  every animation on phones and tablets — including press feedback — so the app felt inert
+  on the majority form factor. Viewport-based trimming of *decorative* effects belongs in
+  **`useHeavyMotionEnabled()`**, which is about GPU cost. Never gate interaction feedback
+  on it.
+- **Never rely on framer's `staggerChildren` for a server-driven list.** It multiplies by
+  index with no ceiling, so 50 rows becomes a 2-second tail. `StaggerList` injects a
+  positional `index` and `staggerItem` clamps it to `MAX_STAGGER_INDEX` (8). Keep the total
+  cascade under 500ms.
+- **Entrances decelerate (`EASE_OUT`), exits accelerate (`EASE_IN`).** Reusing `EASE_OUT`
+  on an exit makes dismissals look dragged. Exits are also shorter than entrances.
+- **Never animate layout properties.** `collapseVariants` uses `scaleY` +
+  `transformOrigin: top`, *not* `height: 0 → 'auto'`. Callers must add `overflow-hidden`.
+- `DURATION.base` (0.28s) is tuned for cards and list rows. Modals/page transitions use
+  `DURATION.slow`; press/toggle feedback uses `DURATION.fast`.
+
+### Press feedback lives in `index.css`, deliberately
+
+`src/components/ui/` is shadcn-generated and must not be hand-edited, so the `:active`
+press state for **every** button is a rule in `src/index.css` rather than a variant in
+`ui/button.tsx`. Three things about it are load-bearing:
+
+- It is written **unlayered**. Unlayered CSS outranks Tailwind's `@layer utilities`, which
+  is what lets `transform` actually transition on elements carrying `transition-colors`
+  (that utility restricts `transition-property` and would make the press snap).
+- It targets `button` only — **not** `[role="button"]`. Clickable cards get their press
+  from framer-motion's `pressable`, and matching both would compound the two scales.
+- It has a `prefers-reduced-motion` override.
+
+### Errors are not empty states
+
+- **A failed fetch must never render an `EmptyState`.** Doing so tells the user their data
+  does not exist when it merely failed to load. Every data region branches
+  `isLoading → error → empty → content`, using `src/components/shared/ErrorState.tsx`
+  (which carries `role="alert"` and a retry). A toast is not sufficient — it vanishes and
+  leaves an authoritative-looking screen that is wrong.
+- `ErrorBoundary` is mounted twice: inside `AppLayout`'s `<main>` keyed on `pathname` (so a
+  page crash leaves the nav usable and navigating away clears it), and around `<Routes>` in
+  `App.tsx` for `AuthPage` and the layout chrome. It catches **render-phase** throws only —
+  async rejections and event-handler errors still need local handling.
+
+### Page headers must survive 320px
+
+`<main>` in `AppLayout` has `overflow-x-hidden`, so an over-wide header row is **clipped,
+not scrollable** — buttons become unreachable, not merely cramped. Never pass a bare
+`<div className="flex gap-2">` of buttons into `PageHeader`; use
+`src/components/shared/HeaderActions.tsx`, which keeps the primary action visible and
+collapses the rest into an overflow menu below `sm`.
+
+### Semantics
+
+- `PageHeader` renders the page's single `<h1>`; `SectionHeading` is the `<h2>` tier;
+  `CardTitle` is `<h3>`. Do not jump h1 → h3.
+- Collections of peer records use `StaggerList as="ul"` + `StaggerItem as="li"` with a
+  `label`. Metric/stat grids stay `div`s — a dashboard is not a list.
+- `StaggerItem` with `onClick` automatically gets `role="button"`, `tabIndex`, and
+  Enter/Space handling. Do not add a bare `onClick` to a non-interactive element.
+- Every icon-only control needs `aria-label`. When auditing this, match the **whole JSX
+  element**, not single lines — a line-scoped grep reports false positives because
+  `aria-label` usually sits on the next line.
+
+### Typography and theme
+
+- Fonts are **Inter Tight** (sans) and **JetBrains Mono** (mono), loaded from Google Fonts
+  in `index.html` and registered in `tailwind.config.js`. Before this, no webfont was
+  loaded at all and `index.css` carried inert Inter-only feature settings.
+- `--brand-jade` is the logo mark's fixed colour and is **deliberately not overridden in
+  `.dark`** — the lockup's planes are the same green on both backgrounds; only the wordmark
+  and baseline invert. Never point the mark at `--primary`, which does shift.
+- `.gradient-text` must stay within the brand hue (forest → sage). Do not reintroduce a
+  cross-hue (cyan → violet) gradient.
+
 ## Context & Search Rules
 
 1. **Read `CONTEXT.md` first** when you need architectural context.
@@ -153,6 +237,16 @@ the other either rejects valid output or lets drift through.
 | Supabase client | `src/lib/supabase.ts` |
 | App routes | `src/App.tsx` |
 | App layout shell | `src/layouts/AppLayout.tsx` |
+| Motion primitives (durations, curves, stagger cap) | `src/lib/motion.ts` |
+| Design tokens, press feedback, keyframes | `src/index.css` |
+| Font + Tailwind token registration | `index.html`, `tailwind.config.js` |
+| Brand mark / horizontal lockup | `src/components/brand/LogoMark.tsx`, `LogoLockup.tsx` |
+| Render-crash boundary | `src/components/shared/ErrorBoundary.tsx` |
+| Data-failure state (not empty state) | `src/components/shared/ErrorState.tsx` |
+| Empty state | `src/components/shared/EmptyState.tsx` |
+| Page title (h1) + section heading (h2) | `src/components/shared/PageHeader.tsx` |
+| Responsive page-header action row | `src/components/shared/HeaderActions.tsx` |
+| Staggered list + list semantics | `src/components/motion/StaggerList.tsx` |
 | Workflow engine | `supabase/functions/_shared/workflow/executor.ts` |
 | Run batches (one run per role) | `supabase/functions/_shared/workflow/run-batch.ts` |
 | Per-job fan-out | `supabase/functions/_shared/workflow/job-pipeline.ts` |
@@ -224,6 +318,22 @@ npm run typecheck    # Type checking
 npm run lint         # ESLint (38 pre-existing problems; add none)
 npm run build        # Full build verification
 ```
+
+### Frontend / UI changes
+
+There is **no browser test runner and no browser-automation tooling in the agent
+environment**, so visual and interaction behaviour cannot be self-verified. A UI change that
+typechecks, lints, and builds is *unverified*, not *working* — say so explicitly and name what
+needs a human eye. Responsive work in particular must be checked by hand at **320px, 768px,
+1024px, 1440px** (per `.cursor/skills/frontend-ui-engineering`).
+
+`npm run dev` serves on `http://localhost:5173`. `Start-Process npm` fails on the Windows box
+("not a valid Win32 application") — run `npm run dev` directly and background it.
+
+When auditing the frontend with grep, **prefer whole-element matches over line-scoped ones.**
+A line-scoped search for `aria-label` beside `size="icon"` reported 18 unlabeled buttons when
+the real number was 1 — the attribute sits on the *following* line. Walk from the opening tag
+to the closing tag before concluding anything.
 
 ### Backend tests — MacBook (authoritative)
 

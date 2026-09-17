@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
-  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield, X,
+  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield, X, Menu,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { FadeIn } from '@/components/motion';
@@ -12,6 +12,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useUIStore, useAuthStore } from '@/store';
@@ -22,6 +28,21 @@ import { parseGoogleDocFileId, parseGoogleDriveFolderId, googleDocResumeFileId }
 import { normalizeJobSearchRoles, MAX_SEARCH_ROLES } from '@/utils/job-search-roles';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+
+/**
+ * Single source of order and labels for the settings tabs.
+ *
+ * The first two render inline on mobile; everything after index 1 collapses into
+ * the overflow menu. Reordering here changes which tabs stay visible.
+ */
+const SETTINGS_TABS = [
+  { value: 'profile', label: 'Profile', icon: User },
+  { value: 'jobsearch', label: 'Job Search', icon: Briefcase },
+  { value: 'appearance', label: 'Appearance', icon: Palette },
+  { value: 'notifications', label: 'Notifications', icon: Bell },
+  { value: 'api', label: 'API Keys', icon: Key },
+  { value: 'account', label: 'Account', icon: Shield },
+] as const;
 
 export function SettingsPage() {
   const { theme, toggleTheme } = useUIStore();
@@ -50,6 +71,15 @@ export function SettingsPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const settingsTab = searchParams.get('tab') || 'profile';
+  /* Shared by the TabsList and the mobile overflow menu so both stay in sync
+     with the `?tab=` URL param. */
+  const setSettingsTab = (value: string) => {
+    if (value === 'profile') setSearchParams({});
+    else setSearchParams({ tab: value });
+  };
+  /* The tab currently in the overflow menu, if any — used to label the trigger
+     so the user can tell which hidden section they are on. */
+  const overflowActive = SETTINGS_TABS.slice(2).find((t) => t.value === settingsTab);
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
 
@@ -192,20 +222,59 @@ export function SettingsPage() {
       <FadeIn>
       <Tabs
         value={settingsTab}
-        onValueChange={(value) => {
-          if (value === 'profile') setSearchParams({});
-          else setSearchParams({ tab: value });
-        }}
+        onValueChange={setSettingsTab}
       >
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          {/* Mobile: only the first two tabs stay inline; the rest move into the
+              overflow menu below. Six triggers do not fit at 320px, and a
+              horizontal scroller hid them behind an easily-missed affordance. */}
           <TabsList className="inline-flex w-max min-w-full sm:min-w-0">
-          <TabsTrigger value="profile" className="gap-1.5"><User className="h-3.5 w-3.5" /> Profile</TabsTrigger>
-          <TabsTrigger value="jobsearch" className="gap-1.5"><Briefcase className="h-3.5 w-3.5" /> Job Search</TabsTrigger>
-          <TabsTrigger value="appearance" className="gap-1.5"><Palette className="h-3.5 w-3.5" /> Appearance</TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-1.5"><Bell className="h-3.5 w-3.5" /> Notifications</TabsTrigger>
-          <TabsTrigger value="api" className="gap-1.5"><Key className="h-3.5 w-3.5" /> API Keys</TabsTrigger>
-          <TabsTrigger value="account" className="gap-1.5"><Shield className="h-3.5 w-3.5" /> Account</TabsTrigger>
-        </TabsList>
+            {SETTINGS_TABS.slice(0, 2).map((t) => (
+              <TabsTrigger key={t.value} value={t.value} className="gap-1.5">
+                <t.icon className="h-3.5 w-3.5" /> {t.label}
+              </TabsTrigger>
+            ))}
+
+            {/* From `sm` up there is room for all six, so render the rest inline. */}
+            {SETTINGS_TABS.slice(2).map((t) => (
+              <TabsTrigger key={t.value} value={t.value} className="hidden gap-1.5 sm:inline-flex">
+                <t.icon className="h-3.5 w-3.5" /> {t.label}
+              </TabsTrigger>
+            ))}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-1 h-7 shrink-0 gap-1.5 px-2 sm:hidden"
+                  aria-label="More settings sections"
+                >
+                  <Menu className="h-3.5 w-3.5" />
+                  {/* Name the hidden section when the user is inside one, so the
+                      trigger is not the only clue as to where they are. */}
+                  {overflowActive ? (
+                    <span className="max-w-[7rem] truncate text-xs">{overflowActive.label}</span>
+                  ) : (
+                    <span className="text-xs">More</span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {SETTINGS_TABS.slice(2).map((t) => (
+                  <DropdownMenuItem
+                    key={t.value}
+                    onSelect={() => setSettingsTab(t.value)}
+                    className="gap-2"
+                  >
+                    <t.icon className="h-4 w-4" />
+                    {t.label}
+                    {settingsTab === t.value && <Check className="ml-auto h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TabsList>
         </div>
 
         <TabsContent value="profile" className="space-y-4">

@@ -175,9 +175,11 @@ export function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between">
+          {/* `flex-row` unconditionally forces the title and "View all" onto one line.
+              At 320px the title wraps and collides with the button, so stack until sm. */}
+          <CardHeader className="flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <CardTitle className="text-base">Execution Queue</CardTitle>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/executions')} className="gap-1">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/executions')} className="-ml-2 gap-1 sm:ml-0">
               View all <ArrowRight className="h-3 w-3" />
             </Button>
           </CardHeader>
@@ -185,17 +187,23 @@ export function DashboardPage() {
             {recentRuns.length === 0 ? (
               <EmptyState icon={Activity} title="No executions yet" description="Workflow runs will appear here once you execute them." />
             ) : recentRuns.map((run) => (
-              <div key={run.id} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                {run.status === 'success' ? <CheckCircle2 className="h-4 w-4 text-success" />
-                  : run.status === 'failed' ? <XCircle className="h-4 w-4 text-destructive" />
-                  : run.status === 'cancelled' ? <StopCircle className="h-4 w-4 text-warning" />
-                  : run.status === 'running' || run.status === 'queued' ? <Play className="h-4 w-4 text-primary" />
-                  : <AlertCircle className="h-4 w-4 text-muted-foreground" />}
-                <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
-                  <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} · {formatDurationMs(computeRunDurationMs(run))}</p>
+              /* The status icon, name/meta block and badge do not fit on one 320px
+                 line. Stack the badge under the text and let it sit with the meta. */
+              <div key={run.id} className="flex flex-col gap-2 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex min-w-0 items-start gap-3 sm:flex-1 sm:items-center">
+                  {run.status === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success sm:mt-0" />
+                    : run.status === 'failed' ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive sm:mt-0" />
+                    : run.status === 'cancelled' ? <StopCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning sm:mt-0" />
+                    : run.status === 'running' || run.status === 'queued' ? <Play className="mt-0.5 h-4 w-4 shrink-0 text-primary sm:mt-0" />
+                    : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground sm:mt-0" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
+                    <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} · {formatDurationMs(computeRunDurationMs(run))}</p>
+                  </div>
                 </div>
-                <StatusBadge status={run.status} />
+                <div className="shrink-0 pl-7 sm:pl-0">
+                  <StatusBadge status={run.status} />
+                </div>
               </div>
             ))}
           </CardContent>
@@ -206,7 +214,9 @@ export function DashboardPage() {
             <CardTitle className="text-base">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[240px] pr-3">
+            {/* Fixed 240px is dead space on a phone where this card is the last
+                thing on screen; let it size to content until there is a column to fill. */}
+            <ScrollArea className="h-auto max-h-[240px] pr-3 lg:h-[240px]">
               <div className="space-y-3">
                 {notifications.length === 0 ? (
                   <EmptyState icon={Inbox} title="No notifications" description="You're all caught up." className="py-8" />
@@ -215,8 +225,8 @@ export function DashboardPage() {
                     <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${n.type === 'failure' ? 'bg-destructive/10 text-destructive' : n.type === 'reminder' ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`}>
                       {n.type === 'failure' ? <AlertCircle className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium">{n.title}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium break-words">{n.title}</p>
                       <p className="text-xs text-muted-foreground line-clamp-2">{n.message}</p>
                       <p className="mt-0.5 text-[10px] text-muted-foreground">{timeAgo(n.createdAt)}</p>
                     </div>

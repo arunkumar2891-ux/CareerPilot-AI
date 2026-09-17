@@ -21,6 +21,9 @@ For deeper feature context, see `docs/features/*.md`.
 - **Entry:** `src/pages/DashboardPage.tsx`
 - **Services:** `src/services/index.ts` → `AnalyticsService`, `WorkflowService`
 - **Data:** Aggregated metrics from jobs, applications, resumes, AI usage
+- **Responsive note:** the `Execution Queue` and `Recent Activity` cards stack their header
+  and run-row badge below `sm`, and `Recent Activity`'s `ScrollArea` is only a fixed 240px
+  from `lg` up — a hard height reserved dead space on phones.
 
 ---
 
@@ -166,6 +169,39 @@ For deeper feature context, see `docs/features/*.md`.
 
 ---
 
+## Shared UI Layer (design system, motion, states)
+
+Cross-cutting frontend infrastructure. Read `AGENTS.md` → Frontend UI & Motion Guardrails
+before changing any of it — several of these files encode fixes for specific bugs
+(BUG-006, BUG-007).
+
+- **Design tokens:** `src/index.css` — HSL custom properties on `:root` + `.dark`, the
+  `.glass`/`.gradient-text`/`grid-bg` component classes, all keyframes, and the global
+  `:active` press rule. `--brand-jade` is intentionally *not* overridden in `.dark`.
+- **Tailwind token + font registration:** `tailwind.config.js`, `index.html`
+  (Inter Tight + JetBrains Mono)
+- **Motion primitives:** `src/lib/motion.ts` — `EASE_OUT`/`EASE_IN`, `DURATION`,
+  `staggerItem` (clamped by `MAX_STAGGER_INDEX`), `collapseVariants`, `pressable`,
+  `useReducedMotion` (preference only) vs `useHeavyMotionEnabled` (GPU cost)
+- **Motion components:** `src/components/motion/` — `FadeIn`, `StaggerList`/`StaggerItem`
+  (also carries `ul`/`li` semantics and keyboard handling for clickable rows), `AppLoader`,
+  `PageLoader`, `InlineLoader`, `IconFrame`, `ScanLineBackground`, `skeletons`
+- **Brand:** `src/components/brand/LogoMark.tsx` (icon), `LogoLockup.tsx` (horizontal
+  lockup: route graphic + wordmark, theme-adaptive via tokens rather than swapped images);
+  static assets `public/favicon.svg`, `apple-touch-icon.svg`, `og-image.svg`
+- **Page chrome:** `src/components/shared/PageHeader.tsx` — `PageHeader` (the page's single
+  `<h1>`) and `SectionHeading` (the `<h2>` tier); `HeaderActions.tsx` (responsive action row
+  with mobile overflow menu)
+- **States:** `src/components/shared/EmptyState.tsx` (no data),
+  `ErrorState.tsx` (**fetch failed** — never interchangeable with EmptyState),
+  `ErrorBoundary.tsx` (render-phase crash; mounted in `AppLayout` and `App.tsx`)
+- **Layout shell:** `src/layouts/AppLayout.tsx` (note `<main>` is `overflow-x-hidden`, which
+  is why over-wide header rows clip rather than scroll), `src/components/layout/Sidebar.tsx`,
+  `Topbar.tsx`, `CommandPalette.tsx`
+- **Primitives:** `src/components/ui/` — shadcn/ui generated, **do not hand-edit**
+
+---
+
 ## Knowledge Base
 
 - **Entry:** `src/pages/KnowledgeBasePage.tsx`
@@ -188,6 +224,11 @@ For deeper feature context, see `docs/features/*.md`.
 ## Settings
 
 - **Entry:** `src/pages/SettingsPage.tsx`
+- **Tab config:** `SETTINGS_TABS` in `SettingsPage.tsx` — single source of tab order and
+  labels. The first two render inline on mobile; the rest collapse into an overflow menu
+  below `sm`. Reordering the array changes which stay visible.
+- **Deep links:** the active tab is the `?tab=` search param (`profile` clears it). Both the
+  `TabsList` and the overflow menu go through one `setSettingsTab` so links keep working.
 - **Services:** `src/services/index.ts` → `SettingsService`, `UserService`
 - **DB:** `supabase/migrations/001_workflow_engine.sql` (settings RPC)
 

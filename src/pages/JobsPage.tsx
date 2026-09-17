@@ -9,6 +9,7 @@ import {
 import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
 import { transitionFast } from '@/lib/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { HeaderActions } from '@/components/shared/HeaderActions';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -275,25 +276,34 @@ export function JobsPage() {
         title="Job Discovery"
         description="Autonomous job search across multiple boards"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowPasteJd(true)} className="gap-2">
-              <Plus className="h-4 w-4" /> Add Job
-            </Button>
-            <Button variant="outline" onClick={repairSync} disabled={repairing} className="gap-2">
-              <Link2 className="h-4 w-4" />
-              {repairing ? 'Repairing…' : 'Repair Sync'}
-            </Button>
-            <Button variant="outline" onClick={() => extractApplyEmails()} disabled={extractingEmails || !jobs?.length} className="gap-2">
-              {extractingEmails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-              {extractingEmails ? 'Extracting…' : 'Extract Emails'}
-            </Button>
-            <Button variant="outline" onClick={() => setShowClearConfirm(true)} className="gap-2" disabled={!jobs?.length}>
-              <Trash2 className="h-4 w-4" /> Clear All Jobs
-            </Button>
-            <Button onClick={runSearch} className="gap-2">
-              <Zap className="h-4 w-4" /> Run Search
-            </Button>
-          </div>
+          <HeaderActions
+            menuLabel="More job actions"
+            primary={{ label: 'Run Search', icon: Zap, onClick: runSearch, variant: 'default' }}
+            secondary={[
+              { label: 'Add Job', icon: Plus, onClick: () => setShowPasteJd(true) },
+              {
+                label: 'Repair Sync',
+                icon: Link2,
+                onClick: repairSync,
+                busy: repairing,
+                busyLabel: 'Repairing…',
+              },
+              {
+                label: 'Extract Emails',
+                icon: Mail,
+                onClick: () => extractApplyEmails(),
+                disabled: !jobs?.length,
+                busy: extractingEmails,
+                busyLabel: 'Extracting…',
+              },
+              {
+                label: 'Clear All Jobs',
+                icon: Trash2,
+                onClick: () => setShowClearConfirm(true),
+                disabled: !jobs?.length,
+              },
+            ]}
+          />
         }
       />
 

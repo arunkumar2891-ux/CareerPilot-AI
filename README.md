@@ -43,15 +43,26 @@ The dashboard uses a **Mission Control Premium** visual language: restrained cya
 
 | Location | Contents |
 | --- | --- |
-| [`src/lib/motion.ts`](src/lib/motion.ts) | Shared easing (`EASE_OUT`), durations, page transitions, stagger variants, `useReducedMotion()` |
-| [`src/index.css`](src/index.css) | `grid-bg`, `gradient-text`, `status-label`, `glow-border`, `animate-shimmer`, `animate-orbit`, `animate-scan`, `animate-status-pulse` |
-| [`tailwind.config.js`](tailwind.config.js) | `shadow-glow-sm`, `shadow-glow-primary` |
+| [`src/lib/motion.ts`](src/lib/motion.ts) | Easing (`EASE_OUT` for entrances, `EASE_IN` for exits), `DURATION`, page transitions, stagger variants (capped by `MAX_STAGGER_INDEX`), `pressable`, `useReducedMotion()` / `useHeavyMotionEnabled()` |
+| [`src/index.css`](src/index.css) | HSL colour tokens (`:root` + `.dark`), `--brand-jade`, the global `:active` press rule, `grid-bg`, `gradient-text`, `status-label`, `glow-border`, `animate-shimmer`, `animate-orbit`, `animate-scan`, `animate-status-pulse` |
+| [`tailwind.config.js`](tailwind.config.js) | Font families (Inter Tight / JetBrains Mono), `brand-jade`, `shadow-glow-sm`, `shadow-glow-primary` |
 
-Primary entrances use opacity + a short `y` translate (~450ms, decelerate easing). `prefers-reduced-motion` and mobile viewports disable orbit/scan animations and page transitions.
+Primary entrances use opacity + a short `y` translate with a resolving blur (~280ms, decelerate
+easing); exits accelerate and are shorter. `prefers-reduced-motion` disables animation
+throughout — it is a **preference** check only, and deliberately does not include a viewport
+width, so phones keep their interaction feedback. Decorative ambient effects (the scan line)
+are separately gated on viewport by `useHeavyMotionEnabled()`, matching the `backdrop-filter`
+disable at the same breakpoint.
 
 ### Brand
 
-[`src/components/brand/LogoMark.tsx`](src/components/brand/LogoMark.tsx) is a custom SVG (trajectory arc + node). It replaces the generic rocket icon in the sidebar, auth screen, Copilot header, setup guide, and boot loader. Lucide icons remain for navigation and actions.
+[`src/components/brand/LogoMark.tsx`](src/components/brand/LogoMark.tsx) is a custom SVG
+aircraft silhouette, and [`LogoLockup.tsx`](src/components/brand/LogoLockup.tsx) is the
+horizontal lockup — origin plane, dashed climbing trajectory, destination plane over a measured
+baseline, with the wordmark beneath. The lockup adapts to light/dark through theme tokens rather
+than two swapped images, and its wordmark is real text so it stays selectable and accessible.
+The mark replaces the generic rocket icon in the sidebar, auth screen, Copilot header, setup
+guide, and boot loader. Lucide icons remain for navigation and actions.
 
 ### Motion kit (`src/components/motion/`)
 
@@ -60,13 +71,19 @@ Primary entrances use opacity + a short `y` translate (~450ms, decelerate easing
 | `AppLoader` | Full-screen boot loader (orbital rings + cycling status text) — used in `ProtectedRoute` |
 | `PageLoader` | Centered or overlay loading for execution detail and workflow graph |
 | `InlineLoader` | Button/action spinner — replaces raw `Loader2` / `RefreshCw` spinners app-wide |
-| `StaggerList` / `StaggerItem` | Standard list and card entrance choreography |
-| `FadeIn` | Single-element fade-up (page headers, chat bubbles, settings tabs) |
-| `ScanLineBackground` | Subtle HUD scan line over the auth grid |
+| `StaggerList` / `StaggerItem` | Standard list and card entrance choreography. Also carries list semantics (`as="ul"` / `as="li"`), a clamped per-item delay, and keyboard handling for clickable rows |
+| `FadeIn` | Single-element fade-up (page headers, chat bubbles, settings tabs); forwards `role`/`aria-*` |
+| `ScanLineBackground` | Subtle HUD scan line over the auth grid (viewport-gated) |
 | `IconFrame` | Consistent glowing icon container (empty states) |
 | `SkeletonCard` / `SkeletonMetricGrid` / `SkeletonTable` | Shimmer loading placeholders wired to corpus, resumes, jobs, and metrics |
 
-Import from `@/components/motion` or use shared components (`PageHeader`, `MetricCard`, `EmptyState`) that already compose these primitives.
+Import from `@/components/motion` or use shared components (`PageHeader`, `SectionHeading`,
+`HeaderActions`, `MetricCard`, `EmptyState`, `ErrorState`) that already compose these primitives.
+
+Data regions branch `isLoading → error → empty → content`: a failed query renders
+[`ErrorState`](src/components/shared/ErrorState.tsx) with a retry, never an `EmptyState`, and
+[`ErrorBoundary`](src/components/shared/ErrorBoundary.tsx) catches render-phase crashes per
+route so one bad component cannot white-screen the app.
 
 ### Where motion is applied
 

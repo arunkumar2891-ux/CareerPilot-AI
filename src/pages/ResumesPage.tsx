@@ -7,13 +7,14 @@ import {
 } from 'lucide-react';
 import { InlineLoader, SkeletonCard, StaggerItem, StaggerList } from '@/components/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { HeaderActions } from '@/components/shared/HeaderActions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
@@ -126,41 +127,51 @@ export function ResumesPage() {
         title="Resumes"
         description="Job-tailored resumes from search pipelines and manual generation"
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowPasteJd(true)} className="gap-2">
-              <FileText className="h-4 w-4" /> Tailor from JD
-            </Button>
-            <Button variant="outline" onClick={() => setDeleteTarget('all')} disabled={!resumes?.length} className="gap-2">
-              <Trash2 className="h-4 w-4" /> Delete All
-            </Button>
-            <Dialog open={showCreate} onOpenChange={setShowCreate}>
-              <DialogTrigger asChild>
-                <Button className="gap-2"><Plus className="h-4 w-4" /> New Resume</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader><DialogTitle>Create Resume</DialogTitle></DialogHeader>
-                <div className="space-y-4 py-2">
-                  <div className="space-y-1.5"><Label>Name</Label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Senior Frontend Resume" /></div>
-                  <div className="space-y-1.5">
-                    <Label>Type</Label>
-                    <Select value={newType} onValueChange={(v) => setNewType(v as Resume['type'])}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="technical">Technical</SelectItem>
-                        <SelectItem value="executive">Executive</SelectItem>
-                        <SelectItem value="creative">Creative</SelectItem>
-                        <SelectItem value="general">General</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5"><Label>Content (Markdown)</Label><Textarea rows={6} value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="# Your Name..." /></div>
-                </div>
-                <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          <HeaderActions
+            menuLabel="More resume actions"
+            primary={{
+              label: 'New Resume',
+              icon: Plus,
+              onClick: () => setShowCreate(true),
+              variant: 'default',
+            }}
+            secondary={[
+              { label: 'Tailor from JD', icon: FileText, onClick: () => setShowPasteJd(true) },
+              {
+                label: 'Delete All',
+                icon: Trash2,
+                onClick: () => setDeleteTarget('all'),
+                disabled: !resumes?.length,
+              },
+            ]}
+          />
         }
       />
+
+      {/* Detached from its trigger: the Dialog is already fully controlled via
+          `showCreate`, and `HeaderActions` renders the button that opens it. */}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Create Resume</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5"><Label>Name</Label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Senior Frontend Resume" /></div>
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={newType} onValueChange={(v) => setNewType(v as Resume['type'])}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="technical">Technical</SelectItem>
+                  <SelectItem value="executive">Executive</SelectItem>
+                  <SelectItem value="creative">Creative</SelectItem>
+                  <SelectItem value="general">General</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5"><Label>Content (Markdown)</Label><Textarea rows={6} value={newContent} onChange={(e) => setNewContent(e.target.value)} placeholder="# Your Name..." /></div>
+          </div>
+          <DialogFooter><Button onClick={create}>Create</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <p className="text-sm text-muted-foreground">
         Master resume and role-specific resumes live on the{' '}

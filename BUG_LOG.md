@@ -374,6 +374,148 @@ write a delta rather than a rewrite — expected to be a no-op for healthy graph
 
 ---
 
+## BUG-006 — A failed fetch rendered as "you have no data"
+
+**Status:** Fixed
+**Feature:** Data-loading states across Job Discovery, Executions, Resumes, Corpus,
+Applications, Cover Letters
+
+**Symptom:** When a list query failed, pages showed their **empty state** — e.g. Job Discovery
+rendered *"No jobs found — Run a search to discover jobs, or check that jobs in Supabase belong
+to your signed-in user."* The user was told their data did not exist when it had merely failed
+to load. On `JobsPage` and `ExecutionsPage` a thin error banner *also* rendered, so the screen
+simultaneously reported an error and an empty result set. On the other four pages the error was
+not surfaced at all beyond a transient toast.
+
+**Root Cause:** Two compounding gaps.
+
+1. **No error branch in the render tree.** Pages branched only `isLoading → empty → content`.
+   Since a failed TanStack query leaves `data` as `undefined`, control fell through to the
+   `!data || data.length === 0` empty-state arm. `JobsPage` and `ExecutionsPage` captured
+   `error` but rendered it as a *sibling* banner rather than as a branch, so both appeared.
+   `ApplicationsPage`, `CorpusPage`, `ResumesPage`, and `CoverLettersPage` did not destructure
+   `error` at all.
+2. **No `ErrorBoundary` anywhere in the app** (0 occurrences), so any render-phase throw
+   white-screened the whole SPA.
+
+Contributing: all 151 error paths reported through `toast`, which disappears after a few
+seconds and leaves an authoritative-looking but incorrect screen behind.
+
+**Files:**
+- `src/components/shared/ErrorState.tsx` (new) — `role="alert"`, readable message extraction
+  from `unknown`, optional retry
+- `src/components/shared/ErrorBoundary.tsx` (new) — class component; `resetKey` clears the
+  fallback on navigation
+- `src/layouts/AppLayout.tsx` — boundary inside `<main>`, keyed on `location.pathname`
+- `src/App.tsx` — outer boundary around `<Routes>`
+- `src/pages/JobsPage.tsx`, `ExecutionsPage.tsx`, `ResumesPage.tsx`, `CorpusPage.tsx`,
+  `ApplicationsPage.tsx`, `CoverLettersPage.tsx` — `error`/`refetch` destructured; explicit
+  error branch before the empty branch
+- `src/components/motion/FadeIn.tsx` — see "latent bugs" below
+
+**Fix:** Every data region now branches `isLoading → error → empty → content`. The error arm
+renders `ErrorState` with the real message and a retry that calls `refetch()`. The sibling
+banners were removed so a failure produces exactly one piece of UI.
+
+`ErrorBoundary` is mounted at two levels: inside `AppLayout`'s `<main>` keyed on `pathname`,
+so a page crash leaves the sidebar/topbar usable and navigating away clears the fallback; and
+around `<Routes>` in `App.tsx`, which covers `AuthPage` and `AppLayout`'s own chrome.
+
+**Two latent bugs found in `FadeIn` while wiring this:**
+- Its reduced-motion branch returned a hardcoded `<div>`, silently discarding `as`. Every
+  reduced-motion user therefore lost the `<header>` landmark that `PageHeader` requests.
+- It accepted no pass-through props, so `ErrorState`'s `role="alert"` would have been dropped.
+
+**Validation:** `npm run typecheck` clean; `npm run build` passes; 39 tests pass under the Node
+shim (`pipeline-repair`, `tailor-pipeline-repair`, `job-kanban`); `npx eslint` clean on all
+changed files with no new problems. **Not verified in a browser** — no browser automation is
+available in the agent environment, so the boundary's fallback UI and each error branch are
+unexercised at runtime. The `ErrorBoundary` catches render-phase throws only; async rejections
+and event-handler errors still rely on local `toast` handling.
+
+---
+
+## BUG-007 — Page-header buttons were unreachable on mobile
+
+**Status:** Fixed
+**Feature:** Page headers on Job Discovery and Resumes
+
+**Symptom:** On a phone, the buttons at the top of Job Discovery and Resumes were missing.
+Reported by the user; `Run Search` (Job Discovery) and `New Resume` (Resumes) — the primary
+action on each page — were among the ones that disappeared.
+
+**Root Cause:** `PageHeader` wraps its `actions` slot in a `flex-wrap` container, but both
+pages passed **their own** `<div className="flex gap-2">` inside it, which reset wrapping for
+their children. Five buttons on one non-wrapping line is wider than a 320px viewport, and
+`AppLayout`'s `<main>` carries `overflow-x-hidden` — so the overflow was **clipped rather than
+scrollable**. The buttons were not cramped, they were *unreachable*: no scroll affordance, no
+wrap, no menu.
+
+A repo-wide grep for the pattern found exactly two occurrences — `JobsPage.tsx:278` and
+`ResumesPage.tsx:129` — matching the two pages reported, which confirmed the diagnosis
+independently.
+
+**Files:**
+- `src/components/shared/HeaderActions.tsx` (new)
+- `src/pages/JobsPage.tsx` — 5 buttons → `HeaderActions` (primary `Run Search`)
+- `src/pages/ResumesPage.tsx` — 3 buttons → `HeaderActions` (primary `New Resume`); the
+  `New Resume` `Dialog` was detached from its `DialogTrigger` and moved into the page body
+  (it is already fully controlled by `showCreate`, so this is behaviour-neutral)
+
+**Fix:** `HeaderActions` keeps the primary action visible at every width and collapses
+secondary actions into an overflow menu below `sm`, rendering them inline (and `flex-wrap`) at
+`sm` and up. Plain wrapping was rejected as the fix because five buttons would stack into three
+rows above the page content.
+
+**Validation:** `npm run typecheck` clean; `npm run build` passes; `npx eslint` clean on the
+changed files; 29 tests pass under the Node shim. Grep confirms zero remaining
+`className="flex gap-2"` action rows under `src/pages/`. **Not verified in a browser** — the
+320px behaviour, the overflow menu, and the detached dialog need manual confirmation.
+
+---
+
+## Audit findings — UI production-readiness (2026-09-17)
+
+A full audit against `.cursor/skills/motion-design` and
+`.cursor/skills/frontend-ui-engineering`. The visual layer was already sound — **0** raw hex
+colours, 3 `shadow-*`, 1 `bg-gradient-to`, 39 skeleton states, 23 `htmlFor` bindings, 45
+`focus-visible` — so none of the classic "AI aesthetic" markers applied. What read as
+unfinished was *behaviour*. Fixed in four phases; phase 5 (splitting `JobsPage.tsx` — 1056
+lines when audited, **1073 now** after the phase-1/3 edits landed in it — and sweeping ~75
+arbitrary bracket values) was **explicitly deferred by the user**.
+
+| Finding | Severity | Resolution |
+|---|---|---|
+| Nothing in the app responded to a click: **1** `active:` state and **0** `whileTap` against **64** `hover:` states. Hover-only interactivity is the strongest "mockup" tell. | Critical | `:active` press rule added to `src/index.css` (not `ui/button.tsx`, which is shadcn-generated). Written unlayered so it outranks `transition-colors`; scoped to `button` only so it does not compound with framer's `pressable` on clickable cards. |
+| `staggerChildren` was uncapped on unbounded server lists — 20 rows = 800ms, 50 rows = **2000ms** against a 500ms budget. | Critical | `StaggerList` injects a positional index; `staggerItem` clamps it to `MAX_STAGGER_INDEX = 8`. |
+| `collapseVariants` animated `height: 0 → 'auto'`, triggering layout every frame. | Critical | Rewritten to `scaleY` + `transformOrigin: top`. **Callers must add `overflow-hidden`** — documented in the JSDoc. |
+| Failed fetches rendered as empty states; no `ErrorBoundary`. | Critical | See BUG-006. |
+| `useReducedMotion()` matched `(max-width: 1023px)` as well as the media preference, so **every phone and tablet got zero animation**, including press feedback. A perf shortcut paid for with a dead-feeling app on the majority form factor. | High | Split: `useReducedMotion()` is now preference-only; the viewport clause moved to `useHeavyMotionEnabled()`, used solely by `ScanLineBackground`. |
+| `EASE_OUT` was the only curve, so exits decelerated instead of accelerating. | High | `EASE_IN` + `transitionExit` added; exits are now shorter than entrances. |
+| `DURATION.base` was 0.45s — modal-weight timing on list rows. | High | 0.45 → 0.28, inside the 200–350ms card band. |
+| Heading levels jumped h1 → h3 (`PageHeader` h1, `CardTitle` h3, no h2 tier). | High | `SectionHeading` (h2) added to `PageHeader.tsx`. |
+| Lists were `div`s: `StaggerList` supported `as="ul"` but was never called with it; **1** `role=` in the whole app. | High | 9 record collections converted to `ul`/`li` with `label`. Metric grids left as `div`s. Clickable `StaggerItem`s now get `role="button"`, `tabIndex`, and Enter/Space handling. |
+| Only one motion layer existed (opacity + `y:8`), with no secondary layer or follow-through. | Medium | Entrances gained a resolving 2px blur alongside the lift. |
+| **No webfont was loaded at all.** No `<link>`, no `@import`, no `fontFamily` in `tailwind.config.js` — and `index.css` set `font-feature-settings: "cv11","ss01"` plus `font-variation-settings: "opsz" 32`, which are Inter-specific and therefore inert. Something intended Inter and it never shipped. | Medium | Inter Tight + JetBrains Mono loaded with `preconnect`/`display=swap`, registered in `tailwind.config.js`, `font-sans` applied to `body`; dead feature settings replaced with Inter Tight's real axes (`cv05`, `cv08`) and `opsz` dropped. |
+| `grid-cols-2` with no responsive prefix in 3 places. | Medium | Only `ApplicationsPage`'s Applied/Recruiter pair actually needed stacking (long recruiter names / dates). `AuthPage`'s two OAuth buttons and `DashboardPage`'s two stat labels are short enough at 320px that stacking would be worse — **left alone deliberately**. |
+| Dashboard `Execution Queue` / `Recent Activity` not responsive: `CardHeader` forced `flex-row` unconditionally (title collided with "View all" at 320px); run rows put icon + name + badge on one line; `ScrollArea` was a hard `h-[240px]`, reserving dead space on phones. | Medium | Header stacks until `sm`; badge drops below the text on mobile; `ScrollArea` is `max-h-[240px]` on mobile and fixed from `lg`. |
+| Settings had 6 tab triggers in a horizontal scroller — the hidden ones were easy to miss at 320px. | Medium (user request) | New `SETTINGS_TABS` constant drives everything; first two inline on mobile, remaining four behind a hamburger, all six inline from `sm`. The trigger **names the active hidden section** so the user can tell where they are when both visible tabs look inactive. Also fixed a latent bug: the inline `onValueChange` meant the new menu would have bypassed the `?tab=` URL sync — both paths now share `setSettingsTab`, keeping tabs deep-linkable. |
+
+**Corrections to the audit's own figures.** Two findings were over-reported by line-scoped
+greps and are recorded here so the numbers are not trusted later:
+
+- *"18 unlabeled icon-only buttons"* — actually **1** (the sidebar collapse toggle, now fixed
+  with `aria-label` + `aria-expanded`). `aria-label` almost always sits on the line *after*
+  `size="icon"`, so a per-line match missed it. A whole-element walk found every other one
+  already labelled.
+- *"3 non-responsive grids"* — actually **1** worth changing, as above.
+
+**Deliberately out of scope (phase 5):** `src/pages/JobsPage.tsx` is **1073 lines** (5x the
+skill's 200-line red flag; it was 1056 when audited and grew as phases 1 and 3 landed in it),
+and ~75 arbitrary `[...]` bracket values remain off the spacing and type scales.
+
+---
+
 ## Audit findings — documentation drift (2026-09-17)
 
 Recorded for traceability; all were corrected in the same pass.

@@ -79,6 +79,9 @@ shared prefix, the per-job branch, and the fan-in.
 | `src/pages/` | Page-level React components (one per route) |
 | `src/components/` | Reusable UI components |
 | `src/components/ui/` | shadcn/ui primitives (do not manually edit) |
+| `src/components/shared/` | Cross-page building blocks — page header + section heading, responsive header actions, empty / error / crash-boundary states |
+| `src/components/motion/` | Animation wrappers (fade, stagger, loaders, skeletons) |
+| `src/components/brand/` | Logo mark and horizontal lockup |
 | `src/services/index.ts` | **All frontend service logic** — single large file, every Supabase call |
 | `src/store/index.ts` | Zustand stores (auth, UI, notifications) |
 | `src/types/index.ts` | All TypeScript type definitions |
@@ -105,6 +108,13 @@ shared prefix, the per-job branch, and the fan-in.
 - **Edge Functions = backend API:** Named functions in `supabase/functions/` with shared logic in `_shared/`.
 - **RLS everywhere:** All database access uses Row Level Security; admin operations use `createAdminClient()`.
 - **No server-side rendering:** Pure SPA with client-side routing.
+- **Tokens, not raw colours:** all colour comes from the HSL custom properties in
+  `src/index.css`; there are zero raw hex values in `src/`. Keep it that way.
+- **Motion is centralized:** durations, easing curves, and the stagger cap live in
+  `src/lib/motion.ts`. Components consume them; they do not define their own.
+- **Failure ≠ emptiness:** a failed query renders `ErrorState`, never `EmptyState`. Every data
+  region branches `isLoading → error → empty → content`. See `AGENTS.md` → Frontend UI &
+  Motion Guardrails and `BUG_LOG.md` BUG-006.
 
 ## Do Not Modify
 

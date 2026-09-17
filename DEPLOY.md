@@ -236,6 +236,23 @@ npm run build
 
 `render.yaml` rewrites `/*` → `index.html`. If the site was created manually, add that rewrite in the Render dashboard or the next build’s `404.html` fallback will serve the SPA for deep links like `/integrations`.
 
+### Static assets and the webfont
+
+`index.html` references brand assets served from `public/` (copied verbatim into `dist/` by
+Vite, no build step): `favicon.svg`, `apple-touch-icon.svg`, `og-image.svg`. It also sets
+light/dark `theme-color` and the OG/Twitter card tags.
+
+Two things to know:
+
+- **Fonts load from Google Fonts at runtime** (`Inter Tight` + `JetBrains Mono`, with
+  `preconnect` and `display=swap`). This is the app's only third-party runtime dependency for
+  the frontend. On a network that blocks `fonts.googleapis.com` the app still renders — it
+  falls back through `ui-sans-serif`/`system-ui` — but metrics shift, so a layout that was
+  only ever checked with the webfont present may look different. Self-host the two families
+  under `public/` if that matters for your deployment.
+- **`og-image.svg` is an SVG.** LinkedIn and Twitter/X do **not** render SVG OG images. If
+  link previews matter, export a 1200×630 PNG and point `og:image` at it.
+
 ## 5. First run
 
 After signing up or logging in, the app **automatically provisions**:
@@ -295,5 +312,8 @@ Open **Workflow Studio** to inspect or edit the built-in graph. The source defin
 | Workflow run fails immediately | Check Edge Function logs; verify secrets are set |
 | Google Docs node fails | Connect Google in Integrations; set resume Doc ID in Settings |
 | Apify hangs | Ensure `workflow-scheduler` is running (cron or external) |
+| Typography looks different from local | `fonts.googleapis.com` is blocked or slow; the app falls back to system sans. Self-host Inter Tight / JetBrains Mono under `public/` if needed |
+| Link previews show no image | `og:image` is an SVG, which LinkedIn and Twitter/X ignore. Export a 1200×630 PNG |
+| A page shows "Something went wrong" | An `ErrorBoundary` caught a render throw. The message is on screen and the component stack is in the browser console. Navigating to another route clears it |
 | No jobs after run | Check Executions for node errors; verify Apify actor + token |
 | Integrations migration error | Run updated `004` (drops function before view) |
