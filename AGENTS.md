@@ -60,6 +60,40 @@ The job-search pipeline is the most failure-prone area of this codebase. Read
 - Any change to the seed graph or repair logic must keep
   `supabase/functions/_shared/workflow/pipeline-repair_test.ts` and `seed-graph_test.ts` green.
 
+## Resume Contract Guardrails
+
+Tailored resumes are governed by **two files that must agree**: the prompt
+(`_shared/career-corpus/prompt.ts` → `ATS_SYSTEM_PROMPT`) tells the model what to emit, and the
+validator (`_shared/ai/validate-resume.ts`) decides whether to accept it. Changing one without
+the other either rejects valid output or lets drift through.
+
+- **The contract is 8 sections, in this order:** `NAME`, `CONTACT`, `SUMMARY`, `SKILLS`,
+  `PROFESSIONAL EXPERIENCE`, `PERSONAL PROJECTS`, `CERTIFICATION`, `EDUCATION`.
+  `PERSONAL PROJECTS` and `CERTIFICATION` are in `OPTIONAL_HEADERS` — omitted when the source
+  has none.
+- **`REQUIRED_HEADERS` is the single source of section order.** It drives `canonicalHeader`,
+  `countRequiredHeaders`, `joinSections`, `dedupeSectionLines`, and `dropUnsupportedContentLine`.
+  Add a section there and ordering follows; add it anywhere else and it won't.
+- **A section missing from `REQUIRED_HEADERS` is silently swallowed, not rejected.**
+  `parseAtsSections` treats its header as *body text of the preceding section*, and
+  `joinSections` re-emits it that way. This is how `PERSONAL PROJECTS` used to vanish (BUG-004).
+- **Optional sections are only mandatory when a source was supplied.** That lookup lives in
+  `optionalHeaderSource()`; extend it rather than hardwiring a new `*Source` option into the
+  header loop.
+- **Sections whose lines are not verbatim source bullets need `allowAggregate` in
+  `validateGrounding`.** `SUMMARY`, `SKILLS`, `CERTIFICATION`, and `PERSONAL PROJECTS` have it.
+  Project titles and `- Technologies: ...` lines are bullets, so the non-bullet exemption that
+  `PROFESSIONAL EXPERIENCE` uses for its company/date headers does not cover them.
+- **`validateTwoPageShape` caps are tuned to the categorized format** (SKILLS: 2,500 chars and
+  24 lines, since each `Category:` heading costs a line). Prefer tightening the char cap over
+  the line cap.
+- **The prompt contract and the PDF renderer are separate.** `_shared/resume-latex.ts` has its
+  own parsers and known gaps; a contract change does not imply the PDF renders correctly. Verify
+  the PDF separately.
+- Any contract change must keep `_shared/ai/errors_test.ts` and
+  `_shared/career-corpus/generation-contract_test.ts` green, and needs an edge-function deploy
+  (`workflow-run`, `workflow-step`, `ai-chat`) before tailored resumes pick it up.
+
 ## Context & Search Rules
 
 1. **Read `CONTEXT.md` first** when you need architectural context.
@@ -91,6 +125,8 @@ The job-search pipeline is the most failure-prone area of this codebase. Read
 | Graph provisioning | `src/services/index.ts` → `ensureDefaultPipeline` |
 | Execution graph rendering | `src/utils/execution-graph.ts` |
 | AI provider routing | `supabase/functions/_shared/ai/router.ts` |
+| Resume output contract (prompt) | `supabase/functions/_shared/career-corpus/prompt.ts` → `ATS_SYSTEM_PROMPT` |
+| Resume output contract (validator) | `supabase/functions/_shared/ai/validate-resume.ts` → `REQUIRED_HEADERS` |
 | Resume corpus logic | `supabase/functions/_shared/career-corpus/` |
 | Google Drive integration | `supabase/functions/_shared/google-drive.ts` |
 | DB migrations | `supabase/migrations/` |
@@ -118,10 +154,15 @@ Use `BUGFIX.md` as the bug report template. Record resolved bugs in `BUG_LOG.md`
 
 ### Attribution
 
-Before blaming recent work for a bug, check whether the defect pre-exists. There is no local
-`git` on the primary dev machine, but the repo is public — history can be read via the GitHub
-API and `raw.githubusercontent.com`. Comparing against `origin/main` has twice prevented
-misattribution (BUG-003) and revealed that a user's DB graph predated the current seed.
+Before blaming recent work for a bug, check whether the defect pre-exists. Local `git` **is**
+available (2.39.5) — earlier revisions of this file said otherwise, so prefer `git log` and
+`git show` over the GitHub API. No tags exist yet, so identify releases by the `package.json`
+version in the commit. The repo is also public, so `raw.githubusercontent.com` remains a
+fallback. Comparing against `origin/main` has twice prevented misattribution (BUG-003) and
+revealed that a user's DB graph predated the current seed.
+
+> `git status` can take minutes on this machine (as can `tsc` and `eslint`). Prefer narrow
+> commands like `git log --oneline -10` over full working-tree scans.
 
 ## Validation Commands
 
@@ -135,6 +176,8 @@ Backend tests run under Deno:
 
 ```bash
 deno test --allow-all --no-check supabase/functions/_shared/workflow/
+deno test --allow-all --no-check supabase/functions/_shared/ai/            # incl. resume contract
+deno test --allow-all --no-check supabase/functions/_shared/career-corpus/
 ```
 
 Some frontend *pure logic* is also tested under Deno (there is no browser test runner).
@@ -151,6 +194,14 @@ Notes:
   should be `./resume-parse.ts`), which blocks a whole-`_shared` test run.
 - Deno tests that touch Supabase need `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set
   (stub values are fine). On a network with TLS interception, set `DENO_TLS_CA_STORE=system`.
+- **Deno is not installed on the primary dev machine.** Pure-logic suites can be run under
+  Node instead (`node --experimental-strip-types`) with a throwaway shim that defines
+  `globalThis.Deno = { test, env }` and awaits the collected cases. This works for
+  `_shared/ai/errors_test.ts` and all of `_shared/career-corpus/`. It does **not** work for
+  anything importing `_shared/supabase-admin.ts` (e.g. `_shared/ai/router_test.ts`), which
+  pulls `https://esm.sh/@supabase/supabase-js` — Node's loader rejects remote URLs. Validate
+  those by calling the function under test directly with the same arguments the caller passes,
+  and flag that the suite itself was not executed.
 
 ## Releasing
 

@@ -126,6 +126,18 @@ supabase functions deploy --project-ref YOUR_PROJECT_REF
 
 Function settings such as `verify_jwt` are read from `supabase/config.toml` during deploy — you do not need `--no-verify-jwt` flags when that file is present.
 
+### Which functions to redeploy after a backend change
+
+Everything under `supabase/functions/_shared/` is bundled into each function that imports it, so editing a shared file changes nothing in production until the **importing** functions are redeployed. Common cases:
+
+| Changed | Redeploy |
+|---------|----------|
+| `_shared/career-corpus/prompt.ts`, `_shared/ai/validate-resume.ts`, `_shared/ai/router.ts` (resume contract, generation, validation) | `workflow-run`, `workflow-step`, `ai-chat` |
+| `_shared/resume-latex.ts`, `resume-pdf.ts`, `resume-drive.ts` (PDF build, Drive sync) | `resume-actions`, plus `workflow-step` for pipeline-generated PDFs |
+| `_shared/workflow/**` (executor, nodes, pipeline) | `workflow-run`, `workflow-step`, `workflow-scheduler` |
+
+When in doubt, `supabase functions deploy --project-ref YOUR_PROJECT_REF` deploys all of them. A stale deploy is a common source of "I changed the code and nothing happened."
+
 ### Automated deploy (GitHub Actions)
 
 Merges to `main` that touch `supabase/functions/**` or `supabase/config.toml` trigger `.github/workflows/deploy-supabase-functions.yml`, which deploys all Edge Functions to your linked Supabase project.
@@ -185,9 +197,9 @@ Your URL will be `https://careerpilot-ai.onrender.com` (or similar).
 
 ### The version label
 
-The sidebar shows `beta v1.2 · 0914.0815` — the `package.json` version, then a **build stamp** (`MMDD.HHmm`, UTC) that changes automatically on every build. Hover it to see the exact build time.
+The sidebar shows `beta v1.3 · 0914.0815` — the `package.json` version, then a **build stamp** (`MMDD.HHmm`, UTC) that changes automatically on every build. Hover it to see the exact build time.
 
-The build stamp is what tells you a deploy actually landed, and it needs no action from you. The `v1.2` part only changes when you bump it:
+The build stamp is what tells you a deploy actually landed, and it needs no action from you. The `v1.3` part only changes when you bump it:
 
 ```bash
 npm run version:bump

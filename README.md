@@ -229,7 +229,7 @@ deno test --allow-all --no-check supabase/functions/_shared/workflow/
 
 `--no-check` skips a handful of pre-existing type errors in untouched files. See [AGENTS.md](AGENTS.md#validation-commands) for the details and required env stubs.
 
-The sidebar shows `beta v1.2 · 0914.0815` — the `version` from `package.json`, plus a build stamp (`MMDD.HHmm` UTC) that updates automatically on every build, so you can always tell which deploy you're looking at. Bump the version number itself with `npm run version:bump`. See [DEPLOY.md](DEPLOY.md#the-version-label).
+The sidebar shows `beta v1.3 · 0914.0815` — the `version` from `package.json`, plus a build stamp (`MMDD.HHmm` UTC) that updates automatically on every build, so you can always tell which deploy you're looking at. Bump the version number itself with `npm run version:bump`. See [DEPLOY.md](DEPLOY.md#the-version-label).
 
 Verified-working versions are recorded in [RESTORE_POINTS.md](RESTORE_POINTS.md), with what each one validated and how to roll back.
 
@@ -305,7 +305,9 @@ The repository also includes a GitHub Actions workflow that deploys Edge Functio
 
 The corpus is per-user data in Supabase — not files in this repo. Google Doc sync or a direct upload is the source of truth for the master resume. Role-specific resumes are optional overrides used when the job title matches.
 
-Resume tailoring sends the selected source resume and the job description to Gemini with a 7-section output contract (NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION). Output is validated for section shape, length, source grounding of experience bullets, and human voice (banned AI cliches).
+Resume tailoring sends the selected source resume and the job description to Gemini with an 8-section output contract (NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, PERSONAL PROJECTS, CERTIFICATION, EDUCATION). PERSONAL PROJECTS and CERTIFICATION are emitted only when the source resume has them.
+
+The contract also fixes the shape *within* each section: SKILLS as `Category:` headings with `-` item lines, experience as `COMPANY | Role` then `Dates | Location` then achievement bullets, and each project as a plain title line followed by `- Technologies: ...` and its bullets. Output is validated for section shape and order, length, source grounding, and human voice (banned AI cliches). The prompt lives in `supabase/functions/_shared/career-corpus/prompt.ts` and the validator in `supabase/functions/_shared/ai/validate-resume.ts`; the two must be changed together.
 
 ## Deployment
 

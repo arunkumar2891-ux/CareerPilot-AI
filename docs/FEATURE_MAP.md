@@ -58,6 +58,9 @@ For deeper feature context, see `docs/features/*.md`.
 - **Entry:** `src/pages/CorpusPage.tsx`
 - **Frontend Content:** `src/content/career-corpus/index.ts`
 - **Backend:** `supabase/functions/_shared/career-corpus/` (generate, load, prompt, score)
+- **Resume output contract:** `_shared/career-corpus/prompt.ts` → `ATS_SYSTEM_PROMPT` (8-section
+  format) and `_shared/ai/validate-resume.ts` → `REQUIRED_HEADERS` (order, caps, grounding).
+  Change both together — see `AGENTS.md` → Resume Contract Guardrails.
 - **Services:** `src/services/index.ts` → `ResumeService` (corpus-related methods)
 - **Gate:** `src/components/RequireGoogleDocGate.tsx`
 
@@ -83,6 +86,7 @@ For deeper feature context, see `docs/features/*.md`.
 - **Services:** `src/services/index.ts` → `ChatService`
 - **Backend:** `supabase/functions/ai-chat/index.ts`
 - **AI Routing:** `supabase/functions/_shared/ai/router.ts`, `gemini.ts`, `groq.ts`
+- **Resume Output Validation:** `supabase/functions/_shared/ai/validate-resume.ts`
 - **Usage Tracking:** `supabase/functions/_shared/ai/usage.ts`
 - **DB:** `supabase/migrations/017_ai_usage_events.sql`
 

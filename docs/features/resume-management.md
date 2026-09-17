@@ -54,8 +54,34 @@ CorpusPage → import from Google Doc / upload / paste
 - `supabase/functions/_shared/resume-pdf.ts` — PDF compilation
 - `supabase/functions/_shared/resume-drive.ts` — Google Drive upload/sync
 - `supabase/functions/_shared/career-corpus/generate.ts` — AI resume generation
+- `supabase/functions/_shared/career-corpus/prompt.ts` — `ATS_SYSTEM_PROMPT`, the output contract
+- `supabase/functions/_shared/ai/validate-resume.ts` — Section order, caps, grounding, human voice
+- `supabase/functions/_shared/resume-latex.ts` — ATS text → LaTeX for PDF rendering
 - `src/utils/resume-classification.ts` — Corpus vs. job resume classification
 - `src/utils/upload-sanitize.ts` — Upload validation and sanitization
+
+## Tailored Resume Output Contract
+
+AI-generated resumes must emit exactly these 8 sections, in order. `PERSONAL PROJECTS` and
+`CERTIFICATION` are optional and omitted when the source resume has none.
+
+```text
+NAME
+CONTACT                     Email: / Phone: / Location: / LinkedIn: / GitHub:
+SUMMARY                     2-3 sentences, first person
+SKILLS                      "Category:" heading lines, each with "- " item lines
+PROFESSIONAL EXPERIENCE     "COMPANY | Role", then "Dates | Location", then "- " bullets
+PERSONAL PROJECTS           plain title line, "- Technologies: ...", then "- " bullets
+CERTIFICATION               one "- " bullet per entry
+EDUCATION                   one "- " bullet per entry
+```
+
+Enforced by `prompt.ts` (generation) and `validate-resume.ts` (acceptance) — these two must be
+changed together. Validation caps: 10,000 chars total, SUMMARY 1,400, SKILLS 2,500 chars / 24
+lines, experience bullets `max(22, source count)`. Company, date, and project title lines are
+headers and must **not** start with `- `.
+
+See `AGENTS.md` → Resume Contract Guardrails before changing any of it.
 
 ## Data Flow
 
@@ -76,6 +102,14 @@ CorpusPage → import from Google Doc / upload / paste
 - PDF compilation failures on malformed content
 - Large resume content can exceed AI token limits
 - Drive sync state can become stale if sync fails mid-operation
+- **Stale Edge Function deploy.** `resume-latex.ts` and `prompt.ts` are shared modules bundled
+  into each importing function, so edits do nothing in production until that function is
+  redeployed (`resume-actions` for PDFs, `workflow-run`/`workflow-step`/`ai-chat` for the
+  contract). See `DEPLOY.md` → Which functions to redeploy.
+- **PDF rendering is a separate layer from the contract.** `resume-latex.ts` re-parses the ATS
+  text with its own parsers, and `moderncv` quirks matter (e.g. `{\bfseries ...\par}` inside a
+  `\cvitem` minipage is discarded — use `\textbf{...}`). Valid contract output can still render
+  wrong; verify the PDF itself.
 
 ## Important Rules
 

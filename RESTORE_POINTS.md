@@ -14,18 +14,80 @@ npm run build
 If you are not using tags, find the commit by its version bump: search the history for the
 `package.json` version (`1.3.0`, `1.2.0`, …).
 
-> **Tags are not created yet.** `git` is not installed on the primary dev machine, so the
-> version bump plus this file are the durable marker. Once you have git available:
+> **Tags are still not created, but `git` is available** (2.39.5 — earlier revisions of this
+> file said it was not installed). Commits exist; only the tags are missing. To tag the
+> verified states retroactively:
 >
 > ```bash
-> git add -A
-> git commit -m "v1.3.0 — Match Score gate before ATS Optimizer + drag-and-drop kanban"
-> git tag -a v1.3.0-match-gate-kanban -m "Verified working: match-score gate (>80), kanban drag-and-drop"
-> git push && git push --tags
+> git tag -a v1.3.0-match-gate-kanban <commit> -m "Verified working: match-score gate (>80), kanban drag-and-drop"
+> git tag -a v1.2.0-stable-pipeline   <commit> -m "Verified working: batched per-role runs + self-healing graph"
+> git push --tags
 > ```
 >
-> The earlier 1.2.0 state is tagged `v1.2.0-stable-pipeline` by the same procedure. Until
-> tags exist, return to a state by finding the commit whose `package.json` version matches.
+> Until they exist, find a state with `git log` by the `package.json` version in that commit.
+> Note `git status` can take minutes on this machine — prefer `git log --oneline -10`.
+
+---
+
+## Pre-change anchor — before the 8-section resume AI contract
+
+**Commit:** `1d5803d` ("classic template fix")
+**Date:** 2026-09-16
+**Status:** ⚠️ **Rollback anchor only — not a verified-good state.**
+
+### What this is
+
+The exact tree immediately before the resume AI contract was rewritten from 7 to 8 sections
+(BUG-004). Recorded so that change can be reverted precisely; the contract work was still
+uncommitted when this entry was written, so `1d5803d` *is* the pre-change state.
+
+### Why it is not a restore point
+
+Every other entry in this file was confirmed working in the running app. This one was not, and
+should not be treated as a fallback target:
+
+- The AI contract at `1d5803d` **cannot** emit `PERSONAL PROJECTS` at all — the section is
+  silently absorbed into `PROFESSIONAL EXPERIENCE` (BUG-004). That is the defect, not a baseline.
+- Categorized SKILLS is rejected as `skills_too_long` (cap was 10 lines, format needs 16).
+- The PDF renderer defects that prompted the whole effort are present and unfixed.
+
+Return here only to isolate whether a *new* problem came from the contract change. To recover
+correct behavior, go forward, not back.
+
+### Rollback
+
+Code-only; no migration accompanied the contract change.
+
+```bash
+git checkout 1d5803d -- supabase/functions/_shared/ai/validate-resume.ts \
+                        supabase/functions/_shared/career-corpus/prompt.ts
+```
+
+Then redeploy `workflow-run`, `workflow-step`, and `ai-chat` — the shared modules are bundled at
+deploy time, so reverting the files alone changes nothing in production.
+
+### What changed after this commit
+
+| File | Change |
+|------|--------|
+| `supabase/functions/_shared/ai/validate-resume.ts` | `PERSONAL PROJECTS` in `REQUIRED_HEADERS` + `OPTIONAL_HEADERS`; project header aliases; `optionalHeaderSource()`; SKILLS line cap 10 → 24; `allowAggregate` for projects |
+| `supabase/functions/_shared/career-corpus/prompt.ts` | 8-section `ATS_SYSTEM_PROMPT` with per-section sub-shapes; rewritten `OUTPUT SKELETON`; stale 7-section references fixed |
+| `supabase/functions/_shared/ai/errors_test.ts` | 5 new regression cases |
+| `supabase/functions/_shared/ai/router_test.ts` | Eight-section fixture + pass-through test |
+
+### Verification performed on the change
+
+```bash
+npm run typecheck                                        # clean
+# Deno absent; suites run under Node with a Deno.test shim:
+#   _shared/ai/errors_test.ts + all _shared/career-corpus/  → 43 passed / 0 failed
+```
+
+> **Not verified:** `_shared/ai/router_test.ts` (Node cannot load
+> `https://esm.sh/@supabase/supabase-js` via `supabase-admin.ts`), `npm run lint` (hung at 0% CPU
+> on two attempts), and **end-to-end behavior in the running app** — no tailored resume has been
+> generated against the new contract yet. Do not promote this to a version restore point until
+> that happens.
 
 ---
 

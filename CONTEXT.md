@@ -90,7 +90,7 @@ shared prefix, the per-job branch, and the fan-in.
 | `src/content/career-corpus/` | Career corpus constants (master resume name, contact overlay) |
 | `supabase/functions/` | Edge Functions (backend) |
 | `supabase/functions/_shared/` | Shared backend utilities (AI, workflow engine, resume, Google Drive) |
-| `supabase/functions/_shared/ai/` | AI provider routing, usage tracking, error handling |
+| `supabase/functions/_shared/ai/` | AI provider routing, resume output validation, usage tracking, error handling |
 | `supabase/functions/_shared/workflow/` | Workflow execution engine, job pipeline, graph traversal |
 | `supabase/functions/_shared/career-corpus/` | Resume corpus loading, generation, scoring |
 | `supabase/migrations/` | PostgreSQL migrations (through `027`) |

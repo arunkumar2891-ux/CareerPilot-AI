@@ -120,6 +120,12 @@ Return only the name or "master".
 
 **New `ATS_SYSTEM_PROMPT`** (simplified):
 
+> **Superseded — the section list below is out of date.** The contract is now **8 sections**,
+> adding `PERSONAL PROJECTS` between `PROFESSIONAL EXPERIENCE` and `CERTIFICATION`, with
+> per-section sub-shapes (categorized SKILLS, `COMPANY | Role` + `Dates | Location`, project
+> title + `- Technologies:` + bullets). See `AGENTS.md` → Resume Contract Guardrails and
+> BUG-004. This document is retained as a record of the original simplification plan.
+
 - You are a resume tailoring expert
 - Output must follow this exact 7-section format: NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, CERTIFICATION, EDUCATION
 - Use `-` prefix for bullets
@@ -152,7 +158,7 @@ Remove all: BULLET CATALOG, RERANKED SELECTION, RETRIEVED EVIDENCE, ROLE-FOCUSED
 
 **Keep:**
 
-- 7-section header check (all present, correct order)
+- 7-section header check (all present, correct order) — **now 8; see the note under 4b**
 - Non-empty body check for required sections
 - Two-page length check (<=10000 chars)
 - Contact/identity overlay enforcement

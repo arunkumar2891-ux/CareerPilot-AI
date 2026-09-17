@@ -214,3 +214,86 @@ failed**; `npm run typecheck` clean; `npm run build` passes; `eslint` clean on a
 files with the repo total unchanged at 38 pre-existing problems.
 
 ---
+
+## BUG-004 — `PERSONAL PROJECTS` silently dropped from every tailored resume
+
+**Status:** Fixed
+**Feature:** Resume tailoring (AI generation contract + validation)
+
+**Symptom:** Tailored resumes never contained the user's Personal Projects section. The section
+was present in the master resume but absent from AI output, and no validation error was raised —
+it simply vanished. A categorized SKILLS block (`Category:` headings with sub-bullets) was also
+rejected outright as `skills_too_long`.
+
+**Root Cause:** Three independent blockers in the generation/validation layer, none in the PDF
+renderer where the symptom was first suspected.
+
+1. **`PERSONAL PROJECTS` was not in `REQUIRED_HEADERS`.** This is the critical one, and it fails
+   *silently rather than loudly*: `parseAtsSections` only recognizes headers on that list, so the
+   `PERSONAL PROJECTS` line was treated as **body text inside `PROFESSIONAL EXPERIENCE`**, and
+   `joinSections` re-emitted it that way. There was no "unknown section" error path — an
+   unrecognized header is indistinguishable from a content line. `ATS_SYSTEM_PROMPT` separately
+   instructed the model to use *exactly 7 headers*, so the model was also being told to drop it.
+2. **The SKILLS line cap was 10.** The categorized format needs 16 lines (5 category headings +
+   11 item lines), so `validateTwoPageShape` rejected it as `skills_too_long`. Measured against
+   the user's real resume; the 2,500-char cap was never the binding constraint (actual: 688).
+3. **`validateGrounding` had no `allowAggregate` for project lines.** Project titles and long
+   `- Technologies: React 18, TypeScript, ...` lists are not verbatim source bullets, so they
+   would have been rejected as `unsupported_source_line`. The existing exemption for
+   `PROFESSIONAL EXPERIENCE` only covers **non-bullet** lines (company/date headers), which does
+   not help here because project titles and technology lists *are* bullets in this format.
+
+A latent fourth issue was resolved as a side effect: while `PERSONAL PROJECTS` was being absorbed
+into `PROFESSIONAL EXPERIENCE`, `countExperienceAchievementBullets` counted all 13 project
+bullets as experience bullets (risking `too_many_experience_bullets`), and `validateHumanVoice`
+saw the 7 project bullets opening with "Built" as repeated-verb experience drift.
+
+**Files:**
+- `supabase/functions/_shared/ai/validate-resume.ts` — `PERSONAL PROJECTS` added to
+  `REQUIRED_HEADERS` (between experience and certification) and `OPTIONAL_HEADERS`; `PROJECTS` /
+  `KEY PROJECTS` / `SIDE PROJECTS` aliases; new `optionalHeaderSource()`; SKILLS line cap 10 → 24;
+  `allowAggregate` extended to `PERSONAL PROJECTS`
+- `supabase/functions/_shared/career-corpus/prompt.ts` — `ATS_SYSTEM_PROMPT` rewritten to the
+  8-section contract with explicit per-section sub-shapes and a matching `OUTPUT SKELETON`;
+  stale "7-section" references fixed in `HUMANIZE_RETRY_PROMPT`, `groundingRetryPrompt`, and
+  `buildGroqResumeUserPrompt`
+- `supabase/functions/_shared/ai/errors_test.ts`, `router_test.ts` — regression tests
+
+**Fix:**
+1. **`PERSONAL PROJECTS` became a real header.** Inserting it into `REQUIRED_HEADERS` was
+   sufficient for ordering, because that one constant drives `canonicalHeader`,
+   `countRequiredHeaders`, `joinSections`, `dedupeSectionLines`, and `dropUnsupportedContentLine`.
+2. **Optional-header check generalized.** The bypass was hardwired to `certificationSource`
+   (`if (OPTIONAL_HEADERS.has(header) && !options?.certificationSource?.trim())`), which would
+   have rejected any resume without projects as `missing_ats_section`. Replaced with a per-header
+   `optionalHeaderSource()` lookup: `CERTIFICATION` keeps its behavior, `PERSONAL PROJECTS` has no
+   source option and so may always be absent.
+3. **SKILLS line cap raised to 24**, leaving the 2,500-char cap as the real bloat guard.
+4. **Prompt now specifies sub-shapes**, not just header names: `Category:` + `- ` items for
+   SKILLS, `COMPANY | Role` + `Dates | Location` for experience, plain title + `- Technologies:`
+   + bullets for projects, and `- ` bullets for certification and education. Project titles are
+   standardized **unasterisked** (the source text was inconsistent) since the contract mandates
+   plain text.
+
+**Validation:** 43 tests pass / 0 fail across `_shared/ai/errors_test.ts` and all three
+`_shared/career-corpus/` suites, including 6 new cases: 8-header order, the
+`PROJECTS`/`KEY PROJECTS`/`SIDE PROJECTS` aliases, the full categorized resume round-trip,
+`PERSONAL PROJECTS` surviving `canonicalizeAtsResumeOutput` as its own section, project bullets
+staying out of the experience budget, and the optional-header regression (no projects still
+validates). `npm run typecheck` clean.
+
+Deno is not installed on this machine, so those suites were executed under Node via a temporary
+`Deno.test` shim. `_shared/ai/router_test.ts` could **not** be executed either way —
+`_shared/supabase-admin.ts` imports `https://esm.sh/@supabase/supabase-js`, which Node's loader
+rejects. Its new eight-section fixture was instead verified by calling `validateResumeOutput`
+with the exact option set `applyResumeValidation` passes. **Run
+`deno test --allow-all --no-check supabase/functions/_shared/ai/` to confirm the router path.**
+`npm run lint` could not be completed — it hung at 0% CPU after 0.78s of work on two attempts,
+including unsandboxed (the same way `tsc` hung before being run outside the sandbox).
+
+**Deliberately out of scope:** the PDF renderer in `resume-latex.ts` was left untouched by the
+user's explicit choice. Known open defects there: company header lines truncate at 72 chars,
+`Dates | Location` lines are silently dropped, repeated project titles duplicate, and EDUCATION
+renders a literal `-` prefix. A valid contract does **not** imply a correct PDF.
+
+---
