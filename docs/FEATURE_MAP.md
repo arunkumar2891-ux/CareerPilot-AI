@@ -30,8 +30,10 @@ For deeper feature context, see `docs/features/*.md`.
 ## Job Discovery
 
 - **Entry:** `src/pages/JobsPage.tsx`
-- **UI:** `src/pages/JobsPage.tsx`, `src/components/jobs/JobKanbanBoard.tsx`, `src/components/jobs/ApplicationPackageWizard.tsx` (4-step wizard: paste JD → score → generate → results; also orchestrates cover-letter and interview-prep generation, and is rendered from `ResumesPage.tsx` too)
+- **UI:** `src/pages/JobsPage.tsx` (board/table shell, filters, bulk actions — 726 lines), `src/components/jobs/JobDetailDialog.tsx` (job detail modal: badges, description, match panel, interview prep, apply-via-email — 415 lines), `src/components/jobs/JobKanbanBoard.tsx`, `src/components/jobs/ApplicationPackageWizard.tsx` (4-step wizard: paste JD → score → generate → results; also orchestrates cover-letter and interview-prep generation, and is rendered from `ResumesPage.tsx` too)
 - **Kanban model:** `src/utils/job-kanban.ts` (columns, grouping, optimistic move; drag-and-drop + a keyboard-accessible "Move to" menu)
+- **Filter + selection logic:** `src/utils/job-filters.ts` (`matchesJobFilters`/`filterJobs`, `selectApplyableJobs`, `selectExtractableJobs`, `isGmailScopeError`) — pure and unit-tested in `src/utils/job-filters_test.ts` (16 cases)
+- **Cache invalidation:** `src/utils/query-keys.ts` → `invalidateAll(qc, keys)`. Query keys are **prefix**-matched, so one key per call; see BUG-009.
 - **Services:** `src/services/index.ts` → `JobSearchService`
 - **Backend:** `supabase/functions/workflow-run/index.ts` (triggers job search workflow)
 - **Workflow Engine:** `supabase/functions/_shared/workflow/executor.ts`, `job-discovery.ts`, `job-pipeline.ts`
@@ -89,9 +91,13 @@ For deeper feature context, see `docs/features/*.md`.
 > Treat any change here as user-visible and irreversible. It is **user-triggered only** —
 > nothing in the scheduled pipeline sends an application.
 
-- **Entry:** `src/pages/JobsPage.tsx` — bulk "Auto Apply (n)" button (`:472`, handler `:240`),
-  per-job extract/preview/send (`:805`, `:827`, `:849`), manual email override (`:877`),
-  preview dialog (`:1060`)
+- **Entry:** `src/pages/JobsPage.tsx` — bulk "Auto Apply (n)" button (`:478`, handler
+  `bulkAutoApply` `:237`); `src/components/jobs/JobDetailDialog.tsx` — per-job extract / preview
+  / send (`extractSingleEmail` `:122`, `openApplyPreview` `:144`, `confirmApply` `:166`),
+  manual email override (`saveManualEmail` `:195`), preview dialog (`:381`)
+- **Eligibility:** `src/utils/job-filters.ts` → `selectApplyableJobs` — requires selected +
+  `applyEmail` + `resumeStatus === 'ready'` + `status !== 'applied'`. Unit-tested in
+  `job-filters_test.ts`; **this is the gate on sending real email**, so change it with tests.
 - **Services:** `src/services/index.ts` → `AutoApplyService` (`services.autoApply`) —
   `extractEmails()`, `apply()`, `getApplyPreview()`, `setApplyEmail()`
 - **Backend:** `supabase/functions/auto-apply/index.ts` — composes the email with AI
@@ -104,10 +110,12 @@ For deeper feature context, see `docs/features/*.md`.
   - Batch/on-demand — `resume-actions` mode `extract_apply_emails` (`:576`), max 50 jobs
 - **OAuth scopes:** `gmail.send` + `gmail.compose`, requested in
   `supabase/functions/google-oauth-start/index.ts:28`. A missing scope surfaces as
-  `code: 'gmail_scope_missing'` (`auto-apply/index.ts:317`), handled in the UI with a
-  "Go to Integrations" toast action (`JobsPage.tsx:258`)
+  `code: 'gmail_scope_missing'` (`auto-apply/index.ts:317`), detected by
+  `isGmailScopeError()` in `src/utils/job-filters.ts` and handled with a "Go to Integrations"
+  toast action (`JobsPage.tsx:258`, `JobDetailDialog.tsx:156` and `:185`)
 - **Limits:** `MAX_APPLY_PER_REQUEST = 15` (`auto-apply/index.ts:9`); eligibility requires
-  `applyEmail && resumeStatus === 'ready' && status !== 'applied'` (`JobsPage.tsx:227`)
+  `applyEmail && resumeStatus === 'ready' && status !== 'applied'`
+  (`src/utils/job-filters.ts` → `selectApplyableJobs`, called at `JobsPage.tsx:227`)
 - **Writes:** `jobs.status='applied'`, `jobs.application_status='submitted'`, an `applications`
   row (`apply_method:'email'`, `email_message_id`, `email_subject`, `email_body`), and an
   `application_events` row — `recordApplication()` (`auto-apply/index.ts:137`)
@@ -118,8 +126,8 @@ For deeper feature context, see `docs/features/*.md`.
 
 ## Interview Prep
 
-- **Entry:** `src/pages/JobsPage.tsx` — "Interview Prep" / "View Prep" button (`:997`),
-  generator (`:784`), section render (`:936`)
+- **Entry:** `src/components/jobs/JobDetailDialog.tsx` — "Interview Prep" / "View Prep" button
+  (`:326`), generator (`generateInterviewPrep` `:105`), section render (`:259`)
 - **Also in:** `src/components/jobs/ApplicationPackageWizard.tsx` — opt-in checkbox (`:287`),
   generation (`:131`), results preview (`:325`)
 - **Services:** `src/services/index.ts` → `JobSearchService.generateInterviewPrep(jobId)` (`:545`)

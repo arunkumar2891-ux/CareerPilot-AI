@@ -250,6 +250,36 @@ instead; callers must add `overflow-hidden`.
 - `.gradient-text` must stay within the brand hue (forest → sage). Do not reintroduce a
   cross-hue (cyan → violet) gradient.
 
+## Data Fetching Guardrails
+
+- **`invalidateQueries` matches `queryKey` by *prefix*, so one call invalidates one key
+  path — not a list of keys.** `{ queryKey: ['jobs', 'applications'] }` targets the single
+  two-element key `['jobs','applications']`; it does **not** touch `['jobs']` or
+  `['applications']`. Nearly every `useQuery` here registers a **one-element** key, so the
+  combined spelling matches nothing and **fails silently** — no error, just a stale screen.
+  This shipped in five places, including after auto-apply sent a real email (BUG-009).
+  Use `invalidateAll(qc, ['jobs', 'applications'])` from `src/utils/query-keys.ts`.
+- Multi-element keys are **not** wrong per se — `ExecutionDetailPage` correctly invalidates
+  `['run-detail', runId]` because its `useQuery` registers exactly that. Before "fixing" one,
+  find the matching `useQuery` and compare the key shape.
+- After a mutation that sends something irreversible (email, a run), invalidate every cache
+  the user can see it in. The Jobs board and Applications page read different keys.
+
+## Tooling Hazards
+
+- **Never rewrite a source file with PowerShell.** Windows PowerShell 5.1's `Get-Content` reads
+  as ANSI and `Out-File`/`>` writes UTF-16 or ANSI, so the round-trip double-encodes every
+  non-ASCII character (`—` → `Ã¢â‚¬â€`). This happened across 92 sites in `JobsPage.tsx`, and
+  **typecheck, eslint, and build all passed** — mojibake in a string literal is valid
+  TypeScript, so it only shows up as garbled UI text at runtime. Use the editing tools, or Node
+  with an explicit `'utf8'` encoding.
+- After any scripted bulk edit, audit the bytes:
+  `node scripts/check-encoding.mjs <files...>` — a healthy file reports `doubled:0`. It also
+  flags 1–4 **pre-existing** mojibake middots in `DashboardPage`, `ExecutionsPage`,
+  `ApplicationsPage`, `CopilotPage`, and `JobsPage`; those are not yours.
+- A green typecheck/lint/build does **not** establish that a file is uncorrupted, only that it
+  parses. Diff against `HEAD` when a change was machine-generated.
+
 ## Context & Search Rules
 
 1. **Read `CONTEXT.md` first** when you need architectural context.
@@ -300,6 +330,10 @@ instead; callers must add `overflow-hidden`.
 | DB migrations | `supabase/migrations/` |
 | App version label | `src/lib/version.ts` |
 | Jobs kanban board | `src/components/jobs/JobKanbanBoard.tsx` + `src/utils/job-kanban.ts` |
+| Job detail modal (badges, match panel, apply-via-email) | `src/components/jobs/JobDetailDialog.tsx` |
+| Jobs filter + apply-eligibility logic (tested) | `src/utils/job-filters.ts` + `job-filters_test.ts` |
+| Multi-cache invalidation helper | `src/utils/query-keys.ts` → `invalidateAll` |
+| Encoding audit for scripted edits | `scripts/check-encoding.mjs` |
 
 ## Bug-Fixing Workflow
 

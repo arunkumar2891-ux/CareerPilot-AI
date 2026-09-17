@@ -537,6 +537,118 @@ there is no browser automation here, so no rendered width was measured.
 
 ---
 
+## BUG-009 — Auto-apply sent a real email and then refreshed nothing
+
+**Status:** Fixed (code-verified and unit-tested; the cache behaviour itself is **not**
+runtime-verified — no browser tooling in this environment)
+**Feature:** Jobs page — job search, clear-all, resume-sync repair, auto-apply (bulk and single)
+
+**Symptom:** After a bulk auto-apply, the Jobs board still showed the applied jobs as
+un-applied and the Applications page stayed stale until a manual reload. The same staleness
+affected "Run Search", "Clear all jobs", and "Repair resume sync".
+
+**Root cause — TanStack Query matches `queryKey` by *prefix*, and these keys had no prefix in
+common with any registered query.** Five call sites passed a *combined* key:
+
+```ts
+await qc.invalidateQueries({ queryKey: ['jobs', 'applications'] });
+```
+
+That is a request to invalidate every query whose key *starts with* `['jobs', 'applications']`
+— i.e. the single two-element key. It does **not** invalidate `['jobs']` and
+`['applications']`. Every `useQuery` in this app registers a **one-element** key
+(`['jobs']`, `['applications']`, `['metrics']`, `['runs']`, `['resumes']`,
+`['integrations']`, `['workflows']`), so all five calls matched **zero** queries and were
+silent no-ops. They failed open: no error, no warning, just a stale screen.
+
+The same file already had the correct pattern (one call per key), which is why the bug was easy
+to miss — both spellings sat a few hundred lines apart and looked equivalent.
+
+| Was | Invalidated | Now |
+|---|---|---|
+| `['jobs','runs','workflows']` | nothing | `invalidateAll(qc, ['jobs','runs','workflows'])` |
+| `['jobs','applications','metrics']` | nothing | `invalidateAll(qc, [...])` |
+| `['jobs','resumes','integrations']` | nothing | `invalidateAll(qc, [...])` |
+| `['jobs','applications']` (bulk apply) | nothing | `invalidateAll(qc, [...])` |
+| `['jobs','applications']` (single apply) | nothing | `invalidateAll(qc, [...])` |
+
+**Fix:** added `src/utils/query-keys.ts` → `invalidateAll(qc, keys)`, which maps each key to its
+own `invalidateQueries` call and awaits them in parallel. The helper name makes the intent
+("these are N independent caches") unmistakable at the call site.
+
+**Note on false positives:** `ExecutionDetailPage.tsx` also passes multi-element keys
+(`['run-detail', runId]`, `['run-logs', runId]`). Those are **correct** — its `useQuery` calls
+register exactly those two-element keys. Multi-element is only wrong when it does not match a
+registered key, so grep for the pattern and then check the corresponding `useQuery`.
+
+**Files:**
+- `src/utils/query-keys.ts` — **new**, `invalidateAll` + the prefix-matching rationale
+- `src/pages/JobsPage.tsx` — 4 sites converted
+- `src/components/jobs/JobDetailDialog.tsx` — 1 site converted, plus 3 sequential
+  single-key awaits collapsed into one parallel `invalidateAll`
+
+**Validation:** `npm run typecheck` clean; `npx eslint` clean on all touched files; full
+`npm run lint` at the 40-problem baseline (none added); `npm run build` passes; 47 tests pass
+under the Node shim.
+
+---
+
+## Structural work alongside BUG-009 (2026-09-17)
+
+Undertaken *instead of* the originally-planned "Phase 5 — Structure" rewrite of `JobsPage.tsx`.
+The full rewrite was rejected as bad value: the page already delegated to four components, has
+no browser-level test coverage, and **sends real email**, so a large refactor carried real risk
+for a line-count win. These two slices capture the benefit without it.
+
+### `JobDetailDialog` extracted verbatim
+
+`src/pages/JobsPage.tsx` 1118 → **726 lines**; `src/components/jobs/JobDetailDialog.tsx` is
+415. The component took only `job` and `onClose` and shared no state with the page, so this was
+a pure relocation. It was verified as such mechanically — a script diffed the extracted body
+line-by-line against the same range at `HEAD` and reported `IDENTICAL`, with the single
+intended edit (three sequential invalidations → one `invalidateAll`) whitelisted. Eight imports
+became unused in `JobsPage` afterwards, which independently confirms nothing was left behind.
+
+### Pure selection logic extracted and tested
+
+`src/utils/job-filters.ts` (99 lines) now holds `matchesJobFilters` / `filterJobs`,
+`selectApplyableJobs`, `selectExtractableJobs`, `isGmailScopeError`, and `errorMessageOr`,
+covered by **16 cases** in `src/utils/job-filters_test.ts`. This is the first test coverage of
+any Jobs-page logic. `selectApplyableJobs` is the highest-value target in the file because it
+decides which jobs receive a real email; its four conditions (selected, has an address, resume
+`ready`, not already `applied`) are now pinned by tests, including that an **empty-string**
+`applyEmail` does not qualify and that an empty selection sends nothing.
+
+Two latent robustness bugs were fixed in the process, both now covered:
+- a **non-numeric** `salaryMin` (the field is a free-text form input) produced `NaN`, and every
+  `<` comparison against `NaN` is false, so a stray character silently blanked the whole list
+- a **whitespace-only** search string was truthy, so typing a single space matched nothing
+
+### `prefers-UTF-8`: a tooling hazard worth recording
+
+The first extraction attempt used PowerShell (`Get-Content` / `Out-File`). Windows PowerShell
+5.1 reads as ANSI and writes UTF-16/ANSI by default, so the round-trip **double-encoded every
+non-ASCII character** — `—` became `Ã¢â‚¬â€` in 92 places. `npm run typecheck`, `eslint`, and
+`npm run build` **all passed** on the corrupted file, because mojibake inside a string literal
+is still valid TypeScript; it would only have surfaced as garbled toast text at runtime. The
+file was restored with `git checkout HEAD --` and the extraction redone in Node.
+
+`scripts/check-encoding.mjs` was added to detect this class of damage at the byte level, and is
+worth running after any scripted bulk edit:
+
+```bash
+node scripts/check-encoding.mjs src/pages/JobsPage.tsx
+```
+
+It reports `doubled:0` for a healthy file. Note it also flags **1–4 pre-existing** mojibake
+middots in `DashboardPage`, `ExecutionsPage`, `ApplicationsPage`, `CopilotPage`, and
+`JobsPage` — those predate this work and are unrelated.
+
+**Rule: never use PowerShell to rewrite a source file.** Use the editing tools, or Node with
+explicit `utf8`.
+
+---
+
 ## Follow-ups — `collapseVariants` adoption + `text-2xs` token (2026-09-17)
 
 Two small changes landed after BUG-008, both pulled forward out of the deferred phase 5 because
@@ -549,7 +661,7 @@ instead of `height: 0 → 'auto'` — and `AGENTS.md` documents "never animate l
 **Neither existing height animation was ever migrated**, so the guardrail was documented but
 unenforced and the helper was dead code:
 
-- `src/pages/JobsPage.tsx:388` — the filter panel, animating `height` on every toggle
+- `src/pages/JobsPage.tsx:387` — the filter panel, animating `height` on every toggle
 - `src/pages/SetupPage.tsx:134` — the expandable step detail
 
 Both now use `variants={collapseVariants()}`. `SetupPage` keeps an `exit` (it has an
