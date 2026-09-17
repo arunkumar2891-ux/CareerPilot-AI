@@ -60,8 +60,8 @@ export function DashboardPage() {
       </StaggerList>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between gap-2">
-          <div>
+        <CardHeader className="flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <CardTitle className="text-base">AI Usage — {aiUsage?.monthLabel ?? 'This month'}</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
               Token usage across resume tailoring, ATS scoring, and Copilot — no in-app limit.
@@ -72,21 +72,21 @@ export function DashboardPage() {
           </Badge>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {(aiUsage?.providers ?? []).map((provider) => {
               const pct = Math.min(100, (provider.tokens / Math.max(1, provider.freeTierLimit)) * 100);
               return (
-                <div key={provider.provider} className="rounded-lg border border-border p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-medium">{PROVIDER_LABELS[provider.provider]}</p>
-                    <Badge variant="outline" className="text-[10px]">{provider.requests} requests</Badge>
+                <div key={provider.provider} className="min-w-0 rounded-lg border border-border p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <p className="min-w-0 truncate text-sm font-medium">{PROVIDER_LABELS[provider.provider]}</p>
+                    <Badge variant="outline" className="shrink-0 text-[10px]">{provider.requests} requests</Badge>
                   </div>
-                  <p className="text-2xl font-semibold">{formatNumber(provider.tokens)}</p>
+                  <p className="text-2xl font-semibold tabular-nums">{formatNumber(provider.tokens)}</p>
                   <p className="text-xs text-muted-foreground">tokens this month</p>
                   <div className="mt-3">
-                    <div className="mb-1 flex justify-between text-[10px] text-muted-foreground">
+                    <div className="mb-1 flex flex-wrap justify-between gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
                       <span>vs free-tier reference (~{formatNumber(provider.freeTierLimit)}/mo)</span>
-                      <span>{formatNumber(provider.remaining)} left</span>
+                      <span className="tabular-nums">{formatNumber(provider.remaining)} left</span>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                       <div
@@ -105,13 +105,15 @@ export function DashboardPage() {
               <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Recent AI calls</p>
               <div className="space-y-2">
                 {aiUsage!.recent.map((event, i) => (
-                  <div key={`${event.createdAt}-${i}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-[10px] capitalize">{event.provider}</Badge>
-                      <span className="text-muted-foreground">{event.operation.replace(/_/g, ' ')}</span>
+                  /* Two flex groups plus four text runs cannot share one 288px line. Wrap the
+                     row and let each group stay intact, rather than clipping the timestamp. */
+                  <div key={`${event.createdAt}-${i}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md border border-border px-3 py-2 text-xs">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Badge variant="secondary" className="shrink-0 text-[10px] capitalize">{event.provider}</Badge>
+                      <span className="truncate text-muted-foreground">{event.operation.replace(/_/g, ' ')}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-muted-foreground">
-                      <span>{formatNumber(event.tokens)} tokens</span>
+                    <div className="flex shrink-0 items-center gap-3 text-muted-foreground">
+                      <span className="tabular-nums">{formatNumber(event.tokens)} tokens</span>
                       <span>{timeAgo(event.createdAt)}</span>
                     </div>
                   </div>
@@ -122,13 +124,16 @@ export function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="text-base">Job Discovery & Applications</CardTitle>
-            <Badge variant="secondary" className="gap-1"><TrendingUp className="h-3 w-3" />14 days</Badge>
+      {/* See the grid note below: `grid-cols-1` pins the mobile track minimum to 0. A recharts
+          ResponsiveContainer measures its parent, so an auto track that sized to content would
+          let the chart's own min-content width set the row width. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="min-w-0 lg:col-span-2">
+          <CardHeader className="flex-row items-center justify-between gap-2">
+            <CardTitle className="text-base">Job Discovery &amp; Applications</CardTitle>
+            <Badge variant="secondary" className="shrink-0 gap-1"><TrendingUp className="h-3 w-3" />14 days</Badge>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0">
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={timeseries || []}>
                 <defs>
@@ -152,11 +157,11 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle className="text-base">Success Rate</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0">
             <ResponsiveContainer width="100%" height={240}>
               <RadialBarChart innerRadius="60%" outerRadius="100%" data={[{ value: metrics?.successRate ?? 0, fill: 'hsl(var(--chart-2))' }]} startAngle={90} endAngle={-270}>
                 <RadialBar background dataKey="value" cornerRadius={20} />
@@ -173,8 +178,13 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      {/* `grid-cols-1` is load-bearing, not redundant. Bare `grid` leaves
+          `grid-template-columns: none`, so items land in an *implicit* `auto` track whose
+          minimum is the items' min-content width — that lets a wide card push the track past
+          the viewport, and `<main>`'s `overflow-x-hidden` then clips it rather than scrolling.
+          `grid-cols-1` compiles to `repeat(1, minmax(0, 1fr))`, whose minimum is 0. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="min-w-0 lg:col-span-2">
           {/* `flex-row` unconditionally forces the title and "View all" onto one line.
               At 320px the title wraps and collides with the button, so stack until sm. */}
           <CardHeader className="flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -209,14 +219,17 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Recent Activity</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Fixed 240px is dead space on a phone where this card is the last
-                thing on screen; let it size to content until there is a column to fill. */}
-            <ScrollArea className="h-auto max-h-[240px] pr-3 lg:h-[240px]">
+            {/* Height must be DEFINITE. Radix's Root is `overflow-hidden` and its Viewport is
+                `h-full`, so with `h-auto max-h-[...]` the 100% resolves against an auto-height
+                parent and the Viewport never becomes a scroll container — the Root just clips
+                and no scrollbar appears, stranding older notifications. An earlier revision of
+                this file did exactly that to save dead space; do not reintroduce it. */}
+            <ScrollArea className="h-[240px] pr-3">
               <div className="space-y-3">
                 {notifications.length === 0 ? (
                   <EmptyState icon={Inbox} title="No notifications" description="You're all caught up." className="py-8" />
@@ -238,12 +251,12 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle className="text-base">Application Funnel</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0">
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={[
                 { stage: 'Found', value: metrics?.jobsProcessed ?? 0, fill: 'hsl(var(--chart-1))' },
@@ -262,7 +275,7 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      <StaggerList className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.05}>
+      <StaggerList className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" stagger={0.05}>
         {[
           { label: 'New Resume', icon: FileText, path: '/resumes' },
           { label: 'Search Jobs', icon: Briefcase, path: '/jobs' },
@@ -275,14 +288,14 @@ export function DashboardPage() {
               onClick={() => navigate(q.path)}
               className="glass-card flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-accent/30 hover:shadow-glow-sm"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-glow-sm">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary shadow-glow-sm">
                 <q.icon className="h-5 w-5" />
               </div>
-              <div>
-                <p className="text-sm font-medium">{q.label}</p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{q.label}</p>
                 <p className="text-xs text-muted-foreground">Quick action</p>
               </div>
-              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+              <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
             </button>
           </StaggerItem>
         ))}

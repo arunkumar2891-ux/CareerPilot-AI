@@ -302,11 +302,12 @@ https://raw.githubusercontent.com/arunkumar2891-ux/CareerPilot-AI/main/<path>
 https://api.github.com/repos/arunkumar2891-ux/CareerPilot-AI/commits?path=<path>
 ```
 
-No tags exist yet. **Do not identify a release by its `package.json` version alone** — three
-commits (`ea9b51b`, `2f2e42c`, `bdd22c4`) share `1.3.0` with the v1.3.0 restore point, because the
-brand/UI work was bumped only afterwards, in `1a46d16`. Use the commit SHAs recorded in
-`RESTORE_POINTS.md`. Comparing against `origin/main` has twice prevented misattribution
-(BUG-003) and revealed that a user's DB graph predated the current seed.
+One tag exists: `v1.4.0-brand-ui-hardening` → `435c78b`. **Do not identify a release by its
+`package.json` version alone** — three commits (`ea9b51b`, `2f2e42c`, `bdd22c4`) share `1.3.0`
+with the v1.3.0 restore point, because the brand/UI work was bumped only afterwards, in
+`1a46d16`. Use the commit SHAs recorded in `RESTORE_POINTS.md`. Comparing against `origin/main`
+has twice prevented misattribution (BUG-003) and revealed that a user's DB graph predated the
+current seed.
 
 > `tsc` and `eslint` can take minutes on the Windows box, and `eslint` has been observed hanging
 > at 0% CPU. Prefer narrow invocations (a single file) over full-tree scans there.
@@ -400,12 +401,14 @@ which means the MacBook.
    `1.3.0`, so for v1.3.0 either the script was bypassed or its lockfile edit was never staged.
    Verify with `git show <commit> -- package-lock.json`.
 3. If the state is confirmed good, add an entry to `RESTORE_POINTS.md`.
-4. Tag it: `git tag -a v<version>-<short-name> -m "<what works>"` and `git push --tags`.
-   **No tags exist yet** — v1.2.0, v1.3.0, and the v1.4.0 brand/UI state (`1a46d16`) all still
-   need tags. See `RESTORE_POINTS.md` for the exact commands.
+4. Tag it: `git tag -a v<version>-<short-name> <commit> -m "<what works>"` and
+   `git push origin refs/tags/<tag>`. **Pass the commit positionally** — folding it into the tag
+   name (`v1.4.0-brand-ui-hardening-1a46d16`) tags `HEAD` instead and silently discards `-m`,
+   leaving an empty-message tag on the wrong commit. Verify with
+   `git for-each-ref --format='%(refname:short) %(*objectname:short) %(contents:subject)' refs/tags`.
+   Only `v1.4.0-brand-ui-hardening` exists; v1.2.0 and v1.3.0 are still untagged.
 
-> Current state: the brand/UI work is verified, recorded, and bumped to `1.4.0` (`1a46d16`), so
-> steps 1–3 are done. **Step 4 is outstanding, and the bump commit is not pushed** — `main` is one
-> commit ahead of `origin/main`. When restoring the brand/UI state, prefer `1a46d16`: it is
-> `bdd22c4`'s tree plus the bump and docs, with no `src/` changes, so it carries the verified code
-> under the correct version label.
+> Current state: the brand/UI work is verified, recorded, bumped to `1.4.0`, and tagged
+> `v1.4.0-brand-ui-hardening` → `435c78b`. `main` is in sync with `origin/main`. All four steps
+> are complete for v1.4.0. Note that `bdd22c4` (verified), `1a46d16` (bump), and `435c78b`
+> (docs) carry byte-identical code — the last two touch documentation and version metadata only.

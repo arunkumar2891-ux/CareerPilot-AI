@@ -6,7 +6,7 @@ commands used to verify it, and what to do if you need to roll back. **Newest fi
 To restore, check out the tag (or commit) for the entry you want:
 
 ```bash
-git checkout v1.3.0-match-gate-kanban   # once tags exist; see below
+git checkout v1.4.0-brand-ui-hardening   # the only tag that exists; see below
 npm install
 npm run build
 ```
@@ -19,22 +19,28 @@ npm run build
 > The repo is also public, so a file can be read at any commit without git:
 > `https://raw.githubusercontent.com/arunkumar2891-ux/CareerPilot-AI/<ref>/<path>`.
 >
-> ### Tags still do not exist
+> ### Only one tag exists
 >
-> Commits exist; only the tags are missing, so `git checkout v1.3.0-...` will fail until they are
-> created.
+> `v1.4.0-brand-ui-hardening` → `435c78b`, annotated, pushed to `origin`. The v1.3.0 and v1.2.0
+> entries below are **untagged**, so `git checkout v1.3.0-...` will fail — use their SHAs.
 >
-> **Do not identify a state by its `package.json` version alone.** `1.4.0` is unique to
-> `1a46d16`, but three commits (`ea9b51b`, `2f2e42c`, `bdd22c4`) plus the earlier v1.3.0 restore
-> point all carry `1.3.0`, because the bump only ran after the fact. Use the commit SHA recorded
-> in each entry, or create the tags below.
+> **Do not identify a state by its `package.json` version alone.** `1.4.0` is unique, but three
+> commits (`ea9b51b`, `2f2e42c`, `bdd22c4`) plus the earlier v1.3.0 restore point all carry
+> `1.3.0`, because the bump only ran after the fact. Use the commit SHA recorded in each entry.
+>
+> To add the two retroactive tags, resolve the commits from their entries first:
 >
 > ```bash
-> git tag -a v1.4.0-brand-ui-hardening 1a46d16 -m "Verified working: forest brand, motion system, error states, mobile fixes"
 > git tag -a v1.3.0-match-gate-kanban <commit> -m "Verified working: match-score gate (>80), kanban drag-and-drop"
 > git tag -a v1.2.0-stable-pipeline   <commit> -m "Verified working: batched per-role runs + self-healing graph"
 > git push --tags
 > ```
+>
+> **Pass the target commit as a positional argument, not part of the tag name.** Writing
+> `git tag -a v1.4.0-brand-ui-hardening-1a46d16 -m ...` creates a tag *named* `...-1a46d16` on
+> `HEAD` and silently swallows the `-m`, producing an empty-message tag on the wrong commit.
+> That happened once here and had to be deleted from the remote. Verify after tagging:
+> `git for-each-ref --format='%(refname:short) %(*objectname:short) %(contents:subject)' refs/tags`.
 >
 > ### ⚠️ Line endings are not normalized
 >
@@ -48,12 +54,14 @@ npm run build
 
 ## v1.4.0 — forest brand + UI production-readiness (phases 1–4)
 
-**Commit:** `1a46d16` · **Branch:** `main` · **Version:** `1.4.0` ·
-**Confirmed working by the user:** 2026-09-17
+**Tag:** `v1.4.0-brand-ui-hardening` · **Commit:** `435c78b` · **Branch:** `main` (in sync with
+`origin/main`) · **Version:** `1.4.0` · **Confirmed working by the user:** 2026-09-17
 
-The behaviour was verified at `bdd22c4`; `1a46d16` is that same tree plus the version bump and
-these docs — it touches **no `src/` files**, so it carries the identical verified code. Restore
-to `1a46d16` to get the correct version label with it.
+The behaviour was verified at `bdd22c4`. `1a46d16` added the version bump and `435c78b` the
+documentation — **neither touches `src/`, `supabase/`, `public/`, `index.html`, or
+`tailwind.config.js`**, verified with `git diff --name-only bdd22c4 435c78b -- src supabase …`
+(empty). All three carry byte-identical code; the tag points at `435c78b` because it pairs that
+code with the correct version label and accurate docs.
 
 ### Why this is a restore point
 
@@ -63,14 +71,15 @@ and it is the baseline for the deferred phase-5 work.
 
 ### What changed
 
-Four commits, oldest first:
+Five commits, oldest first:
 
 | Commit | Scope | Size |
 |---|---|---|
 | `ea9b51b` | Brand + theme: forest retheme of `src/index.css` (light + dark), plane `LogoMark`, new `LogoLockup`, gradient tiles removed from 6 call sites, `public/` brand assets, rewritten `index.html`, first webfont ever loaded (Inter Tight + JetBrains Mono), BUG-005 tailor-repair fix, dead-code removal, doc audit | 22 files, +860 / −487 |
 | `2f2e42c` | UI production-readiness phases 1–4: motion foundation, global press feedback, `ErrorBoundary` + `ErrorState` across 6 pages, list/heading semantics | 19 files, +537 / −96 |
 | `bdd22c4` | Mobile responsiveness (`HeaderActions`, Dashboard cards, Settings tab overflow) + documentation | 12 files, +692 / −89 |
-| `1a46d16` | `1.3.0 → 1.4.0` version bump + these docs. No `src/` changes | 5 files, +117 / −49 |
+| `1a46d16` | `1.3.0 → 1.4.0` version bump. No `src/` changes | 5 files, +117 / −49 |
+| `435c78b` | Documentation corrections after the bump. No `src/` changes | 4 files, +42 / −31 |
 
 > **Lockfile drift fixed here.** `package-lock.json` was still at `1.2.0` while `package.json`
 > said `1.3.0`. `scripts/bump-version.mjs` does sync both, so v1.3.0 either bypassed the script
@@ -129,24 +138,19 @@ State this plainly rather than treating the entry as a full green light:
 - **Webfont dependency is untested offline.** If `fonts.googleapis.com` is blocked, layout
   metrics shift (see `DEPLOY.md` → Static assets and the webfont).
 
-### Outstanding release steps
+### Release steps — complete
 
-`npm run version:bump` and the commit are **done** (`1a46d16`). Two steps remain — the commit is
-not pushed and no tag exists:
+All four steps of `AGENTS.md` → Releasing are done: verified, bumped (`1a46d16`), recorded, and
+tagged (`v1.4.0-brand-ui-hardening` → `435c78b`, pushed). `main` is in sync with `origin/main`.
 
-```bash
-git tag -a v1.4.0-brand-ui-hardening 1a46d16 -m "Verified working: forest brand, motion system, error states, mobile fixes"
-git push && git push --tags
-```
-
-The two retroactive tags noted at the top of this file are also still missing.
+The two retroactive tags for v1.3.0 and v1.2.0 remain outstanding — see the top of this file.
 
 ### Rollback
 
 ```bash
-git checkout 1a46d16        # this state (verified code + correct 1.4.0 label)
-git checkout bdd22c4        # same code, still labelled 1.3.0
-git checkout 5c87106        # the 8-section resume commit, before any of this work
+git checkout v1.4.0-brand-ui-hardening   # this state
+git checkout bdd22c4                     # same code, still labelled 1.3.0
+git checkout 5c87106                     # the 8-section resume commit, before any of this work
 npm install && npm run build
 ```
 
