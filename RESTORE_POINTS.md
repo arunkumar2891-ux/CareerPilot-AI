@@ -89,7 +89,7 @@ Five commits, oldest first:
 Detail lives in `BUG_LOG.md` → BUG-005, BUG-006, BUG-007, and the two 2026-09-17 audit tables.
 
 **Deliberately out of scope.** Phase 5 of the UI audit was skipped at the user's direction:
-`src/pages/JobsPage.tsx` is 1073 lines (5x the 200-line red flag) and ~75 arbitrary `[...]`
+`src/pages/JobsPage.tsx` is 1118 lines (5.6x the 200-line red flag) and arbitrary `[...]`
 bracket values remain off the spacing and type scales. Restoring to this point restores that
 debt too.
 

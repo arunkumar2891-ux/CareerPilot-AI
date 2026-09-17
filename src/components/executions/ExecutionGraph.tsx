@@ -47,7 +47,7 @@ function GraphNode({
       className={cn(
         'flex w-full items-center gap-1.5 rounded-md border px-2 py-1.5 text-left transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         statusBorder[node.status] || statusBorder.pending,
-        compact ? 'text-[10px]' : 'text-xs',
+        compact ? 'text-2xs' : 'text-xs',
       )}
     >
       <StatusIcon status={node.status} />
@@ -61,7 +61,7 @@ function Connector({ label }: { label?: string }) {
     <div className="flex flex-col items-center py-1">
       <div className="h-3 w-px bg-border" />
       {label && (
-        <span className="my-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="my-0.5 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </span>
       )}
@@ -107,8 +107,8 @@ function JobBranchColumn({
 
   return (
     <div className="flex w-[120px] shrink-0 flex-col">
-      <div className={cn('mb-1 flex items-center gap-1 text-[10px] font-semibold', branchStatusIcon)}>
-        {branch.status === 'success' ? '✓' : branch.status === 'failed' ? '✗' : '○'}
+      <div className={cn('mb-1 flex items-center gap-1 text-2xs font-semibold', branchStatusIcon)}>
+        {branch.status === 'success' ? 'âœ“' : branch.status === 'failed' ? 'âœ—' : 'â—‹'}
         <span className="truncate" title={branch.label}>
           Job {displayIndex ?? branch.jobIndex}
         </span>
@@ -145,13 +145,13 @@ function JobFanOut({
       <Connector label="Fan out" />
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{jobsTotal} Jobs</span>
-        <span>·</span>
+        <span>Â·</span>
         <span className="text-success">{jobsSuccessful} Successful</span>
-        <span>·</span>
+        <span>Â·</span>
         <span className="text-destructive">{jobsFailed} Failed</span>
         {jobsSkipped > 0 && (
           <>
-            <span>·</span>
+            <span>Â·</span>
             <span>{jobsSkipped} Skipped</span>
           </>
         )}
@@ -223,10 +223,10 @@ function RoleGroup({
       >
         <StatusIcon status={group.status} />
         <span className="min-w-0 flex-1 truncate font-semibold">Role: {group.role}</span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
+        <span className="shrink-0 text-2xs text-muted-foreground">
           {group.jobsSuccessful}/{group.jobsTotal} successful
-          {group.jobsFailed > 0 ? ` · ${group.jobsFailed} failed` : ''}
-          {group.jobsSkipped > 0 ? ` · ${group.jobsSkipped} skipped` : ''}
+          {group.jobsFailed > 0 ? ` Â· ${group.jobsFailed} failed` : ''}
+          {group.jobsSkipped > 0 ? ` Â· ${group.jobsSkipped} skipped` : ''}
         </span>
         {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
       </button>
@@ -291,7 +291,7 @@ export function ExecutionGraph({ graph, onSelectNode }: ExecutionGraphProps) {
     <div className="space-y-2">
       {graph.isLegacy && (
         <p className="text-xs text-muted-foreground">
-          Legacy run — node names from the current workflow definition and execution logs. Per-job branch detail may be unavailable.
+          Legacy run â€” node names from the current workflow definition and execution logs. Per-job branch detail may be unavailable.
         </p>
       )}
 

@@ -62,9 +62,9 @@ export function DashboardPage() {
       <Card>
         <CardHeader className="flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <CardTitle className="text-base">AI Usage — {aiUsage?.monthLabel ?? 'This month'}</CardTitle>
+            <CardTitle className="text-base">AI Usage â€” {aiUsage?.monthLabel ?? 'This month'}</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              Token usage across resume tailoring, ATS scoring, and Copilot — no in-app limit.
+              Token usage across resume tailoring, ATS scoring, and Copilot â€” no in-app limit.
             </p>
           </div>
           <Badge variant="secondary" className="shrink-0">
@@ -79,12 +79,12 @@ export function DashboardPage() {
                 <div key={provider.provider} className="min-w-0 rounded-lg border border-border p-4">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <p className="min-w-0 truncate text-sm font-medium">{PROVIDER_LABELS[provider.provider]}</p>
-                    <Badge variant="outline" className="shrink-0 text-[10px]">{provider.requests} requests</Badge>
+                    <Badge variant="outline" className="shrink-0 text-2xs">{provider.requests} requests</Badge>
                   </div>
                   <p className="text-2xl font-semibold tabular-nums">{formatNumber(provider.tokens)}</p>
                   <p className="text-xs text-muted-foreground">tokens this month</p>
                   <div className="mt-3">
-                    <div className="mb-1 flex flex-wrap justify-between gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+                    <div className="mb-1 flex flex-wrap justify-between gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
                       <span>vs free-tier reference (~{formatNumber(provider.freeTierLimit)}/mo)</span>
                       <span className="tabular-nums">{formatNumber(provider.remaining)} left</span>
                     </div>
@@ -109,7 +109,7 @@ export function DashboardPage() {
                      row and let each group stay intact, rather than clipping the timestamp. */
                   <div key={`${event.createdAt}-${i}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md border border-border px-3 py-2 text-xs">
                     <div className="flex min-w-0 items-center gap-2">
-                      <Badge variant="secondary" className="shrink-0 text-[10px] capitalize">{event.provider}</Badge>
+                      <Badge variant="secondary" className="shrink-0 text-2xs capitalize">{event.provider}</Badge>
                       <span className="truncate text-muted-foreground">{event.operation.replace(/_/g, ' ')}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-3 text-muted-foreground">
@@ -180,7 +180,7 @@ export function DashboardPage() {
 
       {/* `grid-cols-1` is load-bearing, not redundant. Bare `grid` leaves
           `grid-template-columns: none`, so items land in an *implicit* `auto` track whose
-          minimum is the items' min-content width — that lets a wide card push the track past
+          minimum is the items' min-content width â€” that lets a wide card push the track past
           the viewport, and `<main>`'s `overflow-x-hidden` then clips it rather than scrolling.
           `grid-cols-1` compiles to `repeat(1, minmax(0, 1fr))`, whose minimum is 0. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -208,7 +208,7 @@ export function DashboardPage() {
                     : <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground sm:mt-0" />}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
-                    <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} · {formatDurationMs(computeRunDurationMs(run))}</p>
+                    <p className="text-xs text-muted-foreground">{timeAgo(run.startedAt)} Â· {formatDurationMs(computeRunDurationMs(run))}</p>
                   </div>
                 </div>
                 <div className="shrink-0 pl-7 sm:pl-0">
@@ -226,7 +226,7 @@ export function DashboardPage() {
           <CardContent>
             {/* Height must be DEFINITE. Radix's Root is `overflow-hidden` and its Viewport is
                 `h-full`, so with `h-auto max-h-[...]` the 100% resolves against an auto-height
-                parent and the Viewport never becomes a scroll container — the Root just clips
+                parent and the Viewport never becomes a scroll container â€” the Root just clips
                 and no scrollbar appears, stranding older notifications. An earlier revision of
                 this file did exactly that to save dead space; do not reintroduce it. */}
             <ScrollArea className="h-[240px] pr-3">
@@ -241,7 +241,7 @@ export function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium break-words">{n.title}</p>
                       <p className="text-xs text-muted-foreground line-clamp-2">{n.message}</p>
-                      <p className="mt-0.5 text-[10px] text-muted-foreground">{timeAgo(n.createdAt)}</p>
+                      <p className="mt-0.5 text-2xs text-muted-foreground">{timeAgo(n.createdAt)}</p>
                     </div>
                   </div>
                 ))}

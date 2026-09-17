@@ -48,7 +48,7 @@ export function Topbar() {
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="truncate text-sm">Search...</span>
-        <kbd className="ml-auto hidden items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium md:flex">
+        <kbd className="ml-auto hidden items-center gap-0.5 rounded border border-border bg-muted px-1.5 py-0.5 text-2xs font-medium md:flex">
           <Command className="h-3 w-3" />K
         </kbd>
       </Button>
@@ -89,7 +89,7 @@ export function Topbar() {
                 >
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className="text-xs font-semibold">{n.title}</span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo(n.createdAt)}</span>
+                    <span className="shrink-0 text-2xs text-muted-foreground">{timeAgo(n.createdAt)}</span>
                   </div>
                   <span className="text-xs text-muted-foreground">{n.message}</span>
                 </DropdownMenuItem>
@@ -113,7 +113,7 @@ export function Topbar() {
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-xs text-xs">
             Tokens used this month across resume tailoring, ATS scoring, and Copilot.
-            No usage cap — see Dashboard for Gemini vs Groq breakdown.
+            No usage cap â€” see Dashboard for Gemini vs Groq breakdown.
           </TooltipContent>
         </Tooltip>
 

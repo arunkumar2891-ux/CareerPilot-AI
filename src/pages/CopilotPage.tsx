@@ -171,11 +171,11 @@ export function CopilotPage() {
             <LogoMark size={22} className="shrink-0 text-primary" />
             <span className="truncate font-medium gradient-text">AI Copilot</span>
             {activeConversation?.resumeId ? (
-              <Badge variant="secondary" className="hidden max-w-48 truncate text-[10px] sm:inline-flex">
+              <Badge variant="secondary" className="hidden max-w-48 truncate text-2xs sm:inline-flex">
                 ATS review: {linkedResume?.name || 'linked resume'}
               </Badge>
             ) : (
-              <Badge variant="secondary" className="hidden text-[10px] sm:inline-flex">Career assistant</Badge>
+              <Badge variant="secondary" className="hidden text-2xs sm:inline-flex">Career assistant</Badge>
             )}
           </div>
           <Button variant="ghost" size="sm" onClick={() => setPinned(!pinned)} className="shrink-0 gap-1.5">
@@ -249,7 +249,7 @@ export function CopilotPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-                placeholder={activeConversation?.resumeId ? 'Continue improving this resume…' : 'Ask anything about your job search…'}
+                placeholder={activeConversation?.resumeId ? 'Continue improving this resumeâ€¦' : 'Ask anything about your job searchâ€¦'}
                 rows={1}
                 className="min-h-[2.5rem] border-0 bg-transparent shadow-none focus-visible:ring-0"
               />
@@ -257,7 +257,7 @@ export function CopilotPage() {
                 {streaming ? <InlineLoader /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
-            <p className="mt-2 hidden text-center text-[10px] text-muted-foreground sm:block">Press Enter to send · Shift+Enter for new line</p>
+            <p className="mt-2 hidden text-center text-2xs text-muted-foreground sm:block">Press Enter to send Â· Shift+Enter for new line</p>
           </div>
         </div>
       </div>

@@ -7,7 +7,7 @@ import {
   Mail, Send, Loader2, MoreVertical,
 } from 'lucide-react';
 import { InlineLoader, SkeletonCard, StaggerItem } from '@/components/motion';
-import { transitionFast } from '@/lib/motion';
+import { collapseVariants } from '@/lib/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { HeaderActions } from '@/components/shared/HeaderActions';
 import { StatusBadge } from '@/components/shared/StatusBadge';
@@ -101,7 +101,7 @@ export function JobsPage() {
       const wf = await services.workflow.ensureDefaultPipeline();
       await services.execution.runWorkflow(wf.id);
       await qc.invalidateQueries({ queryKey: ['jobs', 'runs', 'workflows'] });
-      toast.success('Job search pipeline started — check Executions for progress');
+      toast.success('Job search pipeline started â€” check Executions for progress');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Pipeline failed to start');
     }
@@ -150,7 +150,7 @@ export function JobsPage() {
     try {
       toast.success(`Starting resume tailoring for ${ids.length} job${ids.length === 1 ? '' : 's'}...`);
       const { runId } = await services.resume.startResumeTailoring(ids);
-      toast.success('Resume tailoring started — check Executions for progress');
+      toast.success('Resume tailoring started â€” check Executions for progress');
       setSelectedJobIds(new Set());
       navigate(`/executions/${runId}`);
       await qc.invalidateQueries({ queryKey: ['runs'] });
@@ -168,7 +168,7 @@ export function JobsPage() {
     if (ids.length === 0 || bulkScoring || bulkTailoring) return;
     setBulkScoring(true);
     try {
-      toast.success(`Scoring ${ids.length} job${ids.length === 1 ? '' : 's'}…`);
+      toast.success(`Scoring ${ids.length} job${ids.length === 1 ? '' : 's'}â€¦`);
       const { results, errors } = await services.jobSearch.scoreMatchMany(ids);
       await qc.invalidateQueries({ queryKey: ['jobs'] });
       const failed = errors?.length ?? 0;
@@ -286,7 +286,7 @@ export function JobsPage() {
                 icon: Link2,
                 onClick: repairSync,
                 busy: repairing,
-                busyLabel: 'Repairing…',
+                busyLabel: 'Repairingâ€¦',
               },
               {
                 label: 'Extract Emails',
@@ -294,7 +294,7 @@ export function JobsPage() {
                 onClick: () => extractApplyEmails(),
                 disabled: !jobs?.length,
                 busy: extractingEmails,
-                busyLabel: 'Extracting…',
+                busyLabel: 'Extractingâ€¦',
               },
               {
                 label: 'Clear All Jobs',
@@ -331,7 +331,7 @@ export function JobsPage() {
         <p className="text-sm text-muted-foreground">
           Showing {filtered.length} of {jobs.length} jobs
           {view === 'kanban' && unfiledJobs.length > 0 && (
-            <span> · {unfiledJobs.length} with an unrecognised status in “Other”</span>
+            <span> Â· {unfiledJobs.length} with an unrecognised status in â€œOtherâ€</span>
           )}
           {filtered.length < jobs.length && (
             <Button
@@ -385,7 +385,15 @@ export function JobsPage() {
           </div>
 
           {showFilters && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} transition={transitionFast} className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4">
+            /* `collapseVariants` uses scaleY, not height â€” animating height triggers layout
+               every frame. It requires `overflow-hidden` on the animated element so the fields
+               do not spill while scaling. */
+            <motion.div
+              variants={collapseVariants()}
+              initial="initial"
+              animate="animate"
+              className="mt-4 grid grid-cols-1 gap-4 overflow-hidden border-t border-border pt-4 sm:grid-cols-2 lg:grid-cols-4"
+            >
               <div className="space-y-1.5">
                 <Label>Keywords</Label>
                 <Input placeholder="React, Senior, Frontend" value={filters.keywords} onChange={(e) => setFilters({ ...filters, keywords: e.target.value })} />
@@ -440,7 +448,7 @@ export function JobsPage() {
             onClick={bulkScoreMatch}
           >
             <Gauge className="h-4 w-4" />
-            {bulkScoring ? 'Scoring…' : `Score match (${selectedJobIds.size})`}
+            {bulkScoring ? 'Scoringâ€¦' : `Score match (${selectedJobIds.size})`}
           </Button>
           <Button
             size="sm"
@@ -449,7 +457,7 @@ export function JobsPage() {
             onClick={bulkGenerateResumes}
           >
             <FileText className="h-4 w-4" />
-            {bulkTailoring ? 'Starting…' : `Generate Resumes (${selectedJobIds.size})`}
+            {bulkTailoring ? 'Startingâ€¦' : `Generate Resumes (${selectedJobIds.size})`}
           </Button>
           {extractableJobs.length > 0 && (
             <Button
@@ -460,7 +468,7 @@ export function JobsPage() {
               onClick={bulkExtractEmails}
             >
               {extractingEmails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-              {extractingEmails ? 'Extracting…' : `Extract Emails (${extractableJobs.length})`}
+              {extractingEmails ? 'Extractingâ€¦' : `Extract Emails (${extractableJobs.length})`}
             </Button>
           )}
           {applyableJobs.length > 0 && (
@@ -472,7 +480,7 @@ export function JobsPage() {
               onClick={bulkAutoApply}
             >
               {bulkApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {bulkApplying ? 'Applying…' : `Auto Apply (${applyableJobs.length})`}
+              {bulkApplying ? 'Applyingâ€¦' : `Auto Apply (${applyableJobs.length})`}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds(new Set())} disabled={bulkTailoring || bulkScoring || bulkApplying || extractingEmails}>Clear</Button>
@@ -480,7 +488,7 @@ export function JobsPage() {
       )}
 
       {/* A failed fetch is not an empty result set. Before this branch existed, an
-          error left `jobs` undefined, which fell through to the "No jobs found —
+          error left `jobs` undefined, which fell through to the "No jobs found â€”
           run a search" empty state and told the user their data did not exist. */}
       {!isLoading && (jobsError ? (
         <Card>
@@ -576,18 +584,18 @@ export function JobsPage() {
                         {job.matchScore}%
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{job.salaryMin ? `${formatCurrency(job.salaryMin)}+` : '—'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{job.salaryMin ? `${formatCurrency(job.salaryMin)}+` : 'â€”'}</TableCell>
                     <TableCell className="text-xs">{job.location}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{job.source}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{timeAgo(job.postingDate)}</TableCell>
                     <TableCell>
                       {job.resumeId ? (
-                        <Badge variant="outline" className="gap-1 text-[10px]">
+                        <Badge variant="outline" className="gap-1 text-2xs">
                           <FileText className="h-3 w-3" />
                           {job.driveFileId ? 'Drive' : 'In app'}
                         </Badge>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground">â€”</span>
                       )}
                     </TableCell>
                     <TableCell><StatusBadge status={job.status} /></TableCell>
@@ -651,30 +659,30 @@ function JobCard({
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {job.skills.slice(0, 3).map((s) => (
-          <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>
+          <Badge key={s} variant="secondary" className="text-2xs">{s}</Badge>
         ))}
       </div>
-      <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="mt-2 flex items-center justify-between text-2xs text-muted-foreground">
         <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{job.location.split(',')[0]}</span>
         <span>{job.salaryMin ? formatCurrency(job.salaryMin) : ''}</span>
       </div>
-      {job.duplicate && <Badge variant="destructive" className="mt-2 text-[10px]"><Copy className="mr-1 h-2.5 w-2.5" />Duplicate</Badge>}
+      {job.duplicate && <Badge variant="destructive" className="mt-2 text-2xs"><Copy className="mr-1 h-2.5 w-2.5" />Duplicate</Badge>}
       <div className="mt-2 flex flex-wrap gap-1">
         {job.resumeId && (
-          <Badge variant="outline" className="text-[10px] gap-1">
+          <Badge variant="outline" className="text-2xs gap-1">
             <FileText className="h-2.5 w-2.5" /> Resume
           </Badge>
         )}
         {job.driveFileId && (
-          <Badge variant="outline" className="text-[10px] gap-1">
+          <Badge variant="outline" className="text-2xs gap-1">
             <Cloud className="h-2.5 w-2.5" /> Drive
           </Badge>
         )}
         {!job.resumeId && job.resumeStatus === 'ready' && (
-          <Badge variant="secondary" className="text-[10px]">Resume missing</Badge>
+          <Badge variant="secondary" className="text-2xs">Resume missing</Badge>
         )}
         {job.applyEmail && (
-          <Badge variant="outline" className="text-[10px] gap-1">
+          <Badge variant="outline" className="text-2xs gap-1">
             <Mail className="h-2.5 w-2.5" /> Email
           </Badge>
         )}
@@ -769,7 +777,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
     try {
       toast.success('Starting resume tailoring...');
       const { runId } = await services.resume.startResumeTailoring(job.id);
-      toast.success('Resume tailoring started — check Executions for progress');
+      toast.success('Resume tailoring started â€” check Executions for progress');
       onClose();
       navigate(`/executions/${runId}`);
       await qc.invalidateQueries({ queryKey: ['runs'] });
@@ -908,7 +916,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-xl leading-snug break-words">{job.role}</DialogTitle>
-              <p className="mt-1 text-sm text-muted-foreground break-words">{job.company} · {job.location}</p>
+              <p className="mt-1 text-sm text-muted-foreground break-words">{job.company} Â· {job.location}</p>
             </div>
             <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
               {matchScore}
@@ -996,10 +1004,10 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
         </ScrollArea>
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button onClick={generateResume} disabled={starting || scoring} className="gap-2">
-            <FileText className="h-4 w-4" /> {starting ? 'Starting…' : 'Generate Resume'}
+            <FileText className="h-4 w-4" /> {starting ? 'Startingâ€¦' : 'Generate Resume'}
           </Button>
           <Button variant="outline" onClick={scoreMatch} disabled={scoring || starting} className="gap-2">
-            <Gauge className="h-4 w-4" /> {scoring ? 'Scoring…' : 'Score match'}
+            <Gauge className="h-4 w-4" /> {scoring ? 'Scoringâ€¦' : 'Score match'}
           </Button>
           {matchScore > 0 && (
             <Button
@@ -1018,7 +1026,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               className="gap-2"
             >
               <MessageSquare className="h-4 w-4" />
-              {generatingPrep ? 'Generating…' : showInterviewPrep ? 'Hide Prep' : job.interviewPrep ? 'View Prep' : 'Interview Prep'}
+              {generatingPrep ? 'Generatingâ€¦' : showInterviewPrep ? 'Hide Prep' : job.interviewPrep ? 'View Prep' : 'Interview Prep'}
             </Button>
           )}
           {effectiveApplyEmail && job.resumeStatus === 'ready' && job.status !== 'applied' && (
@@ -1029,7 +1037,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
               className="gap-2"
             >
               {loadingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {loadingPreview ? 'Loading…' : 'Apply via Email'}
+              {loadingPreview ? 'Loadingâ€¦' : 'Apply via Email'}
             </Button>
           )}
           {!effectiveApplyEmail && job.status !== 'applied' && (
@@ -1054,7 +1062,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
                   className="gap-1 text-xs"
                 >
                   {extractingEmail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
-                  {extractingEmail ? 'Extracting…' : 'Extract Email'}
+                  {extractingEmail ? 'Extractingâ€¦' : 'Extract Email'}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setEditingEmail(true)} className="gap-1 text-xs">
                   Set Manually
@@ -1100,7 +1108,7 @@ function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: () => voi
             <Button variant="outline" onClick={() => setShowApplyConfirm(false)} disabled={applying}>Cancel</Button>
             <Button onClick={confirmApply} disabled={applying} className="gap-2">
               {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {applying ? 'Sending…' : 'Send Application'}
+              {applying ? 'Sendingâ€¦' : 'Send Application'}
             </Button>
           </DialogFooter>
         </DialogContent>

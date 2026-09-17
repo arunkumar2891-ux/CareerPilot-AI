@@ -48,7 +48,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
               <p className="truncate text-xs text-muted-foreground">AI Job Search</p>
               <Badge
                 variant="secondary"
-                className="h-4 shrink-0 px-1 text-[10px] font-medium leading-none tabular-nums"
+                className="h-4 shrink-0 px-1 text-2xs font-medium leading-none tabular-nums"
                 title={APP_BUILD_TIME ? `Built ${APP_BUILD_TIME}` : undefined}
               >
                 {APP_VERSION_LABEL}
@@ -62,7 +62,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
         {groups.map((group) => (
           <div key={group}>
             {!collapsed && (
-              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <p className="mb-1.5 px-3 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {group}
               </p>
             )}
@@ -91,7 +91,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                       <span className="relative flex flex-1 items-center justify-between gap-2">
                         <span>{item.label}</span>
                         {item.badge && (
-                          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{item.badge}</Badge>
+                          <Badge variant="secondary" className="h-5 px-1.5 text-2xs">{item.badge}</Badge>
                         )}
                       </span>
                     )}
@@ -121,7 +121,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
               {!collapsed && (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-medium">{user?.fullName}</p>
-                  <p className="truncate text-[10px] text-muted-foreground capitalize">{user?.plan} plan</p>
+                  <p className="truncate text-2xs text-muted-foreground capitalize">{user?.plan} plan</p>
                 </div>
               )}
             </button>

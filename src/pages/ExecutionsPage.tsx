@@ -111,14 +111,14 @@ export function ExecutionsPage() {
     const step = getActiveExecutionStep(run);
     const jobDetail = jobProgressLabel(run);
     if (!step) {
-      return jobDetail ? `${jobDetail} · ${run.nodeResults.length} nodes completed` : `${run.nodeResults.length} nodes completed`;
+      return jobDetail ? `${jobDetail} Â· ${run.nodeResults.length} nodes completed` : `${run.nodeResults.length} nodes completed`;
     }
     const elapsed = formatDurationMs(Date.now() - new Date(step.startedAt).getTime());
     const batch = run.batchProgress;
     const detail = batch && batch.node === step.name
       ? `Job ${batch.index}/${batch.total}`
       : (step.detail || jobDetail);
-    return `${step.name}${detail ? ` · ${detail}` : ''} · ${elapsed}`;
+    return `${step.name}${detail ? ` Â· ${detail}` : ''} Â· ${elapsed}`;
   };
 
   const describeRunSummary = (run: WorkflowRun) => {
@@ -131,7 +131,7 @@ export function ExecutionsPage() {
       parts.push(`${run.nodeResults.length} nodes`);
     }
     parts.push(run.id.slice(0, 8));
-    return parts.join(' · ');
+    return parts.join(' Â· ');
   };
 
   const openRunById = () => {
@@ -183,7 +183,7 @@ export function ExecutionsPage() {
           <DialogHeader>
             <DialogTitle>Delete this execution?</DialogTitle>
             <DialogDescription>
-              {deleteTarget?.workflowName || 'Workflow'} — started {deleteTarget ? timeAgo(deleteTarget.startedAt) : ''}. This cannot be undone.
+              {deleteTarget?.workflowName || 'Workflow'} â€” started {deleteTarget ? timeAgo(deleteTarget.startedAt) : ''}. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -230,7 +230,7 @@ export function ExecutionsPage() {
 
       <div className="space-y-2">
         {isLoading ? (
-          <PageLoader label="Loading executions…" />
+          <PageLoader label="Loading executionsâ€¦" />
         ) : runsError ? (
           /* Distinct from the empty state below: a failed fetch must not read as
              "you have no executions yet". */
@@ -252,11 +252,11 @@ export function ExecutionsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <p className="truncate text-sm font-medium">{run.workflowName || 'Workflow'}</p>
-                    <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                    <Badge variant="outline" className="shrink-0 text-2xs font-normal">
                       {describeTriggerType(run.triggerType)}
                     </Badge>
                     {run.searchLabel && (
-                      <Badge variant="outline" className="min-w-0 text-[10px] font-normal">
+                      <Badge variant="outline" className="min-w-0 text-2xs font-normal">
                         <span className="truncate">{run.searchLabel}</span>
                         {run.batchTotal && run.batchTotal > 1 && (
                           <span className="ml-1 shrink-0 text-muted-foreground">

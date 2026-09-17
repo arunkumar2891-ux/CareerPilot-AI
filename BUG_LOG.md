@@ -476,6 +476,124 @@ changed files; 29 tests pass under the Node shim. Grep confirms zero remaining
 
 ---
 
+## BUG-008 — Dashboard cards still overflowed on mobile (and my BUG-007-era fix caused a regression)
+
+**Status:** Fixed (code-verified; **not** visually verified — no browser tooling in this environment)
+**Feature:** Dashboard (`Execution Queue`, `Recent Activity`, metric cards, AI Usage)
+
+**Symptom:** The user reported — for the **second** time — that `Execution Queue` and
+`Recent Activity` overflow on mobile. The first round of fixes (in `bdd22c4`) changed the
+*inner* markup of those two cards but never touched what was actually forcing the width, so the
+symptom survived.
+
+**Root Cause — two independent defects.**
+
+**1. Bare `grid` creates an implicit `auto` track with a min-content floor.** Tailwind's `grid`
+class compiles to **`display:grid` only** — confirmed by grepping the built CSS, not assumed:
+
+```
+.grid{display:grid}
+.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}
+```
+
+With no `grid-template-columns`, items land in an *implicit* track. Implicit tracks are sized
+`auto`, and an `auto` track's minimum is its content's **min-content width**. `grid-cols-1`
+instead yields `minmax(0, 1fr)` — a floor of **0**. Five dashboard rows used bare
+`grid ... lg:grid-cols-N`, so they were constrained only at `lg` and any wide descendant could
+push the track past the viewport on mobile. `<main>` carries `overflow-x-hidden`, so the result
+was **clipped, not scrollable** — the same failure mode as BUG-007.
+
+**2. Flex children without `min-w-0` cannot shrink below their content.** `MetricCard` sits in a
+two-column grid: at 320px, after the page's `p-4` and the `gap-4`, each card is ~136px, and its
+own `p-5` left ~96px. Inside, an unguarded text `div` plus a `w-10` icon with no `shrink-0`
+needed more than that — `"APPLICATIONS"` alone is ~84px in 10px JetBrains Mono at
+`tracking-widest` (a 6px advance plus 0.1em tracking = 7px/char). `MetricCard`'s own
+`overflow-hidden` then clipped the label rather than reflowing it.
+
+**Regression I introduced in `bdd22c4`.** To remove dead space I had changed `Recent Activity`
+from `h-[240px]` to `h-auto max-h-[240px] lg:h-[240px]`. Radix's `ScrollArea.Root` is
+`overflow-hidden` and its `Viewport` is `h-full`; `height:100%` against an **auto-height** parent
+resolves to `auto`, so the Viewport never became a scroll container. The Root simply clipped at
+240px with **no scrollbar**, making older notifications unreachable. The height must be
+**definite** — reverted to `h-[240px]`. This traded a real defect for a cosmetic gain, and is
+precisely why a UI change that only typechecks is *unverified*, not *working*.
+
+**Files:**
+- `src/pages/DashboardPage.tsx` — `grid` → `grid-cols-1` on 5 rows; `min-w-0` on cards and chart
+  `CardContent`s; `ScrollArea` height reverted to definite; AI Usage header stacks below `sm`;
+  "Recent AI calls" and free-tier rows wrap; provider name truncates; Quick Action icon/arrow
+  `shrink-0` with `min-w-0` label
+- `src/components/shared/MetricCard.tsx` — `min-w-0 flex-1` text block, `shrink-0` icon,
+  `break-words` label, `flex-wrap` trend row, `tabular-nums` value, `p-4 sm:p-5`. The decorative
+  icon is `hidden ... sm:flex`: at 320px a 40px icon plus gap would force the label into a
+  mid-word break, and the label is what carries the meaning.
+
+**Fix rationale:** `grid-cols-1` is *not* redundant alongside bare `grid` — it is the thing that
+pins the track minimum to 0. It costs nothing at `lg` and up, where `lg:grid-cols-N` overrides it.
+
+**Validation:** `npm run typecheck` clean; `npx eslint` clean on both changed files;
+`npm run build` passes; 10 tests pass under the Node shim. **Still needs a human eye at 320px** —
+there is no browser automation here, so no rendered width was measured.
+
+---
+
+## Follow-ups — `collapseVariants` adoption + `text-2xs` token (2026-09-17)
+
+Two small changes landed after BUG-008, both pulled forward out of the deferred phase 5 because
+they are behavioural rather than structural.
+
+### `collapseVariants` had zero call sites
+
+Phase 2 added `collapseVariants()` to `src/lib/motion.ts` — `scaleY` + `transformOrigin: top`
+instead of `height: 0 → 'auto'` — and `AGENTS.md` documents "never animate layout properties".
+**Neither existing height animation was ever migrated**, so the guardrail was documented but
+unenforced and the helper was dead code:
+
+- `src/pages/JobsPage.tsx:388` — the filter panel, animating `height` on every toggle
+- `src/pages/SetupPage.tsx:134` — the expandable step detail
+
+Both now use `variants={collapseVariants()}`. `SetupPage` keeps an `exit` (it has an
+`AnimatePresence`); `JobsPage` does not have one, so there was no exit animation to preserve.
+`JobsPage` also needed `overflow-hidden` added — `collapseVariants` requires it or content spills
+mid-transition — and its now-unused `transitionFast` import was replaced. Grep confirms **0**
+remaining `height: 0` / `height: 'auto'` animations and **2** call sites.
+
+### `text-[10px]` → `text-2xs`
+
+33 occurrences across 12 files, the largest arbitrary-value group in the codebase. Added to
+`tailwind.config.js`:
+
+```js
+fontSize: {
+  '2xs': '0.625rem', // 10px — badge/meta tier, below `text-xs`
+},
+```
+
+**The bare string is load-bearing.** A `['0.625rem', { lineHeight: '...' }]` tuple would also
+emit `line-height`, which the 33 replaced sites did **not** set — they inherited it. Verified in
+the built CSS:
+
+```
+.text-2xs{font-size:.625rem}                  <- no line-height, matches text-[10px]
+.text-xs{font-size:.75rem;line-height:1rem}
+```
+
+The CSS bundle stayed at exactly 69.40 kB, consistent with a pure rename.
+
+**Validation:** `npm run typecheck` clean; `npm run build` passes; `npx eslint` across all changed
+files reports only 6 pre-existing unused-import errors, each confirmed present via
+`git show HEAD:<file>`; repo lint total unchanged.
+
+> **Lint baseline is 40, not 38.** Six docs quoted 38, a figure predating `ea9b51b`. Corrected in
+> `AGENTS.md`. Historical entries in this file and `RESTORE_POINTS.md` are left as written, since
+> they were accurate when recorded.
+
+**Not verified:** both changes are visual and there is no browser tooling here. The filter-panel
+and setup-step expansions now *scale* rather than grow in height — a real perceptual change that
+needs a human eye, as do the 33 `text-2xs` sites.
+
+---
+
 ## Audit findings — UI production-readiness (2026-09-17)
 
 A full audit against `.cursor/skills/motion-design` and
@@ -483,8 +601,10 @@ A full audit against `.cursor/skills/motion-design` and
 colours, 3 `shadow-*`, 1 `bg-gradient-to`, 39 skeleton states, 23 `htmlFor` bindings, 45
 `focus-visible` — so none of the classic "AI aesthetic" markers applied. What read as
 unfinished was *behaviour*. Fixed in four phases; phase 5 (splitting `JobsPage.tsx` — 1056
-lines when audited, **1073 now** after the phase-1/3 edits landed in it — and sweeping ~75
-arbitrary bracket values) was **explicitly deferred by the user**.
+lines when audited, **1118 now** after the phase-1/3 edits and the `collapseVariants` migration
+landed in it — and sweeping the arbitrary bracket values) was **explicitly deferred by the
+user**. The largest single group of those, `text-[10px]` × 33, was swept separately — see the
+`text-2xs` note below.
 
 | Finding | Severity | Resolution |
 |---|---|---|
@@ -512,9 +632,14 @@ greps and are recorded here so the numbers are not trusted later:
   already labelled.
 - *"3 non-responsive grids"* — actually **1** worth changing, as above.
 
-**Deliberately out of scope (phase 5):** `src/pages/JobsPage.tsx` is **1073 lines** (5x the
-skill's 200-line red flag; it was 1056 when audited and grew as phases 1 and 3 landed in it),
-and ~75 arbitrary `[...]` bracket values remain off the spacing and type scales.
+**Deliberately out of scope (phase 5):** `src/pages/JobsPage.tsx` is **1118 lines** (5.6x the
+skill's 200-line red flag; 1056 when audited, then grew as phases 1 and 3 and the
+`collapseVariants` migration landed in it). The `text-[10px]` group was swept to a `text-2xs`
+token (33 sites, 12 files); the rest of the arbitrary bracket values are untouched.
+
+> **Correction:** the audit's *"~75 arbitrary bracket values"* figure was never verified and
+> should not be cited. It was an estimate; the only counted subset is the 33 `text-[10px]` sites.
+> Re-measure before quoting a total.
 
 ---
 

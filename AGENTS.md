@@ -191,6 +191,38 @@ not scrollable** — buttons become unreachable, not merely cramped. Never pass 
 `src/components/shared/HeaderActions.tsx`, which keeps the primary action visible and
 collapses the rest into an overflow menu below `sm`.
 
+### A responsive grid needs an explicit `grid-cols-1`
+
+Tailwind's `grid` class is **`display:grid` and nothing else** — it sets no
+`grid-template-columns`. Items then land in an *implicit* track, implicit tracks are sized
+`auto`, and an `auto` track's minimum is its content's **min-content width**. So
+`grid gap-4 lg:grid-cols-3` is unconstrained below `lg` and a wide descendant can push it past
+the viewport. `grid-cols-1` compiles to `repeat(1, minmax(0, 1fr))` — a floor of **0**.
+
+- **Always write the mobile column count explicitly:** `grid grid-cols-1 gap-4 lg:grid-cols-3`.
+  It is not redundant, and it costs nothing at `lg` where the override wins.
+- **Grid and flex children that contain text or a chart need `min-w-0`.** A flex item's default
+  `min-width:auto` refuses to shrink below its content, so a long unbreakable string sets the
+  floor. Pair with `truncate` or `break-words` on the text itself, and `shrink-0` on adjacent
+  icons.
+- Combined with `<main>`'s `overflow-x-hidden`, both defects **clip rather than scroll** — the
+  content is unreachable, not just cramped. This is the same failure mode as BUG-007 and is what
+  BUG-008 fixed on the dashboard.
+
+### `ScrollArea` needs a definite height
+
+Radix's `ScrollArea.Root` is `overflow-hidden` and its `Viewport` is `h-full`. Give the Root an
+`h-auto`/`max-h-*` and the `height:100%` resolves against an auto-height parent, so the Viewport
+never becomes a scroll container — the Root just **clips, with no scrollbar**, and the overflowing
+rows are unreachable. Use a definite height (`h-[240px]`). Trimming it responsively is fine
+(`h-[180px] lg:h-[240px]`) as long as every branch is definite. (BUG-008)
+
+### Never animate `height` — `collapseVariants` exists for this
+
+`height: 0 → 'auto'` triggers layout on every frame and cannot be composited.
+`src/lib/motion.ts` → `collapseVariants()` does it with `scaleY` + `transformOrigin: top`
+instead; callers must add `overflow-hidden`.
+
 ### Semantics
 
 - `PageHeader` renders the page's single `<h1>`; `SectionHeading` is the `<h2>` tier;
@@ -208,6 +240,10 @@ collapses the rest into an overflow menu below `sm`.
 - Fonts are **Inter Tight** (sans) and **JetBrains Mono** (mono), loaded from Google Fonts
   in `index.html` and registered in `tailwind.config.js`. Before this, no webfont was
   loaded at all and `index.css` carried inert Inter-only feature settings.
+- **`text-2xs` (0.625rem/10px) is the badge/meta tier below `text-xs`.** Use it instead of
+  `text-[10px]`, which it replaced at 33 sites. It is registered as a **bare string**, not a
+  `[size, { lineHeight }]` tuple, on purpose: a tuple also emits `line-height`, which the
+  arbitrary sites it replaced never set. Adding one there would shift every badge and caption.
 - `--brand-jade` is the logo mark's fixed colour and is **deliberately not overridden in
   `.dark`** — the lockup's planes are the same green on both backgrounds; only the wordmark
   and baseline invert. Never point the mark at `--primary`, which does shift.
@@ -318,9 +354,14 @@ Runs on either machine:
 
 ```bash
 npm run typecheck    # Type checking
-npm run lint         # ESLint (38 pre-existing problems; add none)
+npm run lint         # ESLint — 40 pre-existing problems; add none
 npm run build        # Full build verification
 ```
+
+> The 40 are all unused imports/vars, three `no-empty-object-type` in `src/components/ui/`, and
+> six `react-refresh` warnings. Attribute before fixing: run `npx eslint <file>` and compare
+> against `git show HEAD:<file>`. Older docs quote a baseline of **38**; that number predates
+> `ea9b51b`.
 
 ### Frontend / UI changes
 

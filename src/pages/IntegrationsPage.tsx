@@ -42,7 +42,7 @@ const CORE: CoreIntegration[] = [
     name: 'Google Drive',
     category: 'Storage',
     description: 'Copy tailored PDFs to your Drive from Resume Studio. Job search saves resumes in-app by default.',
-    note: 'Connect with OAuth, set a Drive folder in Settings → Job Search, then use Copy to Google Drive on the Resumes page.',
+    note: 'Connect with OAuth, set a Drive folder in Settings â†’ Job Search, then use Copy to Google Drive on the Resumes page.',
     icon: Cloud,
     optional: true,
   },
@@ -154,7 +154,7 @@ export function IntegrationsPage() {
                   </div>
                   <div className="mt-3 flex items-center gap-2">
                     <p className="font-semibold">{core.name}</p>
-                    {core.optional && <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Optional</span>}
+                    {core.optional && <span className="text-2xs uppercase tracking-wide text-muted-foreground">Optional</span>}
                   </div>
                   <p className="text-xs text-muted-foreground">{core.description}</p>
                   <p className="mt-2 text-xs text-muted-foreground">{core.note}</p>
@@ -190,7 +190,7 @@ export function IntegrationsPage() {
             <Label>API token</Label>
             <Input
               type="password"
-              placeholder="apify_api_…"
+              placeholder="apify_api_â€¦"
               value={apifyToken}
               onChange={(e) => setApifyToken(e.target.value)}
             />

@@ -13,6 +13,13 @@ export default {
         sans: ['"Inter Tight"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
+      fontSize: {
+        // Deliberately a bare string, not a `[size, { lineHeight }]` tuple. A tuple would
+        // also emit `line-height`, which the 33 `text-[10px]` call sites this replaces did
+        // NOT set — they inherited it. Keeping it font-size-only makes `text-2xs` a byte-for-byte
+        // equivalent, so the sweep is a visual no-op.
+        '2xs': '0.625rem', // 10px — badge/meta tier, below `text-xs`
+      },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
