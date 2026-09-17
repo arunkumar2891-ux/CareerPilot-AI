@@ -40,9 +40,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
   return (
     <>
       <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-sm">
-          <LogoMark size={20} />
-        </div>
+        <LogoMark size={26} className="shrink-0 text-primary" />
         {!collapsed && (
           <div className="min-w-0 overflow-hidden">
             <p className="text-sm font-semibold leading-tight gradient-text">CareerPilot</p>

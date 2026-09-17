@@ -28,7 +28,7 @@ own workflow run and sends its own summary email. Roles are capped at 5
 
 ### Paste JD (single job)
 ```
-PasteJdDialog → services.jobSearch.pasteJd()
+ApplicationPackageWizard (step 1) → services.jobSearch.pasteJd()
   → supabase INSERT into jobs table
 ```
 
@@ -43,7 +43,7 @@ ApplicationPackageWizard → resume generation + cover letter for a specific job
 - `src/pages/JobsPage.tsx` — Job list, filters, actions, paste JD, application wizard
 - `src/components/jobs/JobKanbanBoard.tsx` — Drag-and-drop kanban columns (native HTML5 DnD)
 - `src/utils/job-kanban.ts` — Column model, grouping, optimistic status update, move warnings
-- `src/components/jobs/PasteJdDialog.tsx` — Manual JD paste dialog
+- `src/components/jobs/ApplicationPackageWizard.tsx` — 4-step wizard (paste JD → score → generate → results); also the manual JD paste entry point
 - `src/components/jobs/ApplicationPackageWizard.tsx` — Resume + cover letter generation wizard
 - `src/services/index.ts` → `JobSearchService` class
 - `supabase/functions/workflow-run/index.ts` — Workflow trigger endpoint

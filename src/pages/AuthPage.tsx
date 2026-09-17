@@ -4,7 +4,7 @@ import { Mail, Chrome, Sparkles, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogoMark } from '@/components/brand/LogoMark';
+import { LogoLockup } from '@/components/brand/LogoLockup';
 import { FadeIn, InlineLoader, ScanLineBackground } from '@/components/motion';
 import { useAuthStore } from '@/store';
 import { toast } from 'sonner';
@@ -41,11 +41,11 @@ export function AuthPage() {
       <FadeIn className="relative z-10 w-full max-w-md px-4">
         <div className="glass-card p-6 sm:p-8">
           <div className="mb-8 flex flex-col items-center text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-primary">
-              <LogoMark size={28} animated />
-            </div>
-            <h1 className="mt-4 text-2xl font-semibold tracking-tight gradient-text">CareerPilot AI</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Your autonomous AI job search copilot</p>
+            <h1 className="flex flex-col items-center">
+              <LogoLockup size="lg" animated />
+              <span className="sr-only">CareerPilot AI</span>
+            </h1>
+            <p className="mt-3 text-sm text-muted-foreground">Your autonomous AI job search copilot</p>
           </div>
 
           <div className="mb-6 flex rounded-lg bg-muted p-1">

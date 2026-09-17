@@ -34,9 +34,7 @@ export function AppLoader({ className, message }: AppLoaderProps) {
             <span className="absolute inset-1 rounded-full border border-transparent border-b-primary/60 animate-orbit-reverse" />
           </>
         )}
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-primary">
-          <LogoMark size={22} animated={!reduceMotion} />
-        </div>
+        <LogoMark size={32} animated={!reduceMotion} className="text-primary" />
       </div>
       <p className="mt-6 text-sm font-medium text-foreground">CareerPilot AI</p>
       <p className="mt-1 status-label">{statusText}</p>

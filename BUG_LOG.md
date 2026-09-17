@@ -78,7 +78,7 @@ Three gaps made that last branch a true infinite loop:
 3. **Poll state reset per role.** `start_run` zeroes `apifyPollErrors` / `apifyPollAttempts` and stamps `apifyPollStartedAt`; `ROLE_RESET_KEYS` clears all three when advancing roles, so role 2 is never poisoned by role 1's counters (and vice versa).
 4. **Missing run id fails fast.** A missing `apifyRunId` previously produced a `.../runs/undefined?token=...` request; it now throws immediately.
 
-**Validation:** 6 new regression tests in `apify-poll_test.ts` covering: attempt cap exceeded, wall-clock budget exceeded, normal waiting path increments counters, `TIMED-OUT` is terminal, missing run id fails fast, and `SUCCEEDED` still routes `true`. Deno is not installed on this machine, so the suite was not executed locally — run `deno test --allow-all supabase/functions/_shared/workflow/` to confirm.
+**Validation:** 6 new regression tests in `apify-poll_test.ts` covering: attempt cap exceeded, wall-clock budget exceeded, normal waiting path increments counters, `TIMED-OUT` is terminal, missing run id fails fast, and `SUCCEEDED` still routes `true`. Deno is not installed on the Windows dev box, so the suite was not executed there — run `deno test --allow-all supabase/functions/_shared/workflow/` on the MacBook to confirm.
 
 ---
 
@@ -282,12 +282,13 @@ saw the 7 project bullets opening with "Built" as repeated-verb experience drift
 staying out of the experience budget, and the optional-header regression (no projects still
 validates). `npm run typecheck` clean.
 
-Deno is not installed on this machine, so those suites were executed under Node via a temporary
-`Deno.test` shim. `_shared/ai/router_test.ts` could **not** be executed either way —
+Deno is not installed on the Windows dev box, so those suites were executed under Node via a
+temporary `Deno.test` shim. `_shared/ai/router_test.ts` could **not** be executed that way —
 `_shared/supabase-admin.ts` imports `https://esm.sh/@supabase/supabase-js`, which Node's loader
 rejects. Its new eight-section fixture was instead verified by calling `validateResumeOutput`
 with the exact option set `applyResumeValidation` passes. **Run
-`deno test --allow-all --no-check supabase/functions/_shared/ai/` to confirm the router path.**
+`deno test --allow-all --no-check supabase/functions/_shared/ai/` on the MacBook to confirm the
+router path.**
 `npm run lint` could not be completed — it hung at 0% CPU after 0.78s of work on two attempts,
 including unsandboxed (the same way `tsc` hung before being run outside the sandbox).
 
@@ -295,5 +296,99 @@ including unsandboxed (the same way `tsc` hung before being run outside the sand
 user's explicit choice. Known open defects there: company header lines truncate at 72 chars,
 `Dates | Location` lines are silently dropped, repeated project titles duplicate, and EDUCATION
 renders a literal `-` prefix. A valid contract does **not** imply a correct PDF.
+
+---
+
+## BUG-005 — `repairTailorPipelineGraph` was a latent re-run of BUG-003
+
+**Status:** Fixed
+**Feature:** Resume tailoring (built-in `Resume Tailoring` graph provisioning / repair)
+
+**Symptom:** None yet — found by audit, not by failure. The defect was **latent**: unreachable
+while the tailor seed stayed stable, and guaranteed to fire the moment any tailor node was
+renamed. This is the same posture BUG-003 had before `d5f3cf3c` made it detonate.
+
+**Root Cause:** `repairTailorPipelineGraph` violated three of the workflow guardrails at once,
+on the `Resume Tailoring` graph rather than the job-search graph the guardrails were written for:
+
+1. **Gated on the target shape, not the source shape.** The check was literally "are all four
+   desired node names present?" (`hasAll`). Per the guardrail, such a check re-fires forever the
+   next time the desired shape changes.
+2. **Matched nodes by display name.** `required = ['ATS Optimizer','Build LaTeX','Compile PDF',
+   'Upload to Storage']` compared against `n.name`. Names have drifted before
+   (`Get Resume` → `Sync Google Doc Resume`), so any rename makes the check fail permanently.
+3. **Called `saveGraph()` from a repair path** via `provisionTailorGraph` — the destructive
+   delete-all-nodes / delete-all-edges / insert-all rewrite that caused BUG-003.
+
+It also lacked the **in-flight promise guard** that was part of the BUG-003 fix, even though
+`ensureTailorPipeline` has two callers: `BootstrapService` on every login (`index.ts:2546`) and
+the tailoring action itself (`index.ts:806`).
+
+The failure mode would have differed from BUG-003 in one way: `provisionTailorGraph` mints fresh
+`crypto.randomUUID()` ids per call, so there is no `23505` primary-key collision to make the
+problem loud. Instead two concurrent callers interleave as delete/delete/insert/insert and leave
+**two disconnected 5-node chains**. Since `getEntryNodes()` treats any node with no incoming edge
+as an entry node, the tailor run would execute stray start nodes in arbitrary order — the silent
+scrambled-order symptom from BUG-003 Follow-up 1, with no error surfaced. At 5 nodes / 4 edges the
+`57014` statement timeout was unlikely, removing the other loud signal.
+
+**Files:**
+- `src/services/index.ts` — `repairTailorPipelineGraph` rewritten to plan a delta via
+  `planPipelineRepair`; new `applyPipelineRepairPlan` helper extracted and shared with
+  `repairDefaultPipelineGraph`; `ensureTailorPipeline` split into a guarded wrapper +
+  `ensureTailorPipelineImpl` with a new `ensureTailorPipelineInFlight` field
+- `supabase/functions/_shared/workflow/tailor-pipeline-repair_test.ts` (new) — 10 tests
+
+**Fix:**
+1. **Delta-based repair.** The tailor graph now goes through the same pure planner as the
+   job-search graph. `saveGraph` is no longer reachable from any repair path; it remains only in
+   `provisionTailorGraph`, which is called *only* when creating a brand-new workflow.
+2. **Signature matching.** `planPipelineRepair` pass 1 keys on `type` + `action`/`builtin`, so a
+   renamed tailor node is matched, not deleted and re-created. Verified: all 5 tailor seed nodes
+   have unique signatures (`supabase` `load_job`, `gemini`, `function` `build_latex`, `pdf`,
+   `storage`), so pass 1 alone resolves the whole graph.
+3. **Convergence.** Applying a plan twice is a no-op, so the repair cannot loop.
+4. **Concurrency collapsed.** `ensureTailorPipeline` now shares a single in-flight promise, the
+   same pattern as `ensureDefaultPipeline`, so bootstrap + tailor action + React double-mount no
+   longer race.
+
+**Validation:** 10 new tests in `tailor-pipeline-repair_test.ts` covering: seed shape (5 nodes /
+4 edges), signature uniqueness, healthy graph is a no-op, **a renamed node is matched not
+re-inserted** (the exact regression), an edge-less graph is rewired without deleting nodes, a
+missing node is restored with both its edges, exactly one entry node with every node reachable
+after repair, convergence on a second pass, user-added nodes preserved, and stale-edge removal.
+Full run: **107 passed / 0 failed** across 12 suites (all of `_shared/workflow/` plus
+`src/utils/`). `npm run typecheck` clean, `npm run build` passes, `npx eslint` clean on the
+changed files.
+
+Deno is not installed on the Windows dev box, so suites ran under Node via a `Deno.test` shim
+(`scripts/run-deno-tests.mjs`). `_shared/workflow/apify-poll_test.ts` cannot run that way — it
+transitively imports `https://esm.sh/@supabase/supabase-js` through `supabase-admin.ts`, which
+Node's loader rejects. It is untouched by this change. **Deno is installed on the MacBook — run
+`deno test --allow-all --no-check supabase/functions/_shared/workflow/` there to confirm the full
+suite.**
+
+**Remaining risk:** No end-to-end run of the tailoring pipeline was performed against the new
+repair path. The first `ensureTailorPipeline` call after this change will, for graphs that drifted,
+write a delta rather than a rewrite — expected to be a no-op for healthy graphs.
+
+---
+
+## Audit findings — documentation drift (2026-09-17)
+
+Recorded for traceability; all were corrected in the same pass.
+
+| Finding | Resolution |
+|---|---|
+| `AGENTS.md` and `RESTORE_POINTS.md` claimed local `git` was available at 2.39.5; a mid-audit correction then over-corrected to "not installed on Windows". Both were wrong. `git` **is** installed on both machines — it is simply not always on `PATH` in a fresh Windows shell, which is why `where.exe git` found nothing. | Both files corrected to state git is available on both machines, with a note to locate the binary rather than conclude it is missing when `PATH` lookup fails. The public-repo fallback (`raw.githubusercontent.com` / GitHub API) is retained for shells without git on `PATH`. |
+| **Auto-apply was entirely undocumented** despite sending real email to employers via the user's Gmail account. | Added to `docs/FEATURE_MAP.md` with a warning callout, plus an `AGENTS.md` Key Files row. |
+| Interview prep entirely undocumented (backend mode in `resume-actions`, two UI surfaces, `jobs.interview_prep`). | Added to `docs/FEATURE_MAP.md` + Key Files. |
+| Guardrail "match by `type`+`action`, **never** by display name" was false — `planPipelineRepair` has a deliberate pass-2 name fallback. | Reworded to "never by display name *alone*", documenting all three passes. |
+| Guardrail "`Match Score` must stay **first** in the fan-out" contradicted the documented fan-out start (`Store Job`). `Match Score` is `chain[1]`. | Reworded to "first *scoring* step, immediately after `Store Job`". |
+| Two migrations share the prefix `023` (`023_interview_prep.sql`, `023_scheduled_run_slots.sql`) — likely why interview prep slipped out of the docs. | Left as-is (both apply lexicographically); noted in `FEATURE_MAP.md` with "do not add a third `023`". |
+| `DEFAULT_RESUME_TAILOR_WORKFLOW` (a second built-in seed graph) was unlisted. | Documented under Workflow Engine. |
+| Dead code: `PasteJdDialog.tsx` (defined, never imported) and 6 service classes with zero call sites (`AgentService`, `PromptService`, `EmailService`, `PDFService`, `StorageService`, `AIService`) plus `EdgeAIProvider`, the `AIProvider` interface, and the now-orphaned `mapAgent`/`mapPrompt` helpers. | Deleted. `docs/FEATURE_MAP.md`, `docs/features/job-discovery.md`, and `docs/features/ai-copilot.md` updated; `ApplicationPackageWizard` re-described as the 4-step wizard it actually is. |
+| `REQUIRED_HEADERS` is cited in `AGENTS.md` as the source of section order but is **not exported** from `validate-resume.ts`. | Noted only — not changed, as exporting it is outside the audit scope. |
+| **Two-machine hazard:** no `.gitattributes`, `core.autocrlf` unset, and all 124 files under `src/` are CRLF. Editing the same file on both the Windows box and the MacBook produces whole-file phantom diffs. | Documented in `AGENTS.md` → Development Environments and `RESTORE_POINTS.md`. **Not fixed** — `* text=auto eol=lf` forces a one-time renormalization commit touching nearly every file, which should be its own deliberate commit made on the Mac. |
 
 ---

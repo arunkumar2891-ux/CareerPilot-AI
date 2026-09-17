@@ -1,9 +1,9 @@
 import type {
-  Job, Resume, CoverLetter, Application, Workflow, Agent,
-  Document, Notification, Integration, Prompt, Automation,
+  Job, Resume, CoverLetter, Application, Workflow,
+  Document, Notification, Integration, Automation,
   ChatConversation, DashboardMetrics, AnalyticsPoint, UserProfile, AiUsageSummary,
   AtsReview,
-  JobSearchConfig, ChatMessage, AgentRun, WorkflowRunDetail,
+  JobSearchConfig, ChatMessage, WorkflowRunDetail,
   JobExecution, NodeExecution, WorkflowSnapshot, WorkflowRun,
 } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -281,33 +281,6 @@ function mapWorkflow(row: Record<string, unknown>): Workflow {
   };
 }
 
-function mapAgent(row: Record<string, unknown>): Agent {
-  return {
-    id: String(row.id),
-    name: String(row.name ?? ''),
-    type: (row.type as Agent['type']) ?? 'career_advisor',
-    description: String(row.description ?? ''),
-    prompt: String(row.prompt ?? ''),
-    model: (row.model as Agent['model']) ?? 'gemini',
-    temperature: Number(row.temperature ?? 0.3),
-    memory: Boolean(row.memory),
-    enabled: Boolean(row.enabled),
-    runs: (row.agent_runs as Record<string, unknown>[])?.map((r) => ({
-      id: String(r.id),
-      agentId: String(r.agent_id ?? row.id),
-      status: (r.status as AgentRun['status']) ?? 'success',
-      input: String(r.input ?? ''),
-      output: String(r.output ?? ''),
-      startedAt: (r.started_at as string) ?? (r.created_at as string),
-      duration: Number(r.duration_ms ?? 0),
-      cost: Number(r.cost ?? 0),
-      tokens: Number(r.tokens ?? 0),
-    })) ?? [],
-    metrics: (row.metrics as Agent['metrics']) ?? { runs: 0, successRate: 0, avgLatency: 0, totalCost: 0, tokens: 0 },
-    createdAt: row.created_at as string,
-  };
-}
-
 function mapDocument(row: Record<string, unknown>): Document {
   return {
     id: String(row.id),
@@ -353,24 +326,6 @@ function mapIntegration(row: Record<string, unknown>): Integration {
       level: (l.level as 'info' | 'error') ?? 'info',
       timestamp: (l.timestamp as string) ?? '',
     })) ?? [],
-  };
-}
-
-function mapPrompt(row: Record<string, unknown>): Prompt {
-  return {
-    id: String(row.id),
-    name: String(row.name ?? ''),
-    category: String(row.category ?? ''),
-    content: String(row.content ?? ''),
-    variables: (row.variables as string[]) ?? [],
-    version: Number(row.version ?? 1),
-    history: (row.prompt_versions as Record<string, unknown>[])?.map((v) => ({
-      id: String(v.id),
-      version: Number(v.version ?? 1),
-      content: String(v.content ?? ''),
-      createdAt: (v.created_at as string) ?? '',
-    })) ?? [],
-    createdAt: row.created_at as string,
   };
 }
 
@@ -1224,6 +1179,7 @@ export class WorkflowService {
     }
   }
   private ensureDefaultPipelineInFlight: Promise<Workflow> | null = null;
+  private ensureTailorPipelineInFlight: Promise<Workflow> | null = null;
   /**
    * Bootstrap and JobsPage both call this, and React can mount twice in dev, so
    * overlapping calls are normal. They used to run the graph repair concurrently,
@@ -1381,6 +1337,19 @@ export class WorkflowService {
     });
     if (plan.isNoop) return;
 
+    await this.applyPipelineRepairPlan(workflowId, plan);
+  }
+
+  /**
+   * Write a repair plan as a delta. Shared by both built-in graphs.
+   *
+   * Order matters: edges are deleted before nodes so no foreign key can dangle, and node
+   * inserts come first so the edge inserts can reference them.
+   */
+  private async applyPipelineRepairPlan(
+    workflowId: string,
+    plan: ReturnType<typeof planPipelineRepair>,
+  ): Promise<void> {
     const userId = await requireUserId();
 
     if (plan.insertNodes.length) {
@@ -1438,6 +1407,17 @@ export class WorkflowService {
   }
 
   async ensureTailorPipeline(): Promise<Workflow> {
+    if (this.ensureTailorPipelineInFlight) return this.ensureTailorPipelineInFlight;
+    const run = this.ensureTailorPipelineImpl();
+    this.ensureTailorPipelineInFlight = run;
+    try {
+      return await run;
+    } finally {
+      this.ensureTailorPipelineInFlight = null;
+    }
+  }
+
+  private async ensureTailorPipelineImpl(): Promise<Workflow> {
     const userId = await requireUserId();
     const { data: existingRows } = await supabase
       .from('workflows')
@@ -1474,14 +1454,50 @@ export class WorkflowService {
     await this.saveGraph(workflowId, nodes, edges);
   }
 
+  /**
+   * Reconcile the built-in `Resume Tailoring` graph with its seed, writing only a delta.
+   *
+   * Previously this gated on the *target* shape (`are all four node names present?`) and, on a
+   * miss, called `provisionTailorGraph` -> `saveGraph()` — a destructive delete-all/insert-all
+   * rewrite. That is the exact BUG-003 shape, and it was latent for the same reason: the check
+   * passes for a healthy graph, so the destructive branch was unreachable *until the seed
+   * changed*. Renaming any tailor node would have made the check fail permanently, wiping and
+   * re-provisioning the graph on every login (`BootstrapService` calls `ensureTailorPipeline`).
+   *
+   * Because `provisionTailorGraph` mints fresh UUIDs, the failure mode was not `23505` but
+   * something worse: two concurrent callers interleaving delete/delete/insert/insert leave *two*
+   * disconnected 5-node chains, and `getEntryNodes()` treats every node without an incoming edge
+   * as an entry node — so the tailor run executes stray start nodes in arbitrary order.
+   *
+   * Now it uses the same signature-matched planner as the job-search graph, so a rename is
+   * absorbed (pass 1 matches on `type` + `action`/`builtin`) and nothing is ever deleted
+   * wholesale.
+   */
   private async repairTailorPipelineGraph(workflowId: string): Promise<void> {
     const wf = await this.get(workflowId);
     if (!wf) return;
-    const hasLoad = wf.nodes.some((n) => n.type === 'supabase' && n.config.action === 'load_job');
-    const required = ['ATS Optimizer', 'Build LaTeX', 'Compile PDF', 'Upload to Storage'];
-    const hasAll = hasLoad && required.every((name) => wf.nodes.some((n) => n.name === name));
-    if (hasAll) return;
-    await this.provisionTailorGraph(workflowId);
+
+    const plan = planPipelineRepair({
+      seedNodes: DEFAULT_RESUME_TAILOR_WORKFLOW.nodes,
+      seedEdges: buildTailorSeedEdges(),
+      nodes: wf.nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        name: n.name,
+        position: n.position,
+        config: n.config,
+      })),
+      edges: wf.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.label,
+      })),
+      newId: () => crypto.randomUUID(),
+    });
+    if (plan.isNoop) return;
+
+    await this.applyPipelineRepairPlan(workflowId, plan);
   }
   async toggle(id: string): Promise<void> {
     const { data } = await supabase.from('workflows').select('active').eq('id', id).maybeSingle();
@@ -1840,53 +1856,6 @@ export class ExecutionService {
   }
 }
 
-export class AgentService {
-  async list(): Promise<Agent[]> {
-    const { data, error } = await supabase.from('agents').select('*, agent_runs(*)').order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data || []).map(mapAgent);
-  }
-  async get(id: string): Promise<Agent | undefined> {
-    const { data, error } = await supabase.from('agents').select('*, agent_runs(*)').eq('id', id).maybeSingle();
-    if (error) throw error;
-    return data ? mapAgent(data) : undefined;
-  }
-  async update(id: string, patch: Partial<Agent>): Promise<void> {
-    const { error } = await supabase.from('agents').update(patch).eq('id', id);
-    if (error) throw error;
-  }
-  async run(id: string, input: string): Promise<AgentRun> {
-    const { data, error } = await invokeAiChat({ agentId: id, content: input });
-    if (error) throw error;
-    const userId = await requireUserId();
-    const startedAt = new Date().toISOString();
-    const output = data?.reply || '';
-    const tokens = Number(data?.tokens || 0);
-    const { data: run } = await supabase.from('agent_runs').insert({
-      user_id: userId,
-      agent_id: id,
-      status: 'success',
-      input,
-      output,
-      started_at: startedAt,
-      duration_ms: 0,
-      cost: 0,
-      tokens,
-    }).select().single();
-    return {
-      id: String(run?.id),
-      agentId: id,
-      status: 'success',
-      input,
-      output,
-      startedAt,
-      duration: 0,
-      cost: 0,
-      tokens,
-    };
-  }
-}
-
 export class DocumentService {
   async list(): Promise<Document[]> {
     const { data, error } = await supabase.from('documents').select('*, document_versions(*)').order('created_at', { ascending: false });
@@ -1953,35 +1922,6 @@ export class EmbeddingService {
       counts.set(key, (counts.get(key) || 0) + 1);
     }
     return [...counts.entries()].map(([collection, count]) => ({ collection, count }));
-  }
-}
-
-export class PromptService {
-  async list(): Promise<Prompt[]> {
-    const { data, error } = await supabase.from('prompts').select('*, prompt_versions(*)').order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data || []).map(mapPrompt);
-  }
-  async create(name: string, category: string, content: string, variables: string[]): Promise<Prompt> {
-    const userId = await requireUserId();
-    const { data, error } = await supabase.from('prompts').insert({ user_id: userId, name, category, content, variables, version: 1 }).select('*, prompt_versions(*)').single();
-    if (error) throw error;
-    return mapPrompt(data);
-  }
-  async update(id: string, content: string): Promise<void> {
-    const { data: current } = await supabase.from('prompts').select('version').eq('id', id).maybeSingle();
-    const nextVersion = (current?.version ?? 0) + 1;
-    const { error } = await supabase.from('prompts').update({ content, version: nextVersion, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) throw error;
-    const userId = await requireUserId();
-    await supabase.from('prompt_versions').insert({ user_id: userId, prompt_id: id, version: nextVersion, content });
-  }
-  async test(content: string, variables: Record<string, string>): Promise<string> {
-    let prompt = content;
-    for (const [k, v] of Object.entries(variables)) prompt = prompt.replaceAll(`{{${k}}}`, v);
-    const { data, error } = await invokeAiChat({ content: prompt });
-    if (error) throw error;
-    return data?.reply || '';
   }
 }
 
@@ -2144,94 +2084,6 @@ export class AnalyticsService {
       tokenUsage: 0,
       cost: 0,
     };
-  }
-}
-
-export class EmailService {
-  async send(to: string, subject: string, body: string): Promise<{ success: boolean }> {
-    const { error } = await invokeAiChat({ mode: 'email', to, subject, content: body });
-    if (error) throw error;
-    return { success: true };
-  }
-}
-
-export class PDFService {
-  async generate(content: string, title: string, resumeId?: string): Promise<{ url: string }> {
-    if (resumeId) {
-      const { data, error } = await supabase.functions.invoke('resume-actions', {
-        body: { mode: 'generate_pdf', resumeId, content },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(String(data.error));
-      return { url: String(data?.url || '') };
-    }
-    throw new Error('resumeId is required for PDF generation');
-  }
-}
-
-export class StorageService {
-  async upload(file: File, path: string): Promise<{ url: string }> {
-    const userId = await requireUserId();
-    const mime = assertResumeUploadFile(file);
-    const relative = String(path || '').replace(/\\/g, '/').replace(/^\/+/, '');
-    if (!relative || relative.includes('..') || !/^[A-Za-z0-9._/-]+$/.test(relative)) {
-      throw new Error('Invalid upload path');
-    }
-    const fullPath = `${userId}/${relative}`;
-    const { error } = await supabase.storage.from('resumes').upload(fullPath, file, {
-      upsert: false,
-      contentType: mime,
-    });
-    if (error) throw error;
-    const { data, error: signedError } = await supabase.storage.from('resumes').createSignedUrl(fullPath, 60 * 60);
-    if (signedError || !data?.signedUrl) throw signedError || new Error('Could not create download URL');
-    return { url: data.signedUrl };
-  }
-}
-
-export interface AIProvider {
-  name: string;
-  chat(messages: ChatMessage[]): Promise<string>;
-  stream(messages: ChatMessage[], onToken: (t: string) => void): Promise<string>;
-  embed(text: string): Promise<number[]>;
-}
-
-class EdgeAIProvider implements AIProvider {
-  constructor(public name: string) {}
-  async chat(messages: ChatMessage[]): Promise<string> {
-    const { data, error } = await invokeAiChat({
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    });
-    if (error) throw error;
-    return data?.reply || '';
-  }
-  async stream(messages: ChatMessage[], onToken: (t: string) => void): Promise<string> {
-    const reply = await this.chat(messages);
-    onToken(reply);
-    return reply;
-  }
-  async embed(text: string): Promise<number[]> {
-    const { data, error } = await invokeAiChat({ mode: 'embed', content: text });
-    if (error) throw error;
-    return (data?.embedding as number[]) || [];
-  }
-}
-
-export class AIService {
-  private providers: Record<string, AIProvider> = {};
-  constructor() {
-    (['gemini', 'openai', 'claude', 'azure', 'ollama', 'bedrock'] as const).forEach((p) => {
-      this.providers[p] = new EdgeAIProvider(p);
-    });
-  }
-  getProvider(name: string): AIProvider {
-    return this.providers[name] || this.providers.gemini;
-  }
-  async chat(provider: string, messages: ChatMessage[]): Promise<string> {
-    return this.getProvider(provider).chat(messages);
-  }
-  async stream(provider: string, messages: ChatMessage[], onToken: (t: string) => void): Promise<string> {
-    return this.getProvider(provider).stream(messages, onToken);
   }
 }
 
@@ -2607,17 +2459,11 @@ export const services = {
   autoApply: new AutoApplyService(),
   workflow: new WorkflowService(),
   execution: new ExecutionService(),
-  agent: new AgentService(),
   document: new DocumentService(),
   embedding: new EmbeddingService(),
-  prompt: new PromptService(),
   notification: new NotificationService(),
   integration: new IntegrationService(),
   analytics: new AnalyticsService(),
-  email: new EmailService(),
-  pdf: new PDFService(),
-  storage: new StorageService(),
-  ai: new AIService(),
   automation: new AutomationService(),
   chat: new ChatService(),
   user: new UserService(),

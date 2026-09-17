@@ -37,7 +37,7 @@ ai-chat { mode: 'generate_resume' }
 ## Important Files
 
 - `src/pages/CopilotPage.tsx` — Chat UI and conversation management
-- `src/services/index.ts` → `ChatService`, `AIService`
+- `src/services/index.ts` → `ChatService`
 - `supabase/functions/ai-chat/index.ts` — Chat backend endpoint
 - `supabase/functions/_shared/ai/router.ts` — AI provider routing
 - `supabase/functions/_shared/ai/gemini.ts` — Gemini API wrapper

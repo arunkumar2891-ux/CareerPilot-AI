@@ -168,9 +168,7 @@ export function CopilotPage() {
             >
               <PanelLeft className="h-4 w-4" />
             </Button>
-            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-sm">
-              <LogoMark size={18} />
-            </div>
+            <LogoMark size={22} className="shrink-0 text-primary" />
             <span className="truncate font-medium gradient-text">AI Copilot</span>
             {activeConversation?.resumeId ? (
               <Badge variant="secondary" className="hidden max-w-48 truncate text-[10px] sm:inline-flex">
@@ -190,9 +188,7 @@ export function CopilotPage() {
           <div className="mx-auto max-w-3xl space-y-4 p-4 sm:space-y-6 sm:p-6">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-4 pt-10 text-center sm:pt-20">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-chart-4 text-primary-foreground shadow-glow-primary sm:h-16 sm:w-16">
-                  <LogoMark size={32} animated />
-                </div>
+                <LogoMark size={44} animated className="text-primary" />
                 <div>
                   <h2 className="text-lg font-semibold sm:text-xl">How can I help your job search?</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Ask me to tailor resumes, explain JDs, prep interviews, and more.</p>
@@ -217,7 +213,7 @@ export function CopilotPage() {
                 key={msg.id}
                 className={cn('flex gap-2 sm:gap-3', msg.role === 'user' && 'flex-row-reverse')}
               >
-                <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-gradient-to-br from-primary to-chart-4 text-primary-foreground')}>
+                <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-accent text-accent-foreground')}>
                   {msg.role === 'user' ? 'A' : <Sparkles className="h-4 w-4" />}
                 </div>
                 <div className={cn('max-w-[85%] rounded-2xl p-3 sm:max-w-[80%] sm:p-4', msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'glass-card')}>

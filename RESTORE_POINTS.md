@@ -3,20 +3,26 @@
 Known-good states you can return to. Each entry records what was verified, the exact
 commands used to verify it, and what to do if you need to roll back. **Newest first.**
 
-To restore, check out the tag (or the commit) for the entry you want:
+To restore, check out the tag (or commit) for the entry you want:
 
 ```bash
-git checkout v1.3.0-match-gate-kanban   # latest verified
+git checkout v1.3.0-match-gate-kanban   # once tags exist; see below
 npm install
 npm run build
 ```
 
-If you are not using tags, find the commit by its version bump: search the history for the
-`package.json` version (`1.3.0`, `1.2.0`, …).
-
-> **Tags are still not created, but `git` is available** (2.39.5 — earlier revisions of this
-> file said it was not installed). Commits exist; only the tags are missing. To tag the
-> verified states retroactively:
+> `git` is available on both dev machines (Windows and MacBook), so every snippet in this file
+> works as written. An earlier revision claimed git was not installed on Windows; that was wrong —
+> it is installed, just not always on `PATH` in a fresh shell. If `git` is not found, locate the
+> binary rather than assuming it is missing.
+>
+> The repo is also public, so a file can be read at any commit without git:
+> `https://raw.githubusercontent.com/arunkumar2891-ux/CareerPilot-AI/<ref>/<path>`.
+>
+> ### Tags still do not exist
+>
+> Commits exist; only the tags are missing, so `git checkout v1.3.0-...` will fail until they are
+> created. Until then, find a state with `git log` by the `package.json` version in that commit.
 >
 > ```bash
 > git tag -a v1.3.0-match-gate-kanban <commit> -m "Verified working: match-score gate (>80), kanban drag-and-drop"
@@ -24,8 +30,13 @@ If you are not using tags, find the commit by its version bump: search the histo
 > git push --tags
 > ```
 >
-> Until they exist, find a state with `git log` by the `package.json` version in that commit.
-> Note `git status` can take minutes on this machine — prefer `git log --oneline -10`.
+> ### ⚠️ Line endings are not normalized
+>
+> There is no `.gitattributes`, `core.autocrlf` is unset, and all 124 files under `src/` are
+> currently CRLF. Editing the same file on both machines produces whole-file phantom diffs that
+> can bury a real change and make `git checkout <commit> -- <path>` rollbacks noisy. Fixing it
+> (`.gitattributes` with `* text=auto eol=lf`) costs a one-time renormalization commit touching
+> nearly every file — do it as its own commit.
 
 ---
 

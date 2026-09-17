@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="CareerPilot AI  Autonomous AI job search">
+  <title>CareerPilot AI  Autonomous AI job search</title>
+  <rect width="1200" height="630" fill="#F4F1EA"/>
+  <g transform="translate(430 150) scale(11.25)">
+    <path d="M16 4C17.1 4 17.8 5.6 17.8 7.4V11.8L28 18.4V20.6L17.8 17.9V23.4L21.5 26.2V27.8L16 26.3L10.5 27.8V26.2L14.2 23.4V17.9L4 20.6V18.4L14.2 11.8V7.4C14.2 5.6 14.9 4 16 4Z" fill="#14603A"/>
+  </g>
+  <text x="600" y="510" text-anchor="middle" font-family="Inter Tight, Inter, Helvetica Neue, Arial, sans-serif" font-size="76" font-weight="600" letter-spacing="-1.5" fill="#101512">CareerPilot<tspan font-size="46" font-weight="500" letter-spacing="5.5" fill="#7A7A70" dx="18">AI</tspan></text>
+  <text x="600" y="566" text-anchor="middle" font-family="Inter Tight, Inter, Helvetica Neue, Arial, sans-serif" font-size="27" font-weight="450" letter-spacing="0.6" fill="#7A7A70">Autonomous AI job search</text>
+</svg>

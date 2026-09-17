@@ -4,69 +4,74 @@
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
+    --background: 40 20% 97%;
+    --foreground: 150 14% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 150 14% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 199 89% 48%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 20% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 20% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 199 89% 95%;
-    --accent-foreground: 199 89% 30%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-    --success: 142 71% 45%;
+    --popover-foreground: 150 14% 8%;
+    --primary: 152 63% 23%;
+    --primary-foreground: 40 30% 97%;
+    --secondary: 40 14% 93%;
+    --secondary-foreground: 150 14% 8%;
+    --muted: 40 14% 93%;
+    --muted-foreground: 145 6% 45%;
+    --accent: 152 40% 92%;
+    --accent-foreground: 152 63% 18%;
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 40 30% 97%;
+    --success: 152 63% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 38 92% 12%;
-    --border: 214 20% 90%;
-    --input: 214 20% 90%;
-    --ring: 199 89% 48%;
-    --chart-1: 199 89% 48%;
-    --chart-2: 142 71% 45%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --warning: 32 85% 42%;
+    --warning-foreground: 32 92% 10%;
+    --border: 40 12% 87%;
+    --input: 40 12% 87%;
+    --ring: 152 63% 23%;
+
+    /* Brand jade — the logo mark's fixed colour. Deliberately NOT overridden in `.dark`:
+       the lockup's planes are the same green on light and dark backgrounds (only the
+       wordmark and baseline swap). Do not point the mark at `--primary`, which does shift. */
+    --brand-jade: 162 47% 45%;
+    --chart-1: 152 63% 23%;
+    --chart-2: 152 45% 42%;
+    --chart-3: 32 85% 45%;
+    --chart-4: 172 55% 32%;
+    --chart-5: 96 40% 38%;
     --radius: 0.75rem;
     --glass-bg: 255 255 255 / 0.7;
     --glass-border: 255 255 255 / 0.5;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --card: 222 44% 9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 44% 9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 199 89% 55%;
-    --primary-foreground: 222 47% 6%;
-    --secondary: 217 33% 14%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 14%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 199 89% 18%;
-    --accent-foreground: 199 89% 80%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-    --success: 142 71% 45%;
+    --background: 150 22% 6%;
+    --foreground: 40 20% 96%;
+    --card: 152 18% 9%;
+    --card-foreground: 40 20% 96%;
+    --popover: 152 18% 9%;
+    --popover-foreground: 40 20% 96%;
+    --primary: 152 42% 49%;
+    --primary-foreground: 150 22% 6%;
+    --secondary: 152 12% 15%;
+    --secondary-foreground: 40 20% 96%;
+    --muted: 152 12% 15%;
+    --muted-foreground: 145 8% 62%;
+    --accent: 152 30% 18%;
+    --accent-foreground: 152 45% 78%;
+    --destructive: 0 68% 52%;
+    --destructive-foreground: 40 20% 96%;
+    --success: 152 45% 48%;
     --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 38 92% 12%;
-    --border: 217 33% 16%;
-    --input: 217 33% 16%;
-    --ring: 199 89% 55%;
-    --chart-1: 199 89% 55%;
-    --chart-2: 142 71% 50%;
-    --chart-3: 38 92% 55%;
-    --chart-4: 280 65% 65%;
-    --chart-5: 340 75% 60%;
-    --glass-bg: 20 20 35 / 0.5;
+    --warning: 36 88% 52%;
+    --warning-foreground: 32 92% 10%;
+    --border: 152 12% 17%;
+    --input: 152 12% 17%;
+    --ring: 152 42% 49%;
+    --chart-1: 152 42% 49%;
+    --chart-2: 152 38% 62%;
+    --chart-3: 36 88% 55%;
+    --chart-4: 172 48% 52%;
+    --chart-5: 96 38% 55%;
+    --glass-bg: 12 24 18 / 0.5;
     --glass-border: 255 255 255 / 0.08;
   }
 }
@@ -76,9 +81,12 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "cv11", "ss01";
-    font-variation-settings: "opsz" 32;
+    @apply bg-background text-foreground font-sans;
+    /* Inter Tight: disambiguated l/1 and a single-storey g. `opsz` is not an Inter Tight axis,
+       so it is deliberately not set here. */
+    font-feature-settings: "cv05", "cv08";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -96,7 +104,9 @@
 
   .gradient-text {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--chart-4)));
+    /* Forest → sage ramp. Stays within the brand hue so the wordmark reads as one colour
+       at small sizes; do not reintroduce a cross-hue (cyan→violet) gradient. */
+    background-image: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--chart-2)));
   }
 
   .grid-bg {

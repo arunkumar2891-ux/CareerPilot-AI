@@ -4,6 +4,34 @@
 
 CareerPilot-AI: Autonomous AI job search platform. React SPA + Supabase Edge Functions backend. See `CONTEXT.md` for architecture. See `docs/FEATURE_MAP.md` for feature locations.
 
+## Development Environments
+
+**This project is developed on two machines. `deno` is only on one of them — check which machine
+you are on before assuming a command will run.**
+
+| | Windows dev box | MacBook |
+|---|---|---|
+| `git` | ✅ installed | ✅ installed |
+| `deno` | ❌ **not installed** | ✅ installed |
+| `node` | ✅ v24 (strips TypeScript natively) | ✅ |
+| Backend tests | Node shim only, `apify-poll_test.ts` + `router_test.ts` **cannot run** | ✅ full `deno test`, authoritative |
+
+`git` may not be on `PATH` in a fresh Windows shell even though it is installed — if `git` is not
+found, locate the binary rather than concluding it is unavailable.
+
+**The MacBook is the authoritative validation environment** for backend tests. A backend change
+validated only on the Windows box has not been fully tested — say so explicitly rather than
+implying a green suite. Work that must happen on the Mac:
+
+- `deno test --allow-all --no-check supabase/functions/_shared/workflow/` and `.../ai/` — the two
+  suites the Node shim cannot load (see Validation Commands).
+
+> ⚠️ **Line endings are not normalized.** There is no `.gitattributes`, `core.autocrlf` is unset,
+> and all 124 files under `src/` are currently CRLF. Editing the same file on both machines will
+> produce whole-file phantom diffs. Adding `.gitattributes` with `* text=auto eol=lf` would fix
+> this, but triggers a one-time renormalization commit touching nearly every file — do it
+> deliberately, as its own commit, not bundled into a feature change.
+
 ## Architecture
 
 Read `CONTEXT.md` for stack, directory structure, and conventions.
@@ -35,9 +63,15 @@ The job-search pipeline is the most failure-prone area of this codebase. Read
 - **Never call `saveGraph()` from a repair or migration path.** It deletes and re-inserts
   every node and edge — slow enough to hit the statement timeout, and it re-uses existing
   primary keys. Write deltas via `src/utils/pipeline-repair.ts` instead. (BUG-003)
-- **Match workflow nodes by `type` + `action`/`builtin`, never by display name.** Names have
-  drifted across seed versions (`Get Resume` → `Sync Google Doc Resume`), so name matching
-  silently fails and leaves nodes unwired.
+  This applies to **both** built-in graphs: the job-search pipeline *and* the
+  `Resume Tailoring` graph (`repairTailorPipelineGraph`). Both repairs must be delta-based,
+  signature-matched, and guarded by an in-flight promise.
+- **Match workflow nodes by `type` + `action`/`builtin` first; never by display name *alone*.**
+  Names have drifted across seed versions (`Get Resume` → `Sync Google Doc Resume`), so
+  name-first matching silently fails and leaves nodes unwired. `planPipelineRepair` resolves in
+  three ordered passes — (1) `type` + `action`/`builtin` signature, (2) exact seed name, for
+  nodes whose *config* drifted, (3) the sole remaining node of that type. Pass 1 is what makes
+  the rename case safe; passes 2–3 are fallbacks and must never run first.
 - **Never leave a node orphaned.** `getEntryNodes()` treats any node with no incoming edge as
   an entry node, so an orphan executes as a stray start node and scrambles the run. Retired
   steps must be *deleted*, via `RETIRED_SEED_SIGNATURES`.
@@ -51,7 +85,9 @@ The job-search pipeline is the most failure-prone area of this codebase. Read
   chain **by array index** and ignores `result.route`; edge labels (`'true'`/`'false'`) only
   steer the top-level executor. To stop a job's chain early, return a *skip output* and detect
   it in `job-pipeline.ts` — see `isDuplicateSkipOutput` and `isBelowMatchScoreSkip`.
-- **`Match Score` is a gate, and must stay first in the fan-out.** It scores against the master
+- **`Match Score` is a gate, and must stay the first *scoring* step in the fan-out.** The fan-out
+  entry node is `Store Job` (`isJobPipelineStart` keys on `supabase` / `insert_job`), so
+  `Match Score` is `chain[1]`, immediately after it — not `chain[0]`. It scores against the master
   resume and skips the remaining steps when the score is not above
   `settings.jobSearch.minMatchScore`. Moving it after `ATS Optimizer` would spend the AI call it
   exists to avoid. See `_shared/workflow/match-gate.ts`.
@@ -122,9 +158,11 @@ the other either rejects valid output or lets drift through.
 | Per-job fan-out | `supabase/functions/_shared/workflow/job-pipeline.ts` |
 | Default pipeline definition | `src/constants/workflow-seed.ts` |
 | Graph repair planner | `src/utils/pipeline-repair.ts` |
-| Graph provisioning | `src/services/index.ts` → `ensureDefaultPipeline` |
+| Graph provisioning | `src/services/index.ts` → `ensureDefaultPipeline` / `ensureTailorPipeline` |
 | Execution graph rendering | `src/utils/execution-graph.ts` |
 | AI provider routing | `supabase/functions/_shared/ai/router.ts` |
+| Auto-apply (sends real email) | `supabase/functions/auto-apply/index.ts` + `_shared/gmail-send.ts` + `_shared/apply-email.ts` |
+| Interview prep | `supabase/functions/resume-actions/index.ts` (`mode: 'interview_prep'`) |
 | Resume output contract (prompt) | `supabase/functions/_shared/career-corpus/prompt.ts` → `ATS_SYSTEM_PROMPT` |
 | Resume output contract (validator) | `supabase/functions/_shared/ai/validate-resume.ts` → `REQUIRED_HEADERS` |
 | Resume corpus logic | `supabase/functions/_shared/career-corpus/` |
@@ -154,17 +192,32 @@ Use `BUGFIX.md` as the bug report template. Record resolved bugs in `BUG_LOG.md`
 
 ### Attribution
 
-Before blaming recent work for a bug, check whether the defect pre-exists. Local `git` **is**
-available (2.39.5) — earlier revisions of this file said otherwise, so prefer `git log` and
-`git show` over the GitHub API. No tags exist yet, so identify releases by the `package.json`
-version in the commit. The repo is also public, so `raw.githubusercontent.com` remains a
-fallback. Comparing against `origin/main` has twice prevented misattribution (BUG-003) and
-revealed that a user's DB graph predated the current seed.
+Before blaming recent work for a bug, check whether the defect pre-exists. `git` is available on
+both machines, so read history directly:
 
-> `git status` can take minutes on this machine (as can `tsc` and `eslint`). Prefer narrow
-> commands like `git log --oneline -10` over full working-tree scans.
+```bash
+git log --oneline -10 -- <path>
+git show <commit>:<path>
+```
+
+The repo is also public, so `raw.githubusercontent.com` and the GitHub API remain a fallback if a
+shell has no `git` on `PATH`:
+
+```
+https://raw.githubusercontent.com/arunkumar2891-ux/CareerPilot-AI/main/<path>
+https://api.github.com/repos/arunkumar2891-ux/CareerPilot-AI/commits?path=<path>
+```
+
+No tags exist yet, so identify releases by the `package.json` version in the commit. Comparing
+against `origin/main` has twice prevented misattribution (BUG-003) and revealed that a user's DB
+graph predated the current seed.
+
+> `tsc` and `eslint` can take minutes on the Windows box, and `eslint` has been observed hanging
+> at 0% CPU. Prefer narrow invocations (a single file) over full-tree scans there.
 
 ## Validation Commands
+
+Runs on either machine:
 
 ```bash
 npm run typecheck    # Type checking
@@ -172,7 +225,10 @@ npm run lint         # ESLint (38 pre-existing problems; add none)
 npm run build        # Full build verification
 ```
 
-Backend tests run under Deno:
+### Backend tests — MacBook (authoritative)
+
+Deno is installed there, so run the real suites. **This is the only way to fully validate a
+backend change:**
 
 ```bash
 deno test --allow-all --no-check supabase/functions/_shared/workflow/
@@ -194,17 +250,40 @@ Notes:
   should be `./resume-parse.ts`), which blocks a whole-`_shared` test run.
 - Deno tests that touch Supabase need `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set
   (stub values are fine). On a network with TLS interception, set `DENO_TLS_CA_STORE=system`.
-- **Deno is not installed on the primary dev machine.** Pure-logic suites can be run under
-  Node instead (`node --experimental-strip-types`) with a throwaway shim that defines
-  `globalThis.Deno = { test, env }` and awaits the collected cases. This works for
-  `_shared/ai/errors_test.ts` and all of `_shared/career-corpus/`. It does **not** work for
-  anything importing `_shared/supabase-admin.ts` (e.g. `_shared/ai/router_test.ts`), which
-  pulls `https://esm.sh/@supabase/supabase-js` — Node's loader rejects remote URLs. Validate
-  those by calling the function under test directly with the same arguments the caller passes,
-  and flag that the suite itself was not executed.
+
+### Backend tests — Windows box (partial fallback)
+
+Deno is not installed. Pure-logic suites run under Node via the shim at
+`scripts/run-deno-tests.mjs`, which defines `globalThis.Deno` with `test`/`env`, collects the
+cases, awaits them, and reports pass/fail:
+
+```bash
+node --experimental-strip-types scripts/run-deno-tests.mjs \
+  supabase/functions/_shared/workflow/pipeline-repair_test.ts \
+  src/utils/job-kanban_test.ts
+```
+
+Node is v24, which strips TypeScript natively, so no transpile step is needed.
+
+**Two suites cannot run this way** and must be validated on the Mac:
+`_shared/workflow/apify-poll_test.ts` and `_shared/ai/router_test.ts`. Both transitively import
+`https://esm.sh/@supabase/supabase-js` through `_shared/supabase-admin.ts`, and Node's loader
+rejects remote URLs with `ERR_UNSUPPORTED_ESM_URL_SCHEME`. Everything else passes: all of
+`_shared/workflow/` (minus that one), `_shared/ai/errors_test.ts`, all of
+`_shared/career-corpus/`, and `src/utils/` — 121 cases across 15 suites as of v1.3.0.
+
+When you validate only on Windows, **state which suites were skipped** rather than reporting a
+clean run.
 
 ## Releasing
 
-1. Verify the app actually works, not just that tests pass.
+Committing and tagging work on either machine. Step 1 should be backed by the full Deno suite,
+which means the MacBook.
+
+1. Verify the app actually works, not just that tests pass. Run the full Deno suites (see
+   Validation Commands) so no suite is silently skipped.
 2. `npm run version:bump`, then commit (a Render build cannot bump it — see `DEPLOY.md`).
-3. If the state is confirmed good, add an entry to `RESTORE_POINTS.md` and tag it.
+3. If the state is confirmed good, add an entry to `RESTORE_POINTS.md`.
+4. Tag it: `git tag -a v<version>-<short-name> -m "<what works>"` and `git push --tags`.
+   **No tags exist yet** — the verified v1.2.0 and v1.3.0 states still need retroactive tags.
+   See `RESTORE_POINTS.md` for the exact commands.
