@@ -302,9 +302,9 @@ https://raw.githubusercontent.com/arunkumar2891-ux/CareerPilot-AI/main/<path>
 https://api.github.com/repos/arunkumar2891-ux/CareerPilot-AI/commits?path=<path>
 ```
 
-No tags exist yet. **Do not identify a release by its `package.json` version** — four commits
-now share `1.3.0` (the v1.3.0 restore point plus `ea9b51b`, `2f2e42c`, `bdd22c4`), because the
-version was not bumped for the brand/UI work. Use the commit SHAs recorded in
+No tags exist yet. **Do not identify a release by its `package.json` version alone** — three
+commits (`ea9b51b`, `2f2e42c`, `bdd22c4`) share `1.3.0` with the v1.3.0 restore point, because the
+brand/UI work was bumped only afterwards, in `1a46d16`. Use the commit SHAs recorded in
 `RESTORE_POINTS.md`. Comparing against `origin/main` has twice prevented misattribution
 (BUG-003) and revealed that a user's DB graph predated the current seed.
 
@@ -395,11 +395,17 @@ which means the MacBook.
 1. Verify the app actually works, not just that tests pass. Run the full Deno suites (see
    Validation Commands) so no suite is silently skipped.
 2. `npm run version:bump`, then commit (a Render build cannot bump it — see `DEPLOY.md`).
+   **Commit the lockfile too** — the script writes `package.json` *and* both `version` fields in
+   `package-lock.json`. The lock was nevertheless left at `1.2.0` while `package.json` read
+   `1.3.0`, so for v1.3.0 either the script was bypassed or its lockfile edit was never staged.
+   Verify with `git show <commit> -- package-lock.json`.
 3. If the state is confirmed good, add an entry to `RESTORE_POINTS.md`.
 4. Tag it: `git tag -a v<version>-<short-name> -m "<what works>"` and `git push --tags`.
-   **No tags exist yet** — v1.2.0, v1.3.0, and the `bdd22c4` brand/UI state all still need
-   tags. See `RESTORE_POINTS.md` for the exact commands.
+   **No tags exist yet** — v1.2.0, v1.3.0, and the v1.4.0 brand/UI state (`1a46d16`) all still
+   need tags. See `RESTORE_POINTS.md` for the exact commands.
 
-> Steps 2 and 4 were skipped for the brand/UI work: `bdd22c4` is confirmed working and recorded
-> in `RESTORE_POINTS.md`, but it was never bumped or tagged, which is why four commits now share
-> version `1.3.0`. Bump before the next release to stop the collision growing.
+> Current state: the brand/UI work is verified, recorded, and bumped to `1.4.0` (`1a46d16`), so
+> steps 1–3 are done. **Step 4 is outstanding, and the bump commit is not pushed** — `main` is one
+> commit ahead of `origin/main`. When restoring the brand/UI state, prefer `1a46d16`: it is
+> `bdd22c4`'s tree plus the bump and docs, with no `src/` changes, so it carries the verified code
+> under the correct version label.

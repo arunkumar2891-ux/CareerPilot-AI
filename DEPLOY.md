@@ -197,13 +197,13 @@ Your URL will be `https://careerpilot-ai.onrender.com` (or similar).
 
 ### The version label
 
-The sidebar shows `beta v1.3 · 0914.0815` — the `package.json` version, then a **build stamp** (`MMDD.HHmm`, UTC) that changes automatically on every build. Hover it to see the exact build time.
+The sidebar shows `beta v1.4 · 0917.0915` — the `package.json` version, then a **build stamp** (`MMDD.HHmm`, UTC) that changes automatically on every build. Hover it to see the exact build time.
 
-The build stamp is what tells you a deploy actually landed, and it needs no action from you. The `v1.3` part only changes when you bump it:
+The build stamp is what tells you a deploy actually landed, and it needs no action from you. The `v1.4` part only changes when you bump it:
 
 ```bash
 npm run version:bump
-git commit -am "Bump version"
+git commit -am "Bump version"     # include package-lock.json; the script edits it too
 git push
 ```
 

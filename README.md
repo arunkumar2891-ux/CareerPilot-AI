@@ -246,7 +246,7 @@ deno test --allow-all --no-check supabase/functions/_shared/workflow/
 
 `--no-check` skips a handful of pre-existing type errors in untouched files. See [AGENTS.md](AGENTS.md#validation-commands) for the details and required env stubs.
 
-The sidebar shows `beta v1.3 · 0914.0815` — the `version` from `package.json`, plus a build stamp (`MMDD.HHmm` UTC) that updates automatically on every build, so you can always tell which deploy you're looking at. Bump the version number itself with `npm run version:bump`. See [DEPLOY.md](DEPLOY.md#the-version-label).
+The sidebar shows `beta v1.4 · 0917.0915` — the `version` from `package.json`, plus a build stamp (`MMDD.HHmm` UTC) that updates automatically on every build, so you can always tell which deploy you're looking at. Bump the version number itself with `npm run version:bump`. See [DEPLOY.md](DEPLOY.md#the-version-label).
 
 Verified-working versions are recorded in [RESTORE_POINTS.md](RESTORE_POINTS.md), with what each one validated and how to roll back.
 

@@ -24,12 +24,13 @@ npm run build
 > Commits exist; only the tags are missing, so `git checkout v1.3.0-...` will fail until they are
 > created.
 >
-> **Do not identify a state by its `package.json` version.** Three commits
-> (`ea9b51b`, `2f2e42c`, `bdd22c4`) plus the earlier v1.3.0 restore point all carry version
-> `1.3.0`, so the version is ambiguous. Use the commit SHA recorded in each entry, or create the
-> tags below.
+> **Do not identify a state by its `package.json` version alone.** `1.4.0` is unique to
+> `1a46d16`, but three commits (`ea9b51b`, `2f2e42c`, `bdd22c4`) plus the earlier v1.3.0 restore
+> point all carry `1.3.0`, because the bump only ran after the fact. Use the commit SHA recorded
+> in each entry, or create the tags below.
 >
 > ```bash
+> git tag -a v1.4.0-brand-ui-hardening 1a46d16 -m "Verified working: forest brand, motion system, error states, mobile fixes"
 > git tag -a v1.3.0-match-gate-kanban <commit> -m "Verified working: match-score gate (>80), kanban drag-and-drop"
 > git tag -a v1.2.0-stable-pipeline   <commit> -m "Verified working: batched per-role runs + self-healing graph"
 > git push --tags
@@ -45,16 +46,14 @@ npm run build
 
 ---
 
-## Working state — forest brand + UI production-readiness (phases 1–4)
+## v1.4.0 — forest brand + UI production-readiness (phases 1–4)
 
-**Commit:** `bdd22c4` · **Branch:** `main` (in sync with `origin/main`) · **Version:**
-`1.3.0` · **Confirmed working by the user:** 2026-09-17
+**Commit:** `1a46d16` · **Branch:** `main` · **Version:** `1.4.0` ·
+**Confirmed working by the user:** 2026-09-17
 
-> ⚠️ **Version collides with the entry below.** This state and the earlier
-> "v1.3.0 — Match Score gate + drag-and-drop kanban" restore point both carry
-> `package.json` version `1.3.0`, so the "identify releases by the version in that commit"
-> method at the top of this file **cannot distinguish them**. Use the commit SHA, or bump and
-> tag — see *Outstanding release steps* below.
+The behaviour was verified at `bdd22c4`; `1a46d16` is that same tree plus the version bump and
+these docs — it touches **no `src/` files**, so it carries the identical verified code. Restore
+to `1a46d16` to get the correct version label with it.
 
 ### Why this is a restore point
 
@@ -64,13 +63,19 @@ and it is the baseline for the deferred phase-5 work.
 
 ### What changed
 
-Three commits, oldest first:
+Four commits, oldest first:
 
 | Commit | Scope | Size |
 |---|---|---|
 | `ea9b51b` | Brand + theme: forest retheme of `src/index.css` (light + dark), plane `LogoMark`, new `LogoLockup`, gradient tiles removed from 6 call sites, `public/` brand assets, rewritten `index.html`, first webfont ever loaded (Inter Tight + JetBrains Mono), BUG-005 tailor-repair fix, dead-code removal, doc audit | 22 files, +860 / −487 |
 | `2f2e42c` | UI production-readiness phases 1–4: motion foundation, global press feedback, `ErrorBoundary` + `ErrorState` across 6 pages, list/heading semantics | 19 files, +537 / −96 |
 | `bdd22c4` | Mobile responsiveness (`HeaderActions`, Dashboard cards, Settings tab overflow) + documentation | 12 files, +692 / −89 |
+| `1a46d16` | `1.3.0 → 1.4.0` version bump + these docs. No `src/` changes | 5 files, +117 / −49 |
+
+> **Lockfile drift fixed here.** `package-lock.json` was still at `1.2.0` while `package.json`
+> said `1.3.0`. `scripts/bump-version.mjs` does sync both, so v1.3.0 either bypassed the script
+> or never staged its lockfile edit. This bump brought both to `1.4.0`, so they agree again.
+> On future bumps check `git show <commit> -- package-lock.json` rather than assuming.
 
 Detail lives in `BUG_LOG.md` → BUG-005, BUG-006, BUG-007, and the two 2026-09-17 audit tables.
 
@@ -126,12 +131,11 @@ State this plainly rather than treating the entry as a full green light:
 
 ### Outstanding release steps
 
-Steps 2 and 4 of `AGENTS.md` → Releasing were not done:
+`npm run version:bump` and the commit are **done** (`1a46d16`). Two steps remain — the commit is
+not pushed and no tag exists:
 
 ```bash
-npm run version:bump            # 1.3.0 -> 1.4.0, resolves the collision above
-git commit -am "Bump version"
-git tag -a v1.4.0-brand-ui-hardening bdd22c4 -m "Verified working: forest brand, motion system, error states, mobile fixes"
+git tag -a v1.4.0-brand-ui-hardening 1a46d16 -m "Verified working: forest brand, motion system, error states, mobile fixes"
 git push && git push --tags
 ```
 
@@ -140,7 +144,8 @@ The two retroactive tags noted at the top of this file are also still missing.
 ### Rollback
 
 ```bash
-git checkout bdd22c4        # this state
+git checkout 1a46d16        # this state (verified code + correct 1.4.0 label)
+git checkout bdd22c4        # same code, still labelled 1.3.0
 git checkout 5c87106        # the 8-section resume commit, before any of this work
 npm install && npm run build
 ```
