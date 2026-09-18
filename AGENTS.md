@@ -268,17 +268,27 @@ instead; callers must add `overflow-hidden`.
 ## Tooling Hazards
 
 - **Never rewrite a source file with PowerShell.** Windows PowerShell 5.1's `Get-Content` reads
-  as ANSI and `Out-File`/`>` writes UTF-16 or ANSI, so the round-trip double-encodes every
-  non-ASCII character (`—` → `Ã¢â‚¬â€`). This happened across 92 sites in `JobsPage.tsx`, and
-  **typecheck, eslint, and build all passed** — mojibake in a string literal is valid
-  TypeScript, so it only shows up as garbled UI text at runtime. Use the editing tools, or Node
-  with an explicit `'utf8'` encoding.
-- After any scripted bulk edit, audit the bytes:
-  `node scripts/check-encoding.mjs <files...>` — a healthy file reports `doubled:0`. It also
-  flags 1–4 **pre-existing** mojibake middots in `DashboardPage`, `ExecutionsPage`,
-  `ApplicationsPage`, `CopilotPage`, and `JobsPage`; those are not yours.
-- A green typecheck/lint/build does **not** establish that a file is uncorrupted, only that it
-  parses. Diff against `HEAD` when a change was machine-generated.
+  as ANSI and `Out-File`/`>` writes UTF-16 or ANSI, so the round-trip corrupts every non-ASCII
+  character. Use the editing tools, or Node with an explicit `'utf8'` encoding. This has bitten
+  this repo **twice**: once caught before commit, and once — BUG-010 — **shipped**, garbling
+  every `…`, `—`, `·`, `→`, and `•` in the UI across 12 files.
+- **A green typecheck/lint/build proves nothing about encoding.** Mojibake inside a string
+  literal is valid TypeScript, so `tsc`, `eslint`, and `vite build` all pass on a corrupted
+  file. It only appears as garbled text at runtime.
+- **After any scripted bulk edit, run `npm run check:encoding`** (scans all ~220 source files;
+  exits non-zero on a hit). Repair with `node scripts/fix-mojibake.mjs --write <files...>` —
+  the transformation is exactly invertible.
+- **Mojibake here is CP1252, not Latin-1 — this distinction is why the bug shipped.** Byte
+  `0x80` decodes to `U+20AC` (`€`) under Windows-1252 but `U+0080` under Latin-1, so an em dash
+  corrupts to a sequence containing **no `Ã` at all**. The first version of
+  `check-encoding.mjs` searched only for the `Ã` family, reported 94 genuinely-corrupted
+  occurrences as clean, and I trusted it. Derive the expected mangled form by *simulating* the
+  corruption (encode UTF-8 → decode CP1252); never hand-write the byte sequences.
+  `scripts/check-encoding_test.mjs` pins this with 9 cases — run it if you touch the checker.
+- **Verify a machine-generated change against git, not just the toolchain.** Extract the blob
+  with `git cat-file blob <sha>:<path>` and diff in Node. Do **not** use PowerShell redirection
+  (`>`) to capture it — that re-corrupts the bytes you are trying to inspect. `git show > file`
+  has the same problem.
 
 ## Context & Search Rules
 
@@ -333,7 +343,7 @@ instead; callers must add `overflow-hidden`.
 | Job detail modal (badges, match panel, apply-via-email) | `src/components/jobs/JobDetailDialog.tsx` |
 | Jobs filter + apply-eligibility logic (tested) | `src/utils/job-filters.ts` + `job-filters_test.ts` |
 | Multi-cache invalidation helper | `src/utils/query-keys.ts` → `invalidateAll` |
-| Encoding audit for scripted edits | `scripts/check-encoding.mjs` |
+| Encoding audit for scripted edits | `scripts/check-encoding.mjs` (`npm run check:encoding`) + `check-encoding_test.mjs`; repair via `scripts/fix-mojibake.mjs` |
 
 ## Bug-Fixing Workflow
 

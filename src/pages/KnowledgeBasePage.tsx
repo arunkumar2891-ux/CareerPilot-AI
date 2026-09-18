@@ -82,7 +82,7 @@ export function KnowledgeBasePage() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input placeholder="Search metrics, SnapLogic, BigQuery, Geminiâ€¦" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} className="pl-9" />
+                  <Input placeholder="Search metrics, SnapLogic, BigQuery, Gemini…" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} className="pl-9" />
                 </div>
                 <div className="flex gap-3">
                 <Select value={collection} onValueChange={setCollection}>
@@ -94,7 +94,7 @@ export function KnowledgeBasePage() {
                 </Select>
                 <Button onClick={search} disabled={searching} className="flex-1 gap-2 sm:flex-none">
                   {searching ? <InlineLoader /> : <Search className="h-4 w-4" />}
-                  {searching ? 'Searchingâ€¦' : 'Search'}
+                  {searching ? 'Searching…' : 'Search'}
                 </Button>
                 </div>
               </div>
@@ -156,7 +156,7 @@ export function KnowledgeBasePage() {
                 <h3 className="font-semibold text-sm">Sync Master Resume from Google Docs</h3>
                 <p className="text-xs text-muted-foreground mt-1">
                   Fetch your master resume from a Google Doc, extract quantified achievement bullets as knowledge chunks,
-                  and update the master resume in one click. Requires Google OAuth (Integrations â†’ Connect Google).
+                  and update the master resume in one click. Requires Google OAuth (Integrations → Connect Google).
                   You can also upload or paste a resume on the Corpus page.
                 </p>
               </div>
@@ -178,7 +178,7 @@ export function KnowledgeBasePage() {
                   className="gap-2"
                 >
                   {syncMutation.isPending ? <InlineLoader /> : <CloudDownload className="h-4 w-4" />}
-                  {syncMutation.isPending ? 'Syncingâ€¦' : 'Sync Now'}
+                  {syncMutation.isPending ? 'Syncing…' : 'Sync Now'}
                 </Button>
               </div>
 
@@ -200,9 +200,9 @@ export function KnowledgeBasePage() {
               <h4 className="text-sm font-medium mb-2">How it works</h4>
               <ol className="space-y-2 text-xs text-muted-foreground list-decimal list-inside">
                 <li>Your Google Doc is fetched via the Google Drive API (uses your connected OAuth token).</li>
-                <li>Bullet points (lines starting with - or â€¢) with quantifiable metrics and achievement verbs are extracted.</li>
+                <li>Bullet points (lines starting with - or •) with quantifiable metrics and achievement verbs are extracted.</li>
                 <li>Each bullet is tagged automatically based on keywords (e.g. SnapLogic, BigQuery, performance, security).</li>
-                <li>Quantified bullets replace the previous career evidence â€” leftover bullets from an old resume are not kept.</li>
+                <li>Quantified bullets replace the previous career evidence — leftover bullets from an old resume are not kept.</li>
                 <li>The master resume in the database is updated to match the Google Doc.</li>
                 <li>Next time you tailor a resume, the ATS Optimizer uses the master resume, or a matching role-specific resume if you added one on the Corpus page.</li>
               </ol>

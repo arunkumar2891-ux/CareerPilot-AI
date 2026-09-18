@@ -627,25 +627,97 @@ Two latent robustness bugs were fixed in the process, both now covered:
 ### `prefers-UTF-8`: a tooling hazard worth recording
 
 The first extraction attempt used PowerShell (`Get-Content` / `Out-File`). Windows PowerShell
-5.1 reads as ANSI and writes UTF-16/ANSI by default, so the round-trip **double-encoded every
-non-ASCII character** — `—` became `Ã¢â‚¬â€` in 92 places. `npm run typecheck`, `eslint`, and
-`npm run build` **all passed** on the corrupted file, because mojibake inside a string literal
-is still valid TypeScript; it would only have surfaced as garbled toast text at runtime. The
-file was restored with `git checkout HEAD --` and the extraction redone in Node.
+5.1 reads as ANSI and writes UTF-16/ANSI by default, so the round-trip corrupted every
+non-ASCII character. `npm run typecheck`, `eslint`, and `npm run build` **all passed** on the
+corrupted file, because mojibake inside a string literal is still valid TypeScript. The file was
+restored with `git checkout HEAD --` and the extraction redone in Node.
 
-`scripts/check-encoding.mjs` was added to detect this class of damage at the byte level, and is
-worth running after any scripted bulk edit:
+`scripts/check-encoding.mjs` was added to detect this class of damage at the byte level.
 
-```bash
-node scripts/check-encoding.mjs src/pages/JobsPage.tsx
-```
-
-It reports `doubled:0` for a healthy file. Note it also flags **1–4 pre-existing** mojibake
-middots in `DashboardPage`, `ExecutionsPage`, `ApplicationsPage`, `CopilotPage`, and
-`JobsPage` — those predate this work and are unrelated.
+> ⚠️ **The version of that script added here was itself broken, and the same hazard shipped in
+> the commit immediately after.** See **BUG-010** below. It searched only for the *Latin-1*
+> rendering of mojibake and therefore reported genuinely-corrupted files as clean. Do not trust
+> the "audited, clean" claims made in this section as originally written.
 
 **Rule: never use PowerShell to rewrite a source file.** Use the editing tools, or Node with
 explicit `utf8`.
+
+---
+
+## BUG-010 — Every button label with a `…`, `—`, `·`, `→` or `•` rendered as junk
+
+**Status:** Fixed (byte-verified against the last clean commit; **rendered** appearance not
+self-verified — no browser tooling in this environment)
+**Feature:** Global — Job Discovery, Executions, Resumes, Setup, Auth, Dashboard, Copilot,
+Knowledge Base, Integrations, Applications, Topbar
+
+**Symptom:** User-reported with screenshots. Button labels showed mojibake **while executing**,
+which is what made it look intermittent — the affected strings are almost all *pending-state*
+labels, so they only appear mid-action:
+
+> The three bullets below quote the corruption **verbatim** so it is searchable. They will make
+> `npm run check:encoding` report hits on this file — that is expected. Do **not** run
+> `fix-mojibake --write` on `BUG_LOG.md`; the checker is scoped to source files for this reason.
+
+- `Scoringâ€¦`, `Startingâ€¦`, `Extractingâ€¦`, `Sendingâ€¦`, `Generatingâ€¦`, `Applyingâ€¦`
+- `Proglite Â· Chennai, Tamil Nadu, India` (job subtitle separator)
+- `â€”â—‹ Job 1` and `âœ" Job 1` in the execution graph
+- 20 `â†'` arrows in the Setup page's step descriptions
+
+**Root cause:** **My own `text-[10px]` → `text-2xs` sweep, committed as `c76157a`, was performed
+with PowerShell.** Windows PowerShell 5.1's `Get-Content` decodes as the ANSI codepage and
+`Out-File`/`>` re-encodes on write, so every multi-byte UTF-8 character in each rewritten file
+was reinterpreted byte-by-byte and re-encoded — `…` (`E2 80 A6`) became three characters.
+**94 occurrences across 12 files.**
+
+Established by bisecting the blob, not by inference — every commit from `a0e88e7` through
+`5f0a5dd` is clean, and `c76157a` introduces all 94:
+
+```
+5f0a5dd  mobile responsive dashboard page   clean
+c76157a  update docs                        94 occurrences across 11 files   <-- introduced
+00d10f7  Update docs and job detail dialog  86 occurrences across 11 files
+```
+
+(The count drops to 86 at `00d10f7` only because extracting `JobDetailDialog` moved 8 of them
+into a new file, which the scan of the old path no longer saw.)
+
+**Why it escaped every gate — three compounding failures:**
+
+1. **`typecheck`, `lint`, and `build` cannot detect it.** Mojibake in a string literal is valid
+   TypeScript. All three passed on all 94 occurrences, in two separate commits.
+2. **The encoding checker I wrote to catch exactly this was wrong.** It searched for the
+   **Latin-1** rendering (the `Ã` family). Real Windows corruption goes through **CP1252**,
+   where byte `0x80` maps to `U+20AC` (`€`) instead of `U+0080` — so `—` corrupts to a sequence
+   containing **no `Ã` at all**. The script reported `doubled:0` and I read that as "clean".
+3. **I recorded the false negative as a finding.** The earlier note about "1–4 pre-existing
+   mojibake middots… those are not yours" was wrong on both counts: they were CP1252 mojibake
+   *and* they were mine. That claim is retracted above.
+
+**Fix:**
+- `scripts/fix-mojibake.mjs` — inverts the corruption (map each character back to its CP1252
+  byte, decode the byte run as UTF-8). Runs `--check` by default; `--write` to apply. All 94
+  substitutions were reviewed as a dry run before applying.
+- `scripts/check-encoding.mjs` — rewritten to *simulate* the corruption for an allow-list of
+  characters rather than hand-writing byte patterns, so it cannot miss a codepage variant
+  again. Also flags stray C1 control characters and double-encoding. Wired up as
+  `npm run check:encoding` (all ~220 source files, non-zero exit on a hit).
+- `scripts/check-encoding_test.mjs` — **9 cases** pinning the regression: clean ASCII and
+  correct UTF-8 must pass; CP1252 ellipsis/em-dash/middot/arrow/bullet, double-encoded text,
+  and a C1 control char must all fail. The old checker fails 6 of these.
+
+**Verification:** every repaired file was diffed against `5f0a5dd`, the last clean commit.
+**26 lines differ in total**, and each one is an intended edit — 21 `text-[10px]` → `text-2xs`
+and 5 from the `collapseVariants` migration in `SetupPage`. No other byte moved, which confirms
+the repair restored the original characters rather than merely producing plausible ones.
+
+**Validation:** `npm run check:encoding` clean across 220 files; self-test 9/9; `typecheck`
+clean; `lint` at the 40-problem baseline; `build` passes (CSS unchanged at 69.40 kB); 47 tests
+pass under the Node shim.
+
+**Residual risk:** the repair is byte-verified, but no rendered pixel was inspected. Worth a
+glance at a pending-state button (click "Generate Resume" and read the label) and at the Setup
+page's arrows.
 
 ---
 

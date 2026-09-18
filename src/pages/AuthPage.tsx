@@ -58,7 +58,7 @@ export function AuthPage() {
               <div className="space-y-2"><Label htmlFor="fullName">Full Name</Label><Input id="fullName" type="text" placeholder="Alex Morgan" value={fullName} onChange={(e) => setFullName(e.target.value)} /></div>
             )}
             <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
             <Button type="submit" disabled={loading} className="w-full gap-2">
               {loading ? <InlineLoader /> : <ArrowRight className="h-4 w-4" />}
               {mode === 'signin' ? 'Sign In' : 'Create Account'}
@@ -75,7 +75,7 @@ export function AuthPage() {
           </div>
 
           <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-            <Sparkles className="h-3 w-3 text-primary" /><span>Connected to Supabase â€” sign up to get started</span>
+            <Sparkles className="h-3 w-3 text-primary" /><span>Connected to Supabase — sign up to get started</span>
           </div>
         </div>
       </FadeIn>

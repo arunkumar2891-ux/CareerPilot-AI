@@ -111,14 +111,14 @@ export function ExecutionsPage() {
     const step = getActiveExecutionStep(run);
     const jobDetail = jobProgressLabel(run);
     if (!step) {
-      return jobDetail ? `${jobDetail} Â· ${run.nodeResults.length} nodes completed` : `${run.nodeResults.length} nodes completed`;
+      return jobDetail ? `${jobDetail} · ${run.nodeResults.length} nodes completed` : `${run.nodeResults.length} nodes completed`;
     }
     const elapsed = formatDurationMs(Date.now() - new Date(step.startedAt).getTime());
     const batch = run.batchProgress;
     const detail = batch && batch.node === step.name
       ? `Job ${batch.index}/${batch.total}`
       : (step.detail || jobDetail);
-    return `${step.name}${detail ? ` Â· ${detail}` : ''} Â· ${elapsed}`;
+    return `${step.name}${detail ? ` · ${detail}` : ''} · ${elapsed}`;
   };
 
   const describeRunSummary = (run: WorkflowRun) => {
@@ -131,7 +131,7 @@ export function ExecutionsPage() {
       parts.push(`${run.nodeResults.length} nodes`);
     }
     parts.push(run.id.slice(0, 8));
-    return parts.join(' Â· ');
+    return parts.join(' · ');
   };
 
   const openRunById = () => {
@@ -183,7 +183,7 @@ export function ExecutionsPage() {
           <DialogHeader>
             <DialogTitle>Delete this execution?</DialogTitle>
             <DialogDescription>
-              {deleteTarget?.workflowName || 'Workflow'} â€” started {deleteTarget ? timeAgo(deleteTarget.startedAt) : ''}. This cannot be undone.
+              {deleteTarget?.workflowName || 'Workflow'} — started {deleteTarget ? timeAgo(deleteTarget.startedAt) : ''}. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -230,7 +230,7 @@ export function ExecutionsPage() {
 
       <div className="space-y-2">
         {isLoading ? (
-          <PageLoader label="Loading executionsâ€¦" />
+          <PageLoader label="Loading executions…" />
         ) : runsError ? (
           /* Distinct from the empty state below: a failed fetch must not read as
              "you have no executions yet". */

@@ -102,7 +102,7 @@ export function ApplicationsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold">{app.company}</p>
-                      <span className="text-muted-foreground">Â·</span>
+                      <span className="text-muted-foreground">·</span>
                       <p className="text-sm text-muted-foreground">{app.role}</p>
                     </div>
                     <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
@@ -210,7 +210,7 @@ function ApplicationDetail({ app, onClose }: { app: Application; onClose: () => 
           </div>
           <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div><p className="text-xs text-muted-foreground">Applied</p><p className="font-medium">{formatDate(app.applicationDate)}</p></div>
-            <div><p className="text-xs text-muted-foreground">Recruiter</p><p className="font-medium break-words">{app.recruiter || 'â€”'}</p></div>
+            <div><p className="text-xs text-muted-foreground">Recruiter</p><p className="font-medium break-words">{app.recruiter || '—'}</p></div>
           </div>
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Update Status</p>

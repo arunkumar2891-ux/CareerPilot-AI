@@ -100,7 +100,7 @@ export function JobsPage() {
       const wf = await services.workflow.ensureDefaultPipeline();
       await services.execution.runWorkflow(wf.id);
       await invalidateAll(qc, ['jobs', 'runs', 'workflows']);
-      toast.success('Job search pipeline started â€” check Executions for progress');
+      toast.success('Job search pipeline started — check Executions for progress');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Pipeline failed to start');
     }
@@ -149,7 +149,7 @@ export function JobsPage() {
     try {
       toast.success(`Starting resume tailoring for ${ids.length} job${ids.length === 1 ? '' : 's'}...`);
       const { runId } = await services.resume.startResumeTailoring(ids);
-      toast.success('Resume tailoring started â€” check Executions for progress');
+      toast.success('Resume tailoring started — check Executions for progress');
       setSelectedJobIds(new Set());
       navigate(`/executions/${runId}`);
       await qc.invalidateQueries({ queryKey: ['runs'] });
@@ -167,7 +167,7 @@ export function JobsPage() {
     if (ids.length === 0 || bulkScoring || bulkTailoring) return;
     setBulkScoring(true);
     try {
-      toast.success(`Scoring ${ids.length} job${ids.length === 1 ? '' : 's'}â€¦`);
+      toast.success(`Scoring ${ids.length} job${ids.length === 1 ? '' : 's'}…`);
       const { results, errors } = await services.jobSearch.scoreMatchMany(ids);
       await qc.invalidateQueries({ queryKey: ['jobs'] });
       const failed = errors?.length ?? 0;
@@ -281,7 +281,7 @@ export function JobsPage() {
                 icon: Link2,
                 onClick: repairSync,
                 busy: repairing,
-                busyLabel: 'Repairingâ€¦',
+                busyLabel: 'Repairing…',
               },
               {
                 label: 'Extract Emails',
@@ -289,7 +289,7 @@ export function JobsPage() {
                 onClick: () => extractApplyEmails(),
                 disabled: !jobs?.length,
                 busy: extractingEmails,
-                busyLabel: 'Extractingâ€¦',
+                busyLabel: 'Extracting…',
               },
               {
                 label: 'Clear All Jobs',
@@ -326,7 +326,7 @@ export function JobsPage() {
         <p className="text-sm text-muted-foreground">
           Showing {filtered.length} of {jobs.length} jobs
           {view === 'kanban' && unfiledJobs.length > 0 && (
-            <span> Â· {unfiledJobs.length} with an unrecognised status in â€œOtherâ€</span>
+            <span> · {unfiledJobs.length} with an unrecognised status in “Other”</span>
           )}
           {filtered.length < jobs.length && (
             <Button
@@ -380,7 +380,7 @@ export function JobsPage() {
           </div>
 
           {showFilters && (
-            /* `collapseVariants` uses scaleY, not height â€” animating height triggers layout
+            /* `collapseVariants` uses scaleY, not height — animating height triggers layout
                every frame. It requires `overflow-hidden` on the animated element so the fields
                do not spill while scaling. */
             <motion.div
@@ -443,7 +443,7 @@ export function JobsPage() {
             onClick={bulkScoreMatch}
           >
             <Gauge className="h-4 w-4" />
-            {bulkScoring ? 'Scoringâ€¦' : `Score match (${selectedJobIds.size})`}
+            {bulkScoring ? 'Scoring…' : `Score match (${selectedJobIds.size})`}
           </Button>
           <Button
             size="sm"
@@ -452,7 +452,7 @@ export function JobsPage() {
             onClick={bulkGenerateResumes}
           >
             <FileText className="h-4 w-4" />
-            {bulkTailoring ? 'Startingâ€¦' : `Generate Resumes (${selectedJobIds.size})`}
+            {bulkTailoring ? 'Starting…' : `Generate Resumes (${selectedJobIds.size})`}
           </Button>
           {extractableJobs.length > 0 && (
             <Button
@@ -463,7 +463,7 @@ export function JobsPage() {
               onClick={bulkExtractEmails}
             >
               {extractingEmails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-              {extractingEmails ? 'Extractingâ€¦' : `Extract Emails (${extractableJobs.length})`}
+              {extractingEmails ? 'Extracting…' : `Extract Emails (${extractableJobs.length})`}
             </Button>
           )}
           {applyableJobs.length > 0 && (
@@ -475,7 +475,7 @@ export function JobsPage() {
               onClick={bulkAutoApply}
             >
               {bulkApplying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {bulkApplying ? 'Applyingâ€¦' : `Auto Apply (${applyableJobs.length})`}
+              {bulkApplying ? 'Applying…' : `Auto Apply (${applyableJobs.length})`}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={() => setSelectedJobIds(new Set())} disabled={bulkTailoring || bulkScoring || bulkApplying || extractingEmails}>Clear</Button>
@@ -483,7 +483,7 @@ export function JobsPage() {
       )}
 
       {/* A failed fetch is not an empty result set. Before this branch existed, an
-          error left `jobs` undefined, which fell through to the "No jobs found â€”
+          error left `jobs` undefined, which fell through to the "No jobs found —
           run a search" empty state and told the user their data did not exist. */}
       {!isLoading && (jobsError ? (
         <Card>
@@ -579,7 +579,7 @@ export function JobsPage() {
                         {job.matchScore}%
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{job.salaryMin ? `${formatCurrency(job.salaryMin)}+` : 'â€”'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{job.salaryMin ? `${formatCurrency(job.salaryMin)}+` : '—'}</TableCell>
                     <TableCell className="text-xs">{job.location}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{job.source}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{timeAgo(job.postingDate)}</TableCell>
@@ -590,7 +590,7 @@ export function JobsPage() {
                           {job.driveFileId ? 'Drive' : 'In app'}
                         </Badge>
                       ) : (
-                        <span className="text-xs text-muted-foreground">â€”</span>
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell><StatusBadge status={job.status} /></TableCell>

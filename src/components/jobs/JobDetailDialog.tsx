@@ -76,7 +76,7 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
     try {
       toast.success('Starting resume tailoring...');
       const { runId } = await services.resume.startResumeTailoring(job.id);
-      toast.success('Resume tailoring started â€” check Executions for progress');
+      toast.success('Resume tailoring started — check Executions for progress');
       onClose();
       navigate(`/executions/${runId}`);
       await invalidateAll(qc, ['runs', 'jobs', 'resumes']);
@@ -213,7 +213,7 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <DialogTitle className="text-xl leading-snug break-words">{job.role}</DialogTitle>
-              <p className="mt-1 text-sm text-muted-foreground break-words">{job.company} Â· {job.location}</p>
+              <p className="mt-1 text-sm text-muted-foreground break-words">{job.company} · {job.location}</p>
             </div>
             <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-primary/10 text-xl font-bold text-primary">
               {matchScore}
@@ -301,10 +301,10 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
         </ScrollArea>
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button onClick={generateResume} disabled={starting || scoring} className="gap-2">
-            <FileText className="h-4 w-4" /> {starting ? 'Startingâ€¦' : 'Generate Resume'}
+            <FileText className="h-4 w-4" /> {starting ? 'Starting…' : 'Generate Resume'}
           </Button>
           <Button variant="outline" onClick={scoreMatch} disabled={scoring || starting} className="gap-2">
-            <Gauge className="h-4 w-4" /> {scoring ? 'Scoringâ€¦' : 'Score match'}
+            <Gauge className="h-4 w-4" /> {scoring ? 'Scoring…' : 'Score match'}
           </Button>
           {matchScore > 0 && (
             <Button
@@ -323,7 +323,7 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
               className="gap-2"
             >
               <MessageSquare className="h-4 w-4" />
-              {generatingPrep ? 'Generatingâ€¦' : showInterviewPrep ? 'Hide Prep' : job.interviewPrep ? 'View Prep' : 'Interview Prep'}
+              {generatingPrep ? 'Generating…' : showInterviewPrep ? 'Hide Prep' : job.interviewPrep ? 'View Prep' : 'Interview Prep'}
             </Button>
           )}
           {effectiveApplyEmail && job.resumeStatus === 'ready' && job.status !== 'applied' && (
@@ -334,7 +334,7 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
               className="gap-2"
             >
               {loadingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {loadingPreview ? 'Loadingâ€¦' : 'Apply via Email'}
+              {loadingPreview ? 'Loading…' : 'Apply via Email'}
             </Button>
           )}
           {!effectiveApplyEmail && job.status !== 'applied' && (
@@ -359,7 +359,7 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
                   className="gap-1 text-xs"
                 >
                   {extractingEmail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
-                  {extractingEmail ? 'Extractingâ€¦' : 'Extract Email'}
+                  {extractingEmail ? 'Extracting…' : 'Extract Email'}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setEditingEmail(true)} className="gap-1 text-xs">
                   Set Manually
@@ -405,7 +405,7 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
             <Button variant="outline" onClick={() => setShowApplyConfirm(false)} disabled={applying}>Cancel</Button>
             <Button onClick={confirmApply} disabled={applying} className="gap-2">
               {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {applying ? 'Sendingâ€¦' : 'Send Application'}
+              {applying ? 'Sending…' : 'Send Application'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -22,7 +22,7 @@ const ACCOUNT_STEPS: SetupStep[] = [
   {
     title: 'Sign in',
     time: '1 min',
-    description: 'Create an account or log in. CareerPilot provisions your pipeline and automation automatically â€” add your resume on the Corpus page.',
+    description: 'Create an account or log in. CareerPilot provisions your pipeline and automation automatically — add your resume on the Corpus page.',
     details: [
       'Go to /auth and sign up with email/password, Google, or a magic link.',
       'Wait until the dashboard loads. In the background we create: Daily Job Search Pipeline and Daily 7 AM automation.',
@@ -35,9 +35,9 @@ const ACCOUNT_STEPS: SetupStep[] = [
     time: '2 min',
     description: 'These values are written into the master resume header. Do this before generating a PDF.',
     details: [
-      'Settings â†’ Profile â†’ Full Name and Title (e.g. Integration Architect).',
+      'Settings → Profile → Full Name and Title (e.g. Integration Architect).',
       'On the same page fill Phone, Location, LinkedIn URL, GitHub URL, and PANW start date.',
-      'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Corpus â€” the master resume should show real phone/LinkedIn/GitHub, not [Phone Number].',
+      'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Corpus — the master resume should show real phone/LinkedIn/GitHub, not [Phone Number].',
       'Skip any field you do not want on the resume; blank fields stay as placeholders.',
     ],
     action: { label: 'Open Profile & Contact', path: '/settings' },
@@ -56,13 +56,13 @@ const ACCOUNT_STEPS: SetupStep[] = [
   {
     title: 'Set what to search for',
     time: '1 min',
-    description: 'Used by Jobs â†’ Run Search and the daily 7 AM automation.',
+    description: 'Used by Jobs → Run Search and the daily 7 AM automation.',
     details: [
-      'Settings â†’ Job Search.',
-      'Search Query â€” match how you want LinkedIn scraped, e.g. "Integration Architect" or "Forward Deployment Engineer".',
-      'Location â€” e.g. "San Francisco, CA" or "Remote".',
-      'Max Jobs Per Run â€” start with 3â€“5 while you test tailoring.',
-      'Settings â†’ Notifications â†’ Summary Email (where daily results go).',
+      'Settings → Job Search.',
+      'Search Query — match how you want LinkedIn scraped, e.g. "Integration Architect" or "Forward Deployment Engineer".',
+      'Location — e.g. "San Francisco, CA" or "Remote".',
+      'Max Jobs Per Run — start with 3–5 while you test tailoring.',
+      'Settings → Notifications → Summary Email (where daily results go).',
       'Click Save Job Search Settings (and Save on Notifications).',
     ],
     action: { label: 'Job Search Settings', path: '/settings' },
@@ -72,10 +72,10 @@ const ACCOUNT_STEPS: SetupStep[] = [
     time: '3 min',
     description: 'Optional. Used to sync your master resume from Google Docs and generate knowledge chunks.',
     details: [
-      'Integrations â†’ Connect Google. Use the Gmail that owns the resume Google Doc.',
-      'If you see 403 access_denied, an admin must add your Gmail as an OAuth test user (Google Cloud Console â†’ OAuth consent screen).',
-      'Unverified-app warning: Advanced â†’ Go to CareerPilot (unsafe). Normal while the OAuth app is in Testing.',
-      'After connecting, go to Knowledge Base â†’ Google Doc Sync and paste your resume Doc ID to pull in your bullets.',
+      'Integrations → Connect Google. Use the Gmail that owns the resume Google Doc.',
+      'If you see 403 access_denied, an admin must add your Gmail as an OAuth test user (Google Cloud Console → OAuth consent screen).',
+      'Unverified-app warning: Advanced → Go to CareerPilot (unsafe). Normal while the OAuth app is in Testing.',
+      'After connecting, go to Knowledge Base → Google Doc Sync and paste your resume Doc ID to pull in your bullets.',
     ],
     action: { label: 'Open Integrations', path: '/integrations' },
   },
@@ -87,17 +87,17 @@ const ACCOUNT_STEPS: SetupStep[] = [
       'The "Daily Job Search Pipeline" workflow is auto-provisioned on first login.',
       'The "Daily 7 AM Job Search" automation is created with an active status.',
       'ATS Optimizer uses the master resume (and a matching role-specific resume when one exists).',
-      'Use Jobs â†’ Run Search when you want an immediate pipeline run (needs Apify + Gemini secrets on the server).',
+      'Use Jobs → Run Search when you want an immediate pipeline run (needs Apify + Gemini secrets on the server).',
     ],
     action: { label: 'View Executions', path: '/executions' },
   },
   {
     title: 'Tailor one resume, then run search',
-    time: '5â€“15 min',
+    time: '5–15 min',
     description: 'Prove bullet selection on a real JD first; then turn on discovery.',
     details: [
-      'Fast path (no scrape): if a job is already on the Jobs board, open it â†’ Generate tailored resume. A new resume named "Tailored: Company Role" appears on Resumes.',
-      'Full path: Jobs â†’ Run Search. Execution History shows Apify scrape â†’ ATS optimizer â†’ PDF. First scrape can take several minutes.',
+      'Fast path (no scrape): if a job is already on the Jobs board, open it → Generate tailored resume. A new resume named "Tailored: Company Role" appears on Resumes.',
+      'Full path: Jobs → Run Search. Execution History shows Apify scrape → ATS optimizer → PDF. First scrape can take several minutes.',
       'Sanity-check the tailored text: it should match the job, keep the candidate\'s voice, and keep source metrics unchanged.',
       'If tailoring fails because no master resume was found, add one on Corpus, then retry.',
     ],
@@ -192,7 +192,7 @@ export function SetupPage() {
           <span className="text-xs font-semibold text-primary">100%</span>
         </div>
         <p className="text-xs text-muted-foreground">
-          Required path: sign in â†’ connect Google â†’ sync resume Doc â†’ contact info â†’ job search query â†’ tailor or Run Search. Expand a step for exact clicks.
+          Required path: sign in → connect Google → sync resume Doc → contact info → job search query → tailor or Run Search. Expand a step for exact clicks.
         </p>
         <Card>
           <CardContent className="p-0">

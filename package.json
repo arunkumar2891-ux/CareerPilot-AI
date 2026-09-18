@@ -10,6 +10,8 @@
     "build:debug": "tsc -b && VITE_DEBUG_BUILD=true vite build",
     "version:bump": "node scripts/bump-version.mjs",
     "lint": "eslint .",
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "fix:encoding": "node scripts/fix-mojibake.mjs --write",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },

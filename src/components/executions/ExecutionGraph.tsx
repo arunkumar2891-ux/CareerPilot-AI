@@ -108,7 +108,7 @@ function JobBranchColumn({
   return (
     <div className="flex w-[120px] shrink-0 flex-col">
       <div className={cn('mb-1 flex items-center gap-1 text-2xs font-semibold', branchStatusIcon)}>
-        {branch.status === 'success' ? 'âœ“' : branch.status === 'failed' ? 'âœ—' : 'â—‹'}
+        {branch.status === 'success' ? '✓' : branch.status === 'failed' ? '✗' : '○'}
         <span className="truncate" title={branch.label}>
           Job {displayIndex ?? branch.jobIndex}
         </span>
@@ -145,13 +145,13 @@ function JobFanOut({
       <Connector label="Fan out" />
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>{jobsTotal} Jobs</span>
-        <span>Â·</span>
+        <span>·</span>
         <span className="text-success">{jobsSuccessful} Successful</span>
-        <span>Â·</span>
+        <span>·</span>
         <span className="text-destructive">{jobsFailed} Failed</span>
         {jobsSkipped > 0 && (
           <>
-            <span>Â·</span>
+            <span>·</span>
             <span>{jobsSkipped} Skipped</span>
           </>
         )}
@@ -225,8 +225,8 @@ function RoleGroup({
         <span className="min-w-0 flex-1 truncate font-semibold">Role: {group.role}</span>
         <span className="shrink-0 text-2xs text-muted-foreground">
           {group.jobsSuccessful}/{group.jobsTotal} successful
-          {group.jobsFailed > 0 ? ` Â· ${group.jobsFailed} failed` : ''}
-          {group.jobsSkipped > 0 ? ` Â· ${group.jobsSkipped} skipped` : ''}
+          {group.jobsFailed > 0 ? ` · ${group.jobsFailed} failed` : ''}
+          {group.jobsSkipped > 0 ? ` · ${group.jobsSkipped} skipped` : ''}
         </span>
         {expanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
       </button>
@@ -291,7 +291,7 @@ export function ExecutionGraph({ graph, onSelectNode }: ExecutionGraphProps) {
     <div className="space-y-2">
       {graph.isLegacy && (
         <p className="text-xs text-muted-foreground">
-          Legacy run â€” node names from the current workflow definition and execution logs. Per-job branch detail may be unavailable.
+          Legacy run — node names from the current workflow definition and execution logs. Per-job branch detail may be unavailable.
         </p>
       )}
 

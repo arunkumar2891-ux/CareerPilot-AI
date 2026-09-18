@@ -113,7 +113,7 @@ export function Topbar() {
           </TooltipTrigger>
           <TooltipContent side="bottom" className="max-w-xs text-xs">
             Tokens used this month across resume tailoring, ATS scoring, and Copilot.
-            No usage cap â€” see Dashboard for Gemini vs Groq breakdown.
+            No usage cap — see Dashboard for Gemini vs Groq breakdown.
           </TooltipContent>
         </Tooltip>
 
