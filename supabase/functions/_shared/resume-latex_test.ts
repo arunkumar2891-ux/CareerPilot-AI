@@ -2,8 +2,10 @@ import {
   buildGitHubUrl,
   buildLatexFromAtsText,
   buildLinkedInUrl,
+  buildWebsiteUrl,
   extractGitHubHandle,
   extractLinkedInHandle,
+  formatWebsiteLabel,
   normalizeResumeTextForPdf,
 } from './resume-latex.ts';
 
@@ -641,5 +643,107 @@ B.S. Computer Science`;
   }
   if (!latex.includes('CareerPilot AI')) {
     throw new Error('legacy project content was dropped');
+  }
+});
+
+function resumeWithContactLine(line: string): string {
+  return `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+Phone: +91 6380069156
+Location: Chennai, Tamil Nadu
+${line}
+LinkedIn: https://linkedin.com/in/janedoe
+GitHub: https://github.com/janedoe
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+EDUCATION
+B.S. Computer Science`;
+}
+
+Deno.test('formatWebsiteLabel strips scheme, www, and trailing slash', () => {
+  const cases: Array<[string, string]> = [
+    ['https://janedoe.dev', 'janedoe.dev'],
+    ['http://janedoe.dev', 'janedoe.dev'],
+    ['www.janedoe.dev/', 'janedoe.dev'],
+    ['janedoe.dev', 'janedoe.dev'],
+    ['https://janedoe.dev/portfolio/', 'janedoe.dev/portfolio'],
+  ];
+  for (const [raw, expected] of cases) {
+    const actual = formatWebsiteLabel(raw);
+    if (actual !== expected) throw new Error(`${raw}: expected ${expected}, got ${actual}`);
+  }
+});
+
+Deno.test('buildWebsiteUrl keeps an explicit scheme and defaults to https', () => {
+  if (buildWebsiteUrl('http://janedoe.dev') !== 'http://janedoe.dev') {
+    throw new Error('explicit http scheme was not preserved');
+  }
+  if (buildWebsiteUrl('janedoe.dev') !== 'https://janedoe.dev') {
+    throw new Error('bare domain did not default to https');
+  }
+  if (buildWebsiteUrl('www.janedoe.dev/') !== 'https://janedoe.dev') {
+    throw new Error('www/trailing slash not normalized');
+  }
+  if (buildWebsiteUrl('') !== '') throw new Error('empty input should stay empty');
+});
+
+Deno.test('Website contact line renders in moderncv templates without a doubled scheme', () => {
+  for (const template of ['classic', 'modern_single'] as const) {
+    const latex = buildLatexFromAtsText(resumeWithContactLine('Website: https://janedoe.dev'), { template });
+    if (!latex.includes('\\homepage{janedoe.dev}')) {
+      throw new Error(`${template} did not render \\homepage\n${latex}`);
+    }
+    // \homepage prepends the protocol itself; a full URL would double it.
+    if (/http:\/\/https:|https:\/\/https:/.test(latex)) {
+      throw new Error(`${template} produced a doubled URL scheme\n${latex}`);
+    }
+  }
+});
+
+Deno.test('Website contact line renders as a link in the two-column template', () => {
+  const latex = buildLatexFromAtsText(resumeWithContactLine('Website: https://janedoe.dev'), {
+    template: 'modern_two_column',
+  });
+  if (!latex.includes('\\href{https://janedoe.dev}{janedoe.dev}')) {
+    throw new Error(`two-column template did not render the website link\n${latex}`);
+  }
+});
+
+Deno.test('alternate website labels are all recognized', () => {
+  for (const label of ['Website', 'Portfolio', 'Homepage', 'Site']) {
+    const latex = buildLatexFromAtsText(resumeWithContactLine(`${label}: https://janedoe.dev`), {
+      template: 'classic',
+    });
+    if (!latex.includes('\\homepage{janedoe.dev}')) {
+      throw new Error(`${label}: was not recognized as a website`);
+    }
+  }
+});
+
+Deno.test('a resume with no website emits no homepage command', () => {
+  const latex = buildLatexFromAtsText(resumeWithContactLine('Title: Staff Engineer'), {
+    template: 'classic',
+  });
+  if (/\\homepage/.test(latex)) {
+    throw new Error('emitted \\homepage for a resume with no website');
+  }
+  const twoCol = buildLatexFromAtsText(resumeWithContactLine('Title: Staff Engineer'), {
+    template: 'modern_two_column',
+  });
+  // Contact block should still render the other fields.
+  if (!twoCol.includes('jane@example.com')) {
+    throw new Error('two-column contact block lost the email');
   }
 });

@@ -67,7 +67,7 @@ AI-generated resumes must emit exactly these 8 sections, in order. `SELECTED PRO
 
 ```text
 NAME
-CONTACT                     Email: / Phone: / Location: / LinkedIn: / GitHub:
+CONTACT                     Email: / Phone: / Location: / Website: / LinkedIn: / GitHub:
 SUMMARY                     2-3 sentences, first person
 SKILLS                      "Category:" heading lines, each with "- " item lines
 PROFESSIONAL EXPERIENCE     "COMPANY | Role", then "Dates | Location", then "- " bullets
@@ -76,6 +76,26 @@ SELECTED PROJECTS           plain title line, "- Type: Official|Personal",
 CERTIFICATION               one "- " bullet per entry
 EDUCATION                   one "- " bullet per entry
 ```
+
+### Contact website
+
+A personal site is optional. When the source resume's CONTACT block has one, it is carried through
+as a `Website:` line and rendered in the PDF. `Portfolio:`, `Homepage:`, and `Site:` are accepted as
+aliases, since master resumes label it inconsistently. It is **not** a Settings field — the value
+comes from the resume itself, so there is nothing to configure.
+
+Rendering differs by template because the two families build links differently:
+
+| Template | Command | Notes |
+|---|---|---|
+| `classic`, `modern_single` | `\homepage{janedoe.dev}` | moderncv; **scheme-stripped** |
+| `modern_two_column` | `\href{https://janedoe.dev}{janedoe.dev}` | plain `article` + `hyperref` |
+
+moderncv's `\homepage` **prepends the protocol itself**, so passing a full URL renders
+`http://https://janedoe.dev`. `formatWebsiteLabel()` strips the scheme, `www.`, and any trailing
+slash — the same reason `\social[linkedin]{handle}` takes a handle rather than a URL.
+`buildWebsiteUrl()` is the absolute form for templates that build their own `\href`; it preserves an
+explicit `http://` and otherwise defaults to `https://`.
 
 ### Project type labels
 

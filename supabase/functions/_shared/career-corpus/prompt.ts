@@ -26,7 +26,7 @@ CONTENT CONTRACT:
 - Reorder and emphasize experience that matches the job. Drop or shorten less relevant projects.
 - Target TWO PAGES. Keep experience at or below the source bullet count. Do not invent extra bullets.
 - Company, role, date, and project title lines are headers: do not start them with "- ". Only achievement lines use "- ".
-- Fill NAME and CONTACT from the supplied contact block. Keep contact labels.
+- Fill NAME and CONTACT from the supplied contact block. Keep contact labels. If the source resume or contact block has a personal website, portfolio, or homepage URL, keep it as a "Website:" line in CONTACT. Never invent one.
 - SUMMARY: first-person professional tone (I / my), 2-3 sentences, no buzzword stacking, no opening slogan of the target title.
 - SKILLS: group skills into categories. Write each category as a heading line ending in ":" (for example "Cloud:"), then one or more "- " item lines of comma-separated tools beneath it. List actual technologies and tools from the source resume. Do not pad with generic soft skills unless they appear in the source. Use at most 6 categories.
 - PROFESSIONAL EXPERIENCE: write each entry as "COMPANY | Role" on one line, then "Dates | Location" on the next line, then the achievement bullets. Keep employers, titles, and dates exactly as the source has them.
@@ -51,6 +51,7 @@ CONTACT
 Email: <email>
 Phone: <phone>
 Location: <location>
+Website: <personal site url, only if the source has one>
 LinkedIn: <linkedin url>
 GitHub: <github url>
 

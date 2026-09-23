@@ -35,8 +35,8 @@ const HEADER_ALIASES: Record<string, string> = {
   CERTIFICATIONS: 'CERTIFICATION',
 };
 const KEYWORD_REFERENCE_RE = /(?:^|\s)[\w\s/&.-]+\s+Keywords:/i;
-const CONTACT_LINE_RE = /^(?:location|phone|email|linkedin|github|title|panw start)\s*:/i;
-const LABEL_PREFIX_RE = /^(?:name|title|email|phone|location|linkedin|github|panw start|role focus):\s*/i;
+const CONTACT_LINE_RE = /^(?:location|phone|email|linkedin|github|website|portfolio|homepage|site|title|panw start)\s*:/i;
+const LABEL_PREFIX_RE = /^(?:name|title|email|phone|location|linkedin|github|website|portfolio|homepage|panw start|role focus):\s*/i;
 const SECTION_MARKER_RE = /^={5,}$/;
 const PROJECT_MARKER_RE = /^---\s+/;
 

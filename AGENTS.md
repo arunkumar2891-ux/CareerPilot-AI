@@ -116,6 +116,11 @@ the other either rejects valid output or lets drift through.
   is unclear, so the grounding contract still holds. `resume-latex.ts` treats `Type:` as project
   *meta* (via `PROJECT_META_RE`), not an achievement bullet, and `sortProjectMeta` renders it
   above `Technologies:`.
+- **`CONTACT` may carry an optional `Website:` line** (aliases: `Portfolio:`, `Homepage:`, `Site:`),
+  sourced from the resume rather than Settings. In `classic` / `modern_single` it renders via
+  moderncv's `\homepage{...}`, which **prepends the protocol itself** — pass the scheme-stripped
+  label from `formatWebsiteLabel()` or you get `http://https://example.com`. Only
+  `modern_two_column` (plain `article` + `hyperref`) takes an absolute URL, via `buildWebsiteUrl()`.
 - **`canonicalizeAtsResumeOutput` rewrites alias headers before its fast path.** Aliases satisfy
   `hasAllRequiredHeaders()`, so without that rewrite an otherwise-complete resume short-circuits
   and keeps a stale heading.

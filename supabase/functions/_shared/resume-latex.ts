@@ -100,6 +100,38 @@ export function buildGitHubUrl(raw: string): string {
   return `https://github.com/${handle}`;
 }
 
+/**
+ * Display form of a personal site: no scheme, no trailing slash.
+ *
+ * moderncv's `\homepage{}` prepends the protocol itself (always `http://` in
+ * older releases, `https` by default in current ones), so passing a full URL
+ * renders `http://https://example.com`. Pass this scheme-stripped form instead,
+ * exactly as `\social[linkedin]{handle}` takes a handle rather than a URL.
+ */
+export function formatWebsiteLabel(raw: string): string {
+  return stripUrlScheme(raw).replace(/\/+$/, '');
+}
+
+/** Absolute URL for templates that build their own `\href` (modern_two_column). */
+export function buildWebsiteUrl(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+  const label = formatWebsiteLabel(trimmed);
+  return label ? `https://${label}` : '';
+}
+
+/**
+ * Master resumes label a personal site inconsistently, so accept the common
+ * spellings rather than only `Website:`.
+ */
+function pickWebsite(contactFields: Record<string, string>): string {
+  return contactFields.website
+    || contactFields.portfolio
+    || contactFields.homepage
+    || contactFields.site
+    || '';
+}
+
 function sectionBoundaryPattern(): string {
   return SECTION_HEADERS
     .map((header) => header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -863,12 +895,17 @@ function buildModerncvHeader(
   const location = contactFields.location || '';
   const linkedin = contactFields.linkedin || '';
   const github = contactFields.github || '';
+  const website = pickWebsite(contactFields);
 
   const headerLines: string[] = [];
   if (titleLine) headerLines.push(`\\quote{${esc(titleLine)}}`);
   if (phone) headerLines.push(`\\phone[mobile]{${esc(phone)}}`);
   if (email) headerLines.push(`\\email{${esc(email)}}`);
   if (location) headerLines.push(`\\address{${esc(location)}}{}`);
+  if (website) {
+    // Scheme-stripped: \homepage prepends the protocol itself.
+    headerLines.push(`\\homepage{${esc(formatWebsiteLabel(website))}}`);
+  }
   if (linkedin) {
     headerLines.push(`\\social[linkedin]{${esc(extractLinkedInHandle(linkedin))}}`);
   }
@@ -937,19 +974,26 @@ function buildModernTwoColumnLatex(
   const location = contactFields.location || '';
   const linkedin = contactFields.linkedin || '';
   const github = contactFields.github || '';
+  const website = pickWebsite(contactFields);
 
   const leftColumn: string[] = [];
   leftColumn.push(`{\\LARGE\\bfseries ${first} ${last}}`);
   if (titleLine) leftColumn.push(`\\vspace{4pt}\n{\\large ${esc(titleLine)}}`);
   leftColumn.push('\\vspace{12pt}');
 
-  if (email || phone || location || linkedin || github) {
+  if (email || phone || location || linkedin || github || website) {
     leftColumn.push(`\\textbf{Contact}`);
     leftColumn.push('\\vspace{4pt}');
     leftColumn.push('\\begin{itemize}[leftmargin=*, nosep]');
     if (email) leftColumn.push(`\\item \\href{mailto:${escUrl(email)}}{${esc(email)}}`);
     if (phone) leftColumn.push(`\\item ${esc(phone)}`);
     if (location) leftColumn.push(`\\item ${esc(location)}`);
+    if (website) {
+      // Show the readable host rather than a bare "Website" label.
+      leftColumn.push(
+        `\\item \\href{${escUrl(buildWebsiteUrl(website))}}{${esc(formatWebsiteLabel(website))}}`,
+      );
+    }
     if (linkedin) {
       leftColumn.push(`\\item \\href{${escUrl(buildLinkedInUrl(linkedin))}}{LinkedIn}`);
     }
