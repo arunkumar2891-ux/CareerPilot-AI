@@ -322,7 +322,7 @@ B.Tech in Information Technology
   if (!ok.ok) throw new Error(`expected truncated summary to pass: ${ok.ok ? '' : ok.reason}`);
 });
 
-Deno.test('validateResumeOutput treats PERSONAL PROJECTS and CERTIFICATION as optional and keeps 8-header order', () => {
+Deno.test('validateResumeOutput treats SELECTED PROJECTS and CERTIFICATION as optional and keeps 8-header order', () => {
   const withoutOptional = `NAME
 Jane Doe
 
@@ -379,7 +379,7 @@ B.S. Computer Science
   if (!present.ok) throw new Error(`expected optional-section resume to validate: ${present.reason}`);
   const skillsAt = present.text.indexOf('SKILLS');
   const experienceAt = present.text.indexOf('PROFESSIONAL EXPERIENCE');
-  const projectsAt = present.text.indexOf('PERSONAL PROJECTS');
+  const projectsAt = present.text.indexOf('SELECTED PROJECTS');
   const certAt = present.text.indexOf('CERTIFICATION');
   const educationAt = present.text.indexOf('EDUCATION');
   if (!(skillsAt < experienceAt && experienceAt < projectsAt && projectsAt < certAt && certAt < educationAt)) {
@@ -387,8 +387,8 @@ B.S. Computer Science
   }
 });
 
-Deno.test('canonicalizeAtsResumeOutput maps project header drift to PERSONAL PROJECTS', () => {
-  for (const alias of ['PROJECTS', 'KEY PROJECTS', 'SIDE PROJECTS']) {
+Deno.test('canonicalizeAtsResumeOutput maps project header drift to SELECTED PROJECTS', () => {
+  for (const alias of ['PROJECTS', 'KEY PROJECTS', 'SIDE PROJECTS', 'PERSONAL PROJECTS']) {
     const text = `NAME
 Jane Doe
 
@@ -414,8 +414,11 @@ EDUCATION
 B.S. Computer Science
 `;
     const canonical = canonicalizeAtsResumeOutput(text);
-    if (!/^PERSONAL PROJECTS$/m.test(canonical)) {
-      throw new Error(`${alias} did not map to PERSONAL PROJECTS\n${canonical}`);
+    if (!/^SELECTED PROJECTS$/m.test(canonical)) {
+      throw new Error(`${alias} did not map to SELECTED PROJECTS\n${canonical}`);
+    }
+    if (/^PERSONAL PROJECTS$/m.test(canonical)) {
+      throw new Error(`${alias} left a stale PERSONAL PROJECTS header\n${canonical}`);
     }
     const checked = validateResumeOutput(text, { skipGrounding: true });
     if (!checked.ok) throw new Error(`${alias} resume failed validation: ${checked.reason}`);
@@ -501,18 +504,18 @@ EDUCATION
 - B.Tech - Information Technology, SASTRA University, 2016, Thanjavur
 `;
 
-Deno.test('canonicalizeAtsResumeOutput keeps PERSONAL PROJECTS as its own section', () => {
+Deno.test('canonicalizeAtsResumeOutput keeps the projects section as its own section', () => {
   const canonical = canonicalizeAtsResumeOutput(EIGHT_SECTION_RESUME);
-  if (!/^PERSONAL PROJECTS$/m.test(canonical)) {
-    throw new Error(`PERSONAL PROJECTS header was lost or merged\n${canonical}`);
+  if (!/^SELECTED PROJECTS$/m.test(canonical)) {
+    throw new Error(`SELECTED PROJECTS header was lost or merged\n${canonical}`);
   }
   const experienceAt = canonical.indexOf('PROFESSIONAL EXPERIENCE');
-  const projectsAt = canonical.indexOf('PERSONAL PROJECTS');
+  const projectsAt = canonical.indexOf('SELECTED PROJECTS');
   const certAt = canonical.indexOf('CERTIFICATION');
   if (!(experienceAt < projectsAt && projectsAt < certAt)) {
-    throw new Error(`PERSONAL PROJECTS is out of order\n${canonical}`);
+    throw new Error(`SELECTED PROJECTS is out of order\n${canonical}`);
   }
-  if (canonical.includes('PERSONAL PROJECTS\n\nCareerPilot')) return;
+  if (canonical.includes('SELECTED PROJECTS\n\nCareerPilot')) return;
   if (!canonical.includes('Technologies: React 18')) {
     throw new Error('project technologies line was dropped');
   }
@@ -542,7 +545,7 @@ Deno.test('validateResumeOutput accepts the categorized eight-section resume for
 Deno.test('validateResumeOutput keeps project bullets out of the experience bullet budget', () => {
   const checked = validateResumeOutput(EIGHT_SECTION_RESUME, { skipGrounding: true });
   if (!checked.ok) throw new Error(`expected resume to validate: ${checked.reason}`);
-  const projectsAt = checked.text.indexOf('PERSONAL PROJECTS');
+  const projectsAt = checked.text.indexOf('SELECTED PROJECTS');
   const experience = checked.text.slice(
     checked.text.indexOf('PROFESSIONAL EXPERIENCE'),
     projectsAt,

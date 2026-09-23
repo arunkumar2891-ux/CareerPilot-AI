@@ -11,20 +11,27 @@ const REQUIRED_HEADERS = [
   'SUMMARY',
   'SKILLS',
   'PROFESSIONAL EXPERIENCE',
-  'PERSONAL PROJECTS',
+  'SELECTED PROJECTS',
   'CERTIFICATION',
   'EDUCATION',
 ];
-const OPTIONAL_HEADERS = new Set(['PERSONAL PROJECTS', 'CERTIFICATION']);
+const OPTIONAL_HEADERS = new Set(['SELECTED PROJECTS', 'CERTIFICATION']);
 const HEADER_ALIASES: Record<string, string> = {
   'PROFESSIONAL SUMMARY': 'SUMMARY',
   'EXECUTIVE SUMMARY': 'SUMMARY',
   'TECHNICAL SKILLS': 'SKILLS',
   'CORE COMPETENCIES': 'SKILLS',
   'WORK EXPERIENCE': 'PROFESSIONAL EXPERIENCE',
-  PROJECTS: 'PERSONAL PROJECTS',
-  'KEY PROJECTS': 'PERSONAL PROJECTS',
-  'SIDE PROJECTS': 'PERSONAL PROJECTS',
+  PROJECTS: 'SELECTED PROJECTS',
+  'KEY PROJECTS': 'SELECTED PROJECTS',
+  'SIDE PROJECTS': 'SELECTED PROJECTS',
+  // The section was called PERSONAL PROJECTS until the rename. Existing master
+  // resumes (and any model that remembers the old contract) still emit it, and
+  // an unrecognized header is *silently absorbed into the previous section*
+  // rather than rejected — that is exactly how the section vanished in BUG-004.
+  // This alias is load-bearing; do not remove it.
+  'PERSONAL PROJECTS': 'SELECTED PROJECTS',
+  'SELECTED PROJECT': 'SELECTED PROJECTS',
   CERTIFICATIONS: 'CERTIFICATION',
 };
 const KEYWORD_REFERENCE_RE = /(?:^|\s)[\w\s/&.-]+\s+Keywords:/i;
@@ -109,6 +116,16 @@ export function canonicalizeAtsResumeOutput(raw: string): string {
   text = text.split('\n')
     .filter((line) => !SECTION_MARKER_RE.test(line.trim()))
     .filter((line) => !KEYWORD_REFERENCE_RE.test(line.trim()))
+    .join('\n');
+  // Rewrite alias headers to their canonical spelling *before* the fast path
+  // below. Aliases already satisfy hasAllRequiredHeaders(), so a resume that is
+  // otherwise complete would short-circuit and keep a stale heading such as
+  // `PERSONAL PROJECTS` or `TECHNICAL SKILLS`.
+  text = text.split('\n')
+    .map((line) => {
+      const header = canonicalHeader(line);
+      return header && line.trim() !== header ? header : line;
+    })
     .join('\n');
   if (hasAllRequiredHeaders(text)) return text.trim();
 
@@ -411,7 +428,7 @@ function validateGrounding(
       allowAggregate: current === 'SUMMARY'
         || current === 'SKILLS'
         || current === 'CERTIFICATION'
-        || current === 'PERSONAL PROJECTS'
+        || current === 'SELECTED PROJECTS'
         || (current === 'PROFESSIONAL EXPERIENCE' && !/^\s*[-•]\s+/.test(line)),
       sourceText: groundingSource,
     })) {
@@ -561,7 +578,7 @@ function salvageGrounding(
 
 /**
  * An optional section is only mandatory when the caller supplied source content for it.
- * PERSONAL PROJECTS has no source option, so it may always be absent.
+ * SELECTED PROJECTS has no source option, so it may always be absent.
  */
 function optionalHeaderSource(header: string, options?: { certificationSource?: string }): string | undefined {
   if (header === 'CERTIFICATION') return options?.certificationSource;

@@ -530,8 +530,8 @@ Deno.test('router validation passes an eight-section resume through without a re
   );
   if (fallback.calls !== 1) throw new Error(`expected a single call, got ${fallback.calls}`);
   if (groq.calls !== 0) throw new Error('groq should not run when validation passes');
-  if (!result.text.includes('PERSONAL PROJECTS')) {
-    throw new Error(`router dropped PERSONAL PROJECTS\n${result.text}`);
+  if (!result.text.includes('SELECTED PROJECTS')) {
+    throw new Error(`router dropped SELECTED PROJECTS\n${result.text}`);
   }
   if (!result.text.includes('- Technologies: React 19, TypeScript, FFmpeg.wasm')) {
     throw new Error(`router dropped the project technologies line\n${result.text}`);

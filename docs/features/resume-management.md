@@ -62,7 +62,7 @@ CorpusPage → import from Google Doc / upload / paste
 
 ## Tailored Resume Output Contract
 
-AI-generated resumes must emit exactly these 8 sections, in order. `PERSONAL PROJECTS` and
+AI-generated resumes must emit exactly these 8 sections, in order. `SELECTED PROJECTS` and
 `CERTIFICATION` are optional and omitted when the source resume has none.
 
 ```text
@@ -71,10 +71,30 @@ CONTACT                     Email: / Phone: / Location: / LinkedIn: / GitHub:
 SUMMARY                     2-3 sentences, first person
 SKILLS                      "Category:" heading lines, each with "- " item lines
 PROFESSIONAL EXPERIENCE     "COMPANY | Role", then "Dates | Location", then "- " bullets
-PERSONAL PROJECTS           plain title line, "- Technologies: ...", then "- " bullets
+SELECTED PROJECTS           plain title line, "- Type: Official|Personal",
+                            "- Technologies: ...", then "- " bullets
 CERTIFICATION               one "- " bullet per entry
 EDUCATION                   one "- " bullet per entry
 ```
+
+### Project type labels
+
+Each project may carry a `- Type: Official` or `- Type: Personal` line directly under its title,
+so a reader can tell employer/client work from self-directed work. The prompt derives the value
+from the source resume only — the heading the project sits under, an employer named in the
+project, or an explicit label — and omits the line when the source is unclear, which keeps the
+"no invented facts" grounding rule intact.
+
+`resume-latex.ts` treats `Type:` as project *meta* rather than an achievement bullet
+(`PROJECT_META_RE`) and renders it above `Technologies:` (`sortProjectMeta`).
+
+### Legacy section name
+
+This section was called `PERSONAL PROJECTS` before v1.4.0. The old name is retained as an alias in
+both `validate-resume.ts` (`HEADER_ALIASES`, plus markdown aliases and `PROJECT_SECTION_HEADERS`
+in `resume-latex.ts`) because existing master resumes and cached tailored resumes still use it.
+An unrecognized header is absorbed into the previous section rather than rejected, so dropping the
+alias would silently delete the section from those resumes — see BUG-004.
 
 Enforced by `prompt.ts` (generation) and `validate-resume.ts` (acceptance) — these two must be
 changed together. Validation caps: 10,000 chars total, SUMMARY 1,400, SKILLS 2,500 chars / 24

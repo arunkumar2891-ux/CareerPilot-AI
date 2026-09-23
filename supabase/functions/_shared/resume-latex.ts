@@ -12,6 +12,7 @@ const SECTION_HEADERS = [
   'SUMMARY',
   'SKILLS',
   'PROFESSIONAL EXPERIENCE',
+  'SELECTED PROJECTS',
   'PERSONAL PROJECTS',
   'CERTIFICATION',
   'CERTIFICATIONS',
@@ -35,8 +36,9 @@ const MARKDOWN_SECTION_ALIASES: Record<string, string> = {
   experience: 'PROFESSIONAL EXPERIENCE',
   'work experience': 'PROFESSIONAL EXPERIENCE',
   'professional experience': 'PROFESSIONAL EXPERIENCE',
-  'personal projects': 'PERSONAL PROJECTS',
-  projects: 'PERSONAL PROJECTS',
+  'selected projects': 'SELECTED PROJECTS',
+  'personal projects': 'SELECTED PROJECTS',
+  projects: 'SELECTED PROJECTS',
   certification: 'CERTIFICATION',
   certifications: 'CERTIFICATION',
   education: 'EDUCATION',
@@ -207,7 +209,7 @@ function parseProjectTag(line: string): string | null {
 function looksLikeProjectTitle(line: string): boolean {
   const trimmed = String(line || '').trim();
   if (!trimmed || trimmed.length < 8) return false;
-  if (/^(Technologies|Role|Duration):/i.test(trimmed)) return false;
+  if (/^(Technologies|Role|Duration|Type):/i.test(trimmed)) return false;
   if (/^(Built|Implemented|Designed|Developed|Created|Led|Managed)\b/i.test(trimmed)) return false;
   return /\|/.test(trimmed) || /\s-\s/.test(trimmed) || /^[A-Z0-9][\w\s.&/-]{7,}$/.test(trimmed);
 }
@@ -216,13 +218,52 @@ function isTechnologiesLine(line: string): boolean {
   return /^Technologies:/i.test(stripProjectLineDecorators(line));
 }
 
+/**
+ * Project meta lines — rendered under the title rather than as achievement
+ * bullets. `Type:` carries Official / Personal, which the prompt emits so the
+ * reader can tell employer work from side projects.
+ */
+const PROJECT_META_RE = /^(Technologies|Duration|Type):/i;
+
+/** Order meta lines Type → Technologies → rest, so the type reads first. */
+function sortProjectMeta(meta: string[]): string[] {
+  const rank = (line: string): number => {
+    if (/^Type:/i.test(line)) return 0;
+    if (/^Technologies:/i.test(line)) return 1;
+    return 2;
+  };
+  return meta
+    .map((line, index) => ({ line, index }))
+    .sort((a, b) => rank(a.line) - rank(b.line) || a.index - b.index)
+    .map((entry) => entry.line);
+}
+
+/**
+ * Index of the first line in the run of meta lines sitting directly above
+ * `techIdx`. Those lines belong to *that* project, not the one before it.
+ *
+ * The prompt emits `- Type: Official` between the title and `- Technologies:`,
+ * so without this the type line would either be dropped (first project) or
+ * absorbed as a bullet of the previous project.
+ */
+function metaRunStart(lines: string[], techIdx: number): number {
+  let start = techIdx;
+  for (let i = techIdx - 1; i >= 0; i--) {
+    const candidate = stripProjectLineDecorators(lines[i]);
+    if (!candidate) break;
+    if (!PROJECT_META_RE.test(candidate)) break;
+    start = i;
+  }
+  return start;
+}
+
 function normalizeProjectBlock(block: PersonalProjectBlock): PersonalProjectBlock {
   const meta = [...block.meta];
   const bullets: string[] = [];
   let title = block.title;
 
   for (const item of block.bullets) {
-    if (/^Technologies:/i.test(item) || /^Duration:/i.test(item)) {
+    if (PROJECT_META_RE.test(item)) {
       meta.push(item);
       continue;
     }
@@ -241,7 +282,7 @@ function normalizeProjectBlock(block: PersonalProjectBlock): PersonalProjectBloc
     bullets.shift();
   }
 
-  return { title, meta, bullets };
+  return { title, meta: sortProjectMeta(meta), bullets };
 }
 
 function splitBulletsByTitle(bullets: string[]): Array<{ title: string; bullets: string[] }> {
@@ -277,7 +318,7 @@ function findProjectTitleBefore(lines: string[], technologiesIndex: number): str
     const taggedTitle = parseProjectTag(candidate);
     if (taggedTitle) return taggedTitle;
 
-    if (/^(Duration|Role):/i.test(candidate)) continue;
+    if (/^(Duration|Role|Type):/i.test(candidate)) continue;
 
     if (isBulletLine(raw)) {
       if (j === technologiesIndex - 1 && looksLikeProjectTitle(candidate)) return candidate;
@@ -295,7 +336,7 @@ function isConsecutiveTechnologiesRun(lines: string[], techIndices: number[]): b
   const end = techIndices[techIndices.length - 1];
   for (let i = start; i <= end; i++) {
     const candidate = stripProjectLineDecorators(lines[i]);
-    if (!/^(Technologies|Role|Duration):/i.test(candidate)) return false;
+    if (!/^(Technologies|Role|Duration|Type):/i.test(candidate)) return false;
   }
   return true;
 }
@@ -339,13 +380,24 @@ function parsePerTechnologiesProjects(lines: string[], techIndices: number[]): P
   for (let t = 0; t < techIndices.length; t++) {
     const techIdx = techIndices[t];
     const nextTechIdx = techIndices[t + 1] ?? lines.length;
+    // Meta lines directly above the next Technologies line belong to the next
+    // project, so this project's bullets must stop before them.
+    const bulletEnd = techIndices[t + 1] === undefined
+      ? lines.length
+      : metaRunStart(lines, techIndices[t + 1]);
+    const metaStart = metaRunStart(lines, techIdx);
     const title = findProjectTitleBefore(lines, techIdx);
     const meta: string[] = [];
-    let cursor = techIdx;
 
+    // Meta lines that precede `Technologies:` (the prompt puts `Type:` here).
+    for (let i = metaStart; i < techIdx; i++) {
+      meta.push(stripProjectLineDecorators(lines[i]));
+    }
+
+    let cursor = techIdx;
     while (cursor < nextTechIdx) {
       const candidate = stripProjectLineDecorators(lines[cursor]);
-      if (/^(Technologies|Role|Duration):/i.test(candidate)) {
+      if (PROJECT_META_RE.test(candidate) || /^Role:/i.test(candidate)) {
         meta.push(candidate);
         cursor++;
         continue;
@@ -354,7 +406,7 @@ function parsePerTechnologiesProjects(lines: string[], techIndices: number[]): P
     }
 
     const bullets: string[] = [];
-    while (cursor < nextTechIdx) {
+    while (cursor < bulletEnd) {
       const raw = lines[cursor];
       const candidate = stripProjectLineDecorators(raw);
       if (!candidate) {
@@ -407,7 +459,7 @@ function parsePersonalProjectBlocksSequential(lines: string[]): PersonalProjectB
       continue;
     }
 
-    if (/^Duration:/i.test(candidate)) {
+    if (/^Duration:/i.test(candidate) || /^Type:/i.test(candidate)) {
       ensureProject();
       current!.meta.push(candidate);
       continue;
@@ -438,8 +490,16 @@ function parsePersonalProjectBlocksSequential(lines: string[]): PersonalProjectB
   return blocks;
 }
 
+/**
+ * Section header for projects, plus the pre-rename name. Legacy master resumes
+ * and cached tailored resumes still say `PERSONAL PROJECTS`, and plain-text
+ * headers are not alias-mapped (only markdown headings are), so extraction has
+ * to try both or those resumes lose the section entirely.
+ */
+const PROJECT_SECTION_HEADERS = ['SELECTED PROJECTS', 'PERSONAL PROJECTS'];
+
 function findOrphanProjectTitleBeforeHeader(raw: string): string {
-  const headerMatch = raw.match(/(?:^|\n)PERSONAL PROJECTS\s*\n/i);
+  const headerMatch = raw.match(/(?:^|\n)(?:SELECTED|PERSONAL) PROJECTS\s*\n/i);
   if (!headerMatch || headerMatch.index === undefined) return '';
 
   const before = raw.slice(0, headerMatch.index);
@@ -458,7 +518,9 @@ function findOrphanProjectTitleBeforeHeader(raw: string): string {
 }
 
 function extractPersonalProjectsSection(raw: string): string {
-  const section = extractSection(raw, 'PERSONAL PROJECTS');
+  const section = PROJECT_SECTION_HEADERS
+    .map((header) => extractSection(raw, header))
+    .find((found) => found.trim()) || '';
   if (!section) return '';
 
   const trimmed = section.trim();
@@ -589,7 +651,7 @@ function formatExperienceLatex(experienceRaw: string): string {
       continue;
     }
 
-    const metaMatch = t.match(/^(Technologies|Role|Duration):\s*(.*)$/i);
+    const metaMatch = t.match(/^(Technologies|Role|Duration|Type):\s*(.*)$/i);
     if (metaMatch) {
       bullets.push(`${metaMatch[1]}: ${metaMatch[2].trim()}`);
       continue;
@@ -699,7 +761,7 @@ function formatTwoColumnExperience(experienceRaw: string): string {
       continue;
     }
 
-    const metaMatch = t.match(/^(Technologies|Role|Duration):\s*(.*)$/i);
+    const metaMatch = t.match(/^(Technologies|Role|Duration|Type):\s*(.*)$/i);
     if (metaMatch) {
       bullets.push(`${metaMatch[1]}: ${metaMatch[2].trim()}`);
       continue;
@@ -779,7 +841,7 @@ function appendModerncvSections(body: string[], sections: Record<string, string>
     body.push(formatExperienceLatex(sections.experience));
   }
   if (sections.projects) {
-    body.push(`\\section{Personal Projects}`);
+    body.push(`\\section{Selected Projects}`);
     body.push(formatProjectsLatex(sections.projects));
   }
   if (sections.certification) {
@@ -929,7 +991,7 @@ function buildModernTwoColumnLatex(
   }
 
   if (sections.projects) {
-    rightColumn.push(`\\textbf{Personal Projects}`);
+    rightColumn.push(`\\textbf{Selected Projects}`);
     rightColumn.push('\\vspace{4pt}');
     rightColumn.push(formatTwoColumnProjects(sections.projects));
   }
@@ -1000,7 +1062,7 @@ export function buildLatexFromAtsText(raw: string, meta: ResumeLatexMeta = {}): 
 
   if (!summarySection && !experienceSection && !projectsSection) {
     throw new Error(
-      'Resume is missing SUMMARY, PROFESSIONAL EXPERIENCE, and PERSONAL PROJECTS sections. Expected ALL CAPS headers or markdown ## headings.',
+      'Resume is missing SUMMARY, PROFESSIONAL EXPERIENCE, and SELECTED PROJECTS sections. Expected ALL CAPS headers or markdown ## headings.',
     );
   }
 

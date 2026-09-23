@@ -41,29 +41,37 @@ Cloud engineer.
 ## Personal Projects
 CareerPilot AI
 - Built an autonomous job-search workflow.`);
-  if (!normalized.includes('PERSONAL PROJECTS')) throw new Error('missing PERSONAL PROJECTS header');
+  // The legacy "Personal Projects" heading must canonicalize to the new name.
+  if (!normalized.includes('SELECTED PROJECTS')) throw new Error('missing SELECTED PROJECTS header');
   if (!normalized.includes('SUMMARY')) throw new Error('missing SUMMARY header');
 });
 
-Deno.test('buildLatexFromAtsText includes Personal Projects in classic template', () => {
+Deno.test('normalizeResumeTextForPdf converts a Selected Projects markdown heading', () => {
+  const normalized = normalizeResumeTextForPdf(`## Selected Projects
+CareerPilot AI
+- Built an autonomous job-search workflow.`);
+  if (!normalized.includes('SELECTED PROJECTS')) throw new Error('missing SELECTED PROJECTS header');
+});
+
+Deno.test('buildLatexFromAtsText includes Selected Projects in classic template', () => {
   const latex = buildLatexFromAtsText(SAMPLE_RESUME, { template: 'classic' });
-  if (!latex.includes('\\section{Personal Projects}')) {
-    throw new Error('classic template missing Personal Projects section');
+  if (!latex.includes('\\section{Selected Projects}')) {
+    throw new Error('classic template missing Selected Projects section');
   }
   if (!latex.includes('CareerPilot AI')) {
     throw new Error('classic template missing project content');
   }
 });
 
-Deno.test('buildLatexFromAtsText includes Personal Projects in modern templates', () => {
+Deno.test('buildLatexFromAtsText includes Selected Projects in modern templates', () => {
   const single = buildLatexFromAtsText(SAMPLE_RESUME, { template: 'modern_single' });
   const twoCol = buildLatexFromAtsText(SAMPLE_RESUME, { template: 'modern_two_column' });
 
-  if (!single.includes('\\section{Personal Projects}')) {
-    throw new Error('modern_single missing Personal Projects section');
+  if (!single.includes('\\section{Selected Projects}')) {
+    throw new Error('modern_single missing Selected Projects section');
   }
-  if (!twoCol.includes('\\textbf{Personal Projects}')) {
-    throw new Error('modern_two_column missing Personal Projects section');
+  if (!twoCol.includes('\\textbf{Selected Projects}')) {
+    throw new Error('modern_two_column missing Selected Projects section');
   }
   if (single.includes('casual')) {
     throw new Error('modern_single should not use moderncv casual style');
@@ -207,7 +215,8 @@ EDUCATION
 B.S. Computer Science`;
 
   const latex = buildLatexFromAtsText(resume, { template: 'classic' });
-  if (!latex.includes('CareerPilot AI - Autonomous Job Search Platform | GenAI Developer & Forward Deployment Engineer')) {
+  // `&` is escaped by esc(), so assert against the LaTeX-escaped form.
+  if (!latex.includes('CareerPilot AI - Autonomous Job Search Platform | GenAI Developer \\& Forward Deployment Engineer')) {
     throw new Error('bullet-style project title missing from classic template');
   }
   if (latex.includes('\\item CareerPilot AI - Autonomous Job Search Platform')) {
@@ -475,8 +484,10 @@ B.S. Computer Science`;
   if (!classic.includes(techLine)) {
     throw new Error('classic template truncated Technologies line');
   }
-  if (classic.includes('Edge Functions/Deno, Ge')) {
-    throw new Error('classic template still shows 72-char Technologies truncation');
+  // The old bug cut the line at 72 chars, so the tail went missing entirely.
+  // (Asserting on a 72-char prefix cannot work — it is a substring of the full line.)
+  if (!classic.includes('Render.com')) {
+    throw new Error('classic template still truncates the Technologies line');
   }
   if (!twoCol.includes(techLine)) {
     throw new Error('two-column template truncated Technologies line');
@@ -512,4 +523,123 @@ B.S. Computer Science`;
 
   const latex = buildLatexFromAtsText(markdown, { template: 'classic' });
   if (!latex.includes('Side App')) throw new Error('markdown personal projects content missing');
+});
+
+Deno.test('project Type line renders as meta, not as an achievement bullet', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+SELECTED PROJECTS
+CareerPilot AI | Solo Developer
+- Type: Personal
+- Technologies: React 18, TypeScript
+- Built an autonomous job-search workflow.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('Type: Personal')) {
+    throw new Error('Type line missing from classic template');
+  }
+  if (latex.includes('\\item Type: Personal')) {
+    throw new Error('Type line was rendered as an achievement bullet');
+  }
+  // Type should read above Technologies.
+  if (latex.indexOf('Type: Personal') > latex.indexOf('Technologies: React 18')) {
+    throw new Error('Type line should precede the Technologies line');
+  }
+});
+
+Deno.test('project Type lines stay with their own project across multiple projects', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+SELECTED PROJECTS
+Billing Migration | Tech Lead
+- Type: Official
+- Technologies: Java, Kafka
+- Moved billing onto an event-driven pipeline.
+
+CareerPilot AI | Solo Developer
+- Type: Personal
+- Technologies: React 18, TypeScript
+- Built an autonomous job-search workflow.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('Type: Official')) throw new Error('Official type missing');
+  if (!latex.includes('Type: Personal')) throw new Error('Personal type missing');
+  if (latex.includes('\\item Type:')) {
+    throw new Error('a Type line was rendered as an achievement bullet');
+  }
+  // Each Type must sit inside its own project block, in source order.
+  const officialAt = latex.indexOf('Type: Official');
+  const personalAt = latex.indexOf('Type: Personal');
+  const careerPilotAt = latex.indexOf('CareerPilot AI');
+  if (!(officialAt < careerPilotAt && careerPilotAt < personalAt)) {
+    throw new Error(`Type lines were reassigned across projects\n${latex}`);
+  }
+});
+
+Deno.test('legacy PERSONAL PROJECTS plain-text header still renders as Selected Projects', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+Engineer.
+
+SKILLS
+- TypeScript
+
+PROFESSIONAL EXPERIENCE
+ACME
+- Shipped APIs.
+
+PERSONAL PROJECTS
+CareerPilot AI | Solo Developer
+- Technologies: React 18, TypeScript
+- Built an autonomous job-search workflow.
+
+EDUCATION
+B.S. Computer Science`;
+
+  const latex = buildLatexFromAtsText(resume, { template: 'classic' });
+  if (!latex.includes('\\section{Selected Projects}')) {
+    throw new Error('legacy header did not render under the new section name');
+  }
+  if (!latex.includes('CareerPilot AI')) {
+    throw new Error('legacy project content was dropped');
+  }
 });

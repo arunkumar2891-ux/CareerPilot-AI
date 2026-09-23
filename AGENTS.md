@@ -104,20 +104,33 @@ validator (`_shared/ai/validate-resume.ts`) decides whether to accept it. Changi
 the other either rejects valid output or lets drift through.
 
 - **The contract is 8 sections, in this order:** `NAME`, `CONTACT`, `SUMMARY`, `SKILLS`,
-  `PROFESSIONAL EXPERIENCE`, `PERSONAL PROJECTS`, `CERTIFICATION`, `EDUCATION`.
-  `PERSONAL PROJECTS` and `CERTIFICATION` are in `OPTIONAL_HEADERS` — omitted when the source
+  `PROFESSIONAL EXPERIENCE`, `SELECTED PROJECTS`, `CERTIFICATION`, `EDUCATION`.
+  `SELECTED PROJECTS` and `CERTIFICATION` are in `OPTIONAL_HEADERS` — omitted when the source
   has none.
+- **`SELECTED PROJECTS` was called `PERSONAL PROJECTS` before v1.4.0.** The old name is kept as
+  a `HEADER_ALIASES` entry and in `resume-latex.ts`'s `PROJECT_SECTION_HEADERS`, because existing
+  master resumes and cached tailored resumes still use it. Removing either alias silently drops
+  the section from those resumes (BUG-004's failure mode).
+- **Each project carries an optional `- Type: Official` / `- Type: Personal` meta line.** The
+  prompt tells the model to derive it from the source resume only and to omit it when the source
+  is unclear, so the grounding contract still holds. `resume-latex.ts` treats `Type:` as project
+  *meta* (via `PROJECT_META_RE`), not an achievement bullet, and `sortProjectMeta` renders it
+  above `Technologies:`.
+- **`canonicalizeAtsResumeOutput` rewrites alias headers before its fast path.** Aliases satisfy
+  `hasAllRequiredHeaders()`, so without that rewrite an otherwise-complete resume short-circuits
+  and keeps a stale heading.
 - **`REQUIRED_HEADERS` is the single source of section order.** It drives `canonicalHeader`,
   `countRequiredHeaders`, `joinSections`, `dedupeSectionLines`, and `dropUnsupportedContentLine`.
   Add a section there and ordering follows; add it anywhere else and it won't.
 - **A section missing from `REQUIRED_HEADERS` is silently swallowed, not rejected.**
   `parseAtsSections` treats its header as *body text of the preceding section*, and
-  `joinSections` re-emits it that way. This is how `PERSONAL PROJECTS` used to vanish (BUG-004).
+  `joinSections` re-emits it that way. This is how `SELECTED PROJECTS` (then `PERSONAL PROJECTS`)
+  used to vanish (BUG-004).
 - **Optional sections are only mandatory when a source was supplied.** That lookup lives in
   `optionalHeaderSource()`; extend it rather than hardwiring a new `*Source` option into the
   header loop.
 - **Sections whose lines are not verbatim source bullets need `allowAggregate` in
-  `validateGrounding`.** `SUMMARY`, `SKILLS`, `CERTIFICATION`, and `PERSONAL PROJECTS` have it.
+  `validateGrounding`.** `SUMMARY`, `SKILLS`, `CERTIFICATION`, and `SELECTED PROJECTS` have it.
   Project titles and `- Technologies: ...` lines are bullets, so the non-bullet exemption that
   `PROFESSIONAL EXPERIENCE` uses for its company/date headers does not cover them.
 - **`validateTwoPageShape` caps are tuned to the categorized format** (SKILLS: 2,500 chars and

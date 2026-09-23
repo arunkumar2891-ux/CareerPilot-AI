@@ -322,7 +322,7 @@ The repository also includes a GitHub Actions workflow that deploys Edge Functio
 
 The corpus is per-user data in Supabase — not files in this repo. Google Doc sync or a direct upload is the source of truth for the master resume. Role-specific resumes are optional overrides used when the job title matches.
 
-Resume tailoring sends the selected source resume and the job description to Gemini with an 8-section output contract (NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, PERSONAL PROJECTS, CERTIFICATION, EDUCATION). PERSONAL PROJECTS and CERTIFICATION are emitted only when the source resume has them.
+Resume tailoring sends the selected source resume and the job description to Gemini with an 8-section output contract (NAME, CONTACT, SUMMARY, SKILLS, PROFESSIONAL EXPERIENCE, SELECTED PROJECTS, CERTIFICATION, EDUCATION). SELECTED PROJECTS and CERTIFICATION are emitted only when the source resume has them. Each project may carry a `Type: Official` or `Type: Personal` line, derived from the source resume, so employer work is distinguishable from side projects. The legacy `PERSONAL PROJECTS` heading is still accepted as an alias.
 
 The contract also fixes the shape *within* each section: SKILLS as `Category:` headings with `-` item lines, experience as `COMPANY | Role` then `Dates | Location` then achievement bullets, and each project as a plain title line followed by `- Technologies: ...` and its bullets. Output is validated for section shape and order, length, source grounding, and human voice (banned AI cliches). The prompt lives in `supabase/functions/_shared/career-corpus/prompt.ts` and the validator in `supabase/functions/_shared/ai/validate-resume.ts`; the two must be changed together.
 
