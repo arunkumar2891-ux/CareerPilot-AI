@@ -51,9 +51,9 @@ CONTACT
 Email: <email>
 Phone: <phone>
 Location: <location>
-Website: <personal site url, only if the source has one>
 LinkedIn: <linkedin url>
 GitHub: <github url>
+Website: <personal site url, only if the source has one>
 
 SUMMARY
 <2-3 sentences in the candidate's voice, grounded in the source resume>
@@ -135,6 +135,38 @@ export function buildGroqResumeUserPrompt(input: {
   ].filter(Boolean).join('\n\n');
 }
 
+/**
+ * Personal-site labels accepted in a resume's CONTACT block. Master resumes
+ * spell this inconsistently, so keep this in step with `pickWebsite()` in
+ * `_shared/resume-latex.ts`, which does the same job on already-parsed fields.
+ */
+const WEBSITE_LABEL_RE = /^\s*(?:website|portfolio|homepage|site)\s*:\s*(.+)$/i;
+
+/**
+ * Pull the personal-site URL out of a resume's CONTACT section.
+ *
+ * This must be deterministic rather than left to the model:
+ * `overlayIdentitySections()` *replaces* the generated CONTACT section wholesale
+ * with `formatContact(contact)`, so a URL that is not in the contact block is
+ * dropped even when the model emitted it correctly.
+ *
+ * Scoped to the CONTACT section on purpose — a bare `Site:` elsewhere in the
+ * resume (a project meta line, say) must not be mistaken for the personal site.
+ */
+export function extractContactWebsite(resumeText: string): string {
+  const text = String(resumeText || '');
+  const match = text.match(/(?:^|\n)CONTACT\s*\n([\s\S]*?)(?=\n[A-Z][A-Z \t/&-]{2,}\s*\n|$)/);
+  const contactSection = match?.[1];
+  if (!contactSection) return '';
+  for (const line of contactSection.split('\n')) {
+    const found = line.match(WEBSITE_LABEL_RE);
+    const value = found?.[1]?.trim();
+    // Ignore unfilled placeholders such as `Website: [Website URL]`.
+    if (value && !/^\[.*\]$/.test(value)) return value;
+  }
+  return '';
+}
+
 export function formatContact(contact: Record<string, string | undefined>): string {
   return [
     contact.fullName && `Name: ${contact.fullName}`,
@@ -144,7 +176,14 @@ export function formatContact(contact: Record<string, string | undefined>): stri
     contact.location && `Location: ${contact.location}`,
     contact.linkedin && `LinkedIn: ${contact.linkedin}`,
     contact.github && `GitHub: ${contact.github}`,
-    contact.startDate && `PANW start: ${contact.startDate}`,
+    // Ordered after GitHub so the generated CONTACT block reads
+    // Email / Phone / Location / LinkedIn / GitHub / Website.
+    contact.website && `Website: ${contact.website}`,
+    // `contact.startDate` is deliberately NOT emitted here. This block is not
+    // just prompt context — `overlayIdentitySections()` writes it verbatim into
+    // the resume's CONTACT section, so a `PANW start:` line showed up in every
+    // generated resume. The start date's real job is substituting `[Start Date]`
+    // tokens in the master resume, which `applyContactOverlay()` handles.
   ].filter(Boolean).join('\n');
 }
 
@@ -187,6 +226,7 @@ export function applyContactOverlay(
     ['Email', contact.email],
     ['LinkedIn', contact.linkedin],
     ['GitHub', contact.github],
+    ['Website', contact.website],
   ];
   for (const [label, value] of headerLines) {
     if (!value) continue;

@@ -5,6 +5,7 @@ import { extractAtsSection } from '../ai/validate-resume.ts';
 import {
   applyContactOverlay,
   buildRoleMatchUserPrompt,
+  extractContactWebsite,
   formatContact,
   pickMatchedResumeName,
   ROLE_MATCH_SYSTEM_PROMPT,
@@ -147,6 +148,12 @@ export async function loadCareerCorpus(
   }, userId);
   const selected = matchedRole || masterRow;
   const sourceResume = applyContactOverlay(String(selected.content || ''), contact);
+  // The personal site lives in the resume's CONTACT block, not in Settings.
+  // Prefer the selected resume, then the master, then an explicit Settings value.
+  contact.website = stored.website
+    || extractContactWebsite(sourceResume)
+    || extractContactWebsite(String(masterRow.content || ''))
+    || undefined;
   const contactBlock = formatContact(contact);
   const educationSource = extractAtsSection(sourceResume, 'EDUCATION');
 

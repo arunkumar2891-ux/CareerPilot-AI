@@ -80,9 +80,36 @@ EDUCATION                   one "- " bullet per entry
 ### Contact website
 
 A personal site is optional. When the source resume's CONTACT block has one, it is carried through
-as a `Website:` line and rendered in the PDF. `Portfolio:`, `Homepage:`, and `Site:` are accepted as
-aliases, since master resumes label it inconsistently. It is **not** a Settings field — the value
-comes from the resume itself, so there is nothing to configure.
+as a `Website:` line — positioned **after `GitHub:`** — and rendered in the PDF. `Portfolio:`,
+`Homepage:`, and `Site:` are accepted as aliases, since master resumes label it inconsistently.
+
+**The value must be extracted deterministically, not left to the model.**
+`overlayIdentitySections()` in `validate-resume.ts` *replaces the generated CONTACT section
+wholesale* with `formatContact(contact)`, so any line absent from the contact block is discarded
+even when the model emitted it correctly. `extractContactWebsite()` (`career-corpus/prompt.ts`)
+therefore reads it out of the resume and `loadCareerCorpus()` puts it on `contact.website`:
+
+```text
+settings.contact.website  →  selected resume's CONTACT  →  master resume's CONTACT
+```
+
+Extraction is scoped to the CONTACT section on purpose — a `- Site:` line inside a project must not
+be mistaken for the personal site — and unfilled placeholders (`Website: [Website URL]`) are ignored.
+
+### The contact block is resume output, not just prompt context
+
+`formatContact()` looks like prompt context, but `overlayIdentitySections()` writes it **verbatim**
+into the resume's CONTACT section. So every line it emits appears in the finished resume.
+
+This is how `PANW start: Jul 2024` ended up in every generated resume: the start date is an internal
+hint for substituting `[Start Date]` tokens in the master resume (`applyContactOverlay()`), not a
+contact detail, but it was being emitted into the block. It is no longer emitted, and
+`INTERNAL_CONTACT_LINE_RE` in `validate-resume.ts` strips `PANW start:` / `Role focus:` from both
+`canonicalizeAtsResumeOutput()` and the identity overlay, so master resumes and cached output that
+still contain the line are scrubbed too.
+
+**Before adding a field to `formatContact()`, ask whether it belongs on a resume a recruiter reads.**
+Internal metadata belongs in the user prompt instead.
 
 Rendering differs by template because the two families build links differently:
 

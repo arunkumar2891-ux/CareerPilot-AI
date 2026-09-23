@@ -117,10 +117,20 @@ the other either rejects valid output or lets drift through.
   *meta* (via `PROJECT_META_RE`), not an achievement bullet, and `sortProjectMeta` renders it
   above `Technologies:`.
 - **`CONTACT` may carry an optional `Website:` line** (aliases: `Portfolio:`, `Homepage:`, `Site:`),
-  sourced from the resume rather than Settings. In `classic` / `modern_single` it renders via
-  moderncv's `\homepage{...}`, which **prepends the protocol itself** — pass the scheme-stripped
-  label from `formatWebsiteLabel()` or you get `http://https://example.com`. Only
-  `modern_two_column` (plain `article` + `hyperref`) takes an absolute URL, via `buildWebsiteUrl()`.
+  emitted **after `GitHub:`** and sourced from the resume rather than Settings. It must be pulled out
+  deterministically by `extractContactWebsite()` — **`overlayIdentitySections()` replaces the whole
+  CONTACT section with `formatContact(contact)`**, so a line the model emitted but the contact block
+  lacks is silently dropped. Add a contact field anywhere else and it will not survive.
+  In `classic` / `modern_single` it renders via moderncv's `\homepage{...}`, which **prepends the
+  protocol itself** — pass the scheme-stripped label from `formatWebsiteLabel()` or you get
+  `http://https://example.com`. Only `modern_two_column` (plain `article` + `hyperref`) takes an
+  absolute URL, via `buildWebsiteUrl()`.
+- **`formatContact()` output is resume content, not prompt context.** `overlayIdentitySections()`
+  writes it **verbatim** into CONTACT, so every line it emits lands in the finished resume. This is
+  how `PANW start: Jul 2024` — an internal hint for `[Start Date]` token substitution — appeared in
+  every generated resume. `INTERNAL_CONTACT_LINE_RE` now strips `PANW start:` / `Role focus:` in both
+  `canonicalizeAtsResumeOutput()` and the overlay. Before adding a field there, ask whether a
+  recruiter should see it; internal metadata belongs in the user prompt.
 - **`canonicalizeAtsResumeOutput` rewrites alias headers before its fast path.** Aliases satisfy
   `hasAllRequiredHeaders()`, so without that rewrite an otherwise-complete resume short-circuits
   and keeps a stale heading.

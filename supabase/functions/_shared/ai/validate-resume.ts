@@ -35,6 +35,15 @@ const HEADER_ALIASES: Record<string, string> = {
   CERTIFICATIONS: 'CERTIFICATION',
 };
 const KEYWORD_REFERENCE_RE = /(?:^|\s)[\w\s/&.-]+\s+Keywords:/i;
+/**
+ * Internal contact metadata that must never reach a generated resume.
+ *
+ * `PANW start` is a prompt/token-substitution hint, not a contact detail, but it
+ * used to be emitted into the contact block — which `overlayIdentitySections()`
+ * copies verbatim into CONTACT — so it appeared in every resume. It is no longer
+ * emitted; this strips it from master resumes and cached output that still have it.
+ */
+const INTERNAL_CONTACT_LINE_RE = /^(?:panw start|role focus)\s*:/i;
 const CONTACT_LINE_RE = /^(?:location|phone|email|linkedin|github|website|portfolio|homepage|site|title|panw start)\s*:/i;
 const LABEL_PREFIX_RE = /^(?:name|title|email|phone|location|linkedin|github|website|portfolio|homepage|panw start|role focus):\s*/i;
 const SECTION_MARKER_RE = /^={5,}$/;
@@ -116,6 +125,7 @@ export function canonicalizeAtsResumeOutput(raw: string): string {
   text = text.split('\n')
     .filter((line) => !SECTION_MARKER_RE.test(line.trim()))
     .filter((line) => !KEYWORD_REFERENCE_RE.test(line.trim()))
+    .filter((line) => !INTERNAL_CONTACT_LINE_RE.test(line.trim()))
     .join('\n');
   // Rewrite alias headers to their canonical spelling *before* the fast path
   // below. Aliases already satisfy hasAllRequiredHeaders(), so a resume that is
@@ -256,7 +266,11 @@ function overlayIdentitySections(
   const sections = parseAtsSections(text);
   const apply = (header: string, value?: string) => {
     if (!value?.trim()) return;
-    sections.set(header, value.split('\n'));
+    // Filter here too: this writes the caller's block in verbatim, bypassing the
+    // line filters in canonicalizeAtsResumeOutput().
+    const lines = value.split('\n').filter((line) => !INTERNAL_CONTACT_LINE_RE.test(line.trim()));
+    if (!lines.join('\n').trim()) return;
+    sections.set(header, lines);
   };
   apply('NAME', identity.name);
   apply('CONTACT', identity.contact);
