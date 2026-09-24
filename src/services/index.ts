@@ -12,6 +12,11 @@ import { DEFAULT_JOB_SEARCH_WORKFLOW, DEFAULT_RESUME_TAILOR_WORKFLOW, buildSeedE
 import { planPipelineRepair } from '@/utils/pipeline-repair';
 import { computeNextCronRun } from '@/utils/cron-schedule';
 import {
+  shouldProvisionDailyAutomation,
+  shouldRefreshNextRun,
+  pickDailyAutomation,
+} from '@/utils/daily-automation';
+import {
   MASTER_RESUME_NAME,
   applyContactOverlay,
 } from '@/content/career-corpus';
@@ -1252,16 +1257,25 @@ export class WorkflowService {
       .eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name);
     const siblingIds = (namedWorkflows || []).map((row) => String(row.id));
     let keepId: string | undefined;
+    /* Every automation across the duplicate-named workflows, in any status. The
+       status is needed below to tell "never provisioned" apart from
+       "deliberately paused" — see the insert guard. */
+    let siblingRows: { id: string; workflow_id: string; status: string }[] = [];
     if (siblingIds.length) {
-      const { data: extras } = await supabase
+      const { data: siblings } = await supabase
         .from('automations')
         .select('id, workflow_id, created_at, status')
         .eq('user_id', userId)
         .in('workflow_id', siblingIds)
-        .eq('status', 'active')
         .order('created_at', { ascending: true });
-      keepId = extras?.find((row) => row.workflow_id === workflowId)?.id || extras?.[0]?.id;
-      const pauseIds = (extras || []).map((row) => String(row.id)).filter((id) => id !== keepId);
+      siblingRows = (siblings || []).map((row) => ({
+        id: String(row.id),
+        workflow_id: String(row.workflow_id),
+        status: String(row.status),
+      }));
+      const active = siblingRows.filter((row) => row.status === 'active');
+      keepId = active.find((row) => row.workflow_id === workflowId)?.id || active[0]?.id;
+      const pauseIds = active.map((row) => row.id).filter((id) => id !== keepId);
       if (pauseIds.length) {
         await supabase
           .from('automations')
@@ -1282,6 +1296,12 @@ export class WorkflowService {
 
     if (!auto) {
       if (keepId) return;
+      /* Do not resurrect the daily run as `active` when the user has turned it
+         off. `keepId` only accounts for *active* siblings, so without this check
+         a paused automation sitting on a duplicate-named sibling workflow would
+         be joined by a fresh active row here on the very next login, silently
+         restarting the schedule the user just disabled. */
+      if (!shouldProvisionDailyAutomation(siblingRows, false)) return;
       const nextRun = computeNextCronRun(schedule);
       await supabase.from('automations').insert({
         user_id: userId,
@@ -1296,7 +1316,7 @@ export class WorkflowService {
       return;
     }
 
-    if (auto.status !== 'active') return;
+    if (!shouldRefreshNextRun(String(auto.status))) return;
 
     const patch: Record<string, string> = {};
     if (!auto.next_run) {
@@ -2213,6 +2233,77 @@ export class AutomationService {
     }).select().single();
     if (error) throw error;
     return mapAutomation(data);
+  }
+
+  /**
+   * The built-in daily job search automation, or `null` if it has not been
+   * provisioned yet.
+   *
+   * Resolved by joining through to the workflow name rather than matching
+   * `automations.name`, because the automation row is seeded as
+   * `'Daily 7 AM Job Search'` while the workflow is
+   * `DEFAULT_JOB_SEARCH_WORKFLOW.name` — and only the latter is authoritative.
+   * `repairDefaultAutomation` also pauses duplicate rows across sibling
+   * workflows, so prefer the active one and fall back to the oldest.
+   */
+  async dailyJobSearch(): Promise<Automation | null> {
+    const userId = await requireUserId();
+    const { data: workflows } = await supabase
+      .from('workflows')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name);
+    const workflowIds = (workflows || []).map((row) => String(row.id));
+    if (!workflowIds.length) return null;
+
+    const { data: rows } = await supabase
+      .from('automations')
+      .select('*')
+      .eq('user_id', userId)
+      .in('workflow_id', workflowIds)
+      .order('created_at', { ascending: true });
+    if (!rows?.length) return null;
+    const preferred = pickDailyAutomation(rows);
+    return preferred ? mapAutomation(preferred) : null;
+  }
+
+  /**
+   * Turn the daily scheduled run on or off.
+   *
+   * An explicit setter rather than a toggle: the caller passes the state it
+   * wants, so a stale UI value cannot flip the automation the wrong way. It is
+   * also idempotent, which matters because `status` is the single gate
+   * `processScheduledAutomations` reads — writing 'paused' twice is harmless,
+   * whereas toggling twice would silently re-enable the run.
+   *
+   * When re-enabling, `next_run` is recomputed from the cron expression.
+   * A stale `next_run` in the past would otherwise make the automation fire
+   * immediately on the next scheduler tick instead of at the scheduled hour.
+   *
+   * Every sibling row is updated, not just the preferred one, so a duplicate
+   * left behind by an earlier provisioning bug cannot keep running after the
+   * user has switched the feature off.
+   */
+  async setDailyJobSearchEnabled(enabled: boolean): Promise<void> {
+    const userId = await requireUserId();
+    const { data: workflows } = await supabase
+      .from('workflows')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('name', DEFAULT_JOB_SEARCH_WORKFLOW.name);
+    const workflowIds = (workflows || []).map((row) => String(row.id));
+    if (!workflowIds.length) throw new Error('Daily job search pipeline is not provisioned yet');
+
+    const patch: Record<string, unknown> = { status: enabled ? 'active' : 'paused' };
+    if (enabled) {
+      patch.next_run = computeNextCronRun(DEFAULT_JOB_SEARCH_WORKFLOW.schedule).toISOString();
+    }
+    const { error } = await supabase
+      .from('automations')
+      .update(patch)
+      .eq('user_id', userId)
+      .in('workflow_id', workflowIds);
+    if (error) throw error;
   }
 }
 

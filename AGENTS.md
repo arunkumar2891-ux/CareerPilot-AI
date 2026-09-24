@@ -321,6 +321,32 @@ instead; callers must add `overflow-hidden`.
 - `.gradient-text` must stay within the brand hue (forest → sage). Do not reintroduce a
   cross-hue (cyan → violet) gradient.
 
+## Scheduling Guardrails
+
+The daily run costs the user real money (AI calls) and can send real email, so the off switch
+has to be trustworthy. `automations.status === 'active'` is the **single gate** —
+`processScheduledAutomations()` filters on it and `claimScheduledAutomation()` re-checks it
+inside its atomic claim, so nothing else needs to know about the toggle.
+
+- **`repairDefaultAutomation` runs on every login, so anything it "repairs" it repairs
+  repeatedly.** Treat a `paused` automation as a user decision it must never override. Its
+  sibling query must select **all** statuses: filtering `.eq('status','active')` made a paused
+  row invisible, and the method then inserted a fresh `active` one and restarted a schedule the
+  user had turned off (BUG-015). `'error'` is *not* a pause — that is a failed run.
+- **Expose enable/disable as an explicit setter, never a blind toggle.**
+  `setDailyJobSearchEnabled(enabled)` takes the desired state, so a stale UI value cannot flip
+  the schedule the wrong way, and writing the same value twice is harmless. A
+  `toggle()`-shaped API called twice silently re-enables the run.
+- **Recompute `next_run` when re-enabling.** A `next_run` left in the past makes the automation
+  fire on the next scheduler tick instead of at the scheduled hour.
+- **Update every sibling row when disabling,** not just the preferred one, or a duplicate left
+  behind by earlier provisioning keeps running after the user switched the feature off.
+- **Resolve the daily automation by workflow name, not `automations.name`.** The row is seeded
+  `'Daily 7 AM Job Search'` while the workflow is `DEFAULT_JOB_SEARCH_WORKFLOW.name`; only the
+  workflow name is authoritative, and the schedule in the display name will drift.
+- The pure decisions live in `src/utils/daily-automation.ts` and are tested — keep them there
+  rather than re-inlining the conditions into the service.
+
 ## Data Fetching Guardrails
 
 - **`invalidateQueries` matches `queryKey` by *prefix*, so one call invalidates one key
@@ -416,6 +442,7 @@ instead; callers must add `overflow-hidden`.
 | Signed OAuth `state` | `supabase/functions/_shared/oauth-state.ts` |
 | Scheduler endpoint auth (fail-closed) | `supabase/functions/_shared/scheduler-auth.ts` |
 | Multi-cache invalidation helper | `src/utils/query-keys.ts` → `invalidateAll` |
+| Daily-run provisioning decisions (tested) | `src/utils/daily-automation.ts` + `daily-automation_test.ts` |
 | Encoding audit for scripted edits | `scripts/check-encoding.mjs` (`npm run check:encoding`) + `check-encoding_test.mjs`; repair via `scripts/fix-mojibake.mjs` |
 
 ## Bug-Fixing Workflow

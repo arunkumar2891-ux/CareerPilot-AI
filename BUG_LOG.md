@@ -1031,3 +1031,75 @@ succeeds, `npm run check:encoding` OK (226 files), 281 Deno cases green across
 > ```
 
 ---
+
+## BUG-015 — No UI to turn off the daily job search, and a paused run could resurrect itself
+
+**Status:** Fixed
+**Severity:** High (unwanted automated runs; spends AI credits and sends email)
+**Reported:** 2026-09-24 — "I should be able to turn off daily search job from UI with a
+toggle, if it's off or toggled daily run should not happen."
+
+### Root cause
+
+Two distinct defects:
+
+1. **No surface existed.** `AutomationService.toggle()` was implemented but no page called it —
+   `automations` appeared nowhere in the UI except a cache-invalidation key. The daily run was
+   therefore unconditional from the user's point of view, with no way to stop it short of
+   editing the database.
+
+2. **Login-time repair could re-enable a paused run.** `WorkflowService.repairDefaultAutomation`
+   runs on **every** login via `BootstrapService.ensure()`. Its duplicate-suppression query
+   filtered `.eq('status','active')`, so `keepId` only ever referenced *active* siblings. When
+   the resolved workflow had no automation row of its own but a **paused** row existed on a
+   duplicate-named sibling workflow, the `if (!auto) { if (keepId) return; … }` guard did not
+   fire and the method inserted a **fresh `status: 'active'` row** — silently restarting the
+   schedule the user had just switched off, on the next login.
+
+   Duplicate-named job-search workflows are not hypothetical: the method exists precisely
+   because they occur, and it pauses siblings whenever it finds more than one.
+
+### Fix
+
+- `src/utils/daily-automation.ts` (new) — pure decisions, so the login path is testable:
+  `shouldProvisionDailyAutomation()` returns false when **any** sibling is `active` *or*
+  `paused`, treating a paused row as a deliberate user decision. `'error'` is *not* treated as
+  a pause — that is a failed run, not an opt-out. `shouldRefreshNextRun()` restricts
+  `next_run` rewrites to active rows. `pickDailyAutomation()` prefers the active row so the UI
+  shows "on" whenever anything is scheduled, and otherwise falls back to the oldest row so a
+  paused account reports *paused* rather than *not provisioned*.
+- `src/services/index.ts` — `repairDefaultAutomation` now selects siblings in **all** statuses
+  and delegates to those helpers. New `AutomationService.dailyJobSearch()` resolves the
+  automation by joining through the **workflow name** (the row is seeded
+  `'Daily 7 AM Job Search'` while the workflow is `DEFAULT_JOB_SEARCH_WORKFLOW.name`; only the
+  latter is authoritative). New `setDailyJobSearchEnabled(enabled)` is an **explicit setter,
+  not a toggle** — a stale UI value cannot flip the automation the wrong way, and it is
+  idempotent, which matters because `status` is the single gate the scheduler reads. It updates
+  **every** sibling row so a duplicate left by an earlier provisioning bug cannot keep running,
+  and recomputes `next_run` when re-enabling (a stale past `next_run` would otherwise fire
+  immediately instead of at the scheduled hour).
+- `src/pages/SettingsPage.tsx` — "Daily Scheduled Run" card at the top of the Job Search tab.
+  Applies **immediately** rather than on Save: a control gating an automated run should not sit
+  in a pending-edit state. Branches `isLoading → error → not-provisioned → content`; a failed
+  fetch renders `ErrorState`, never the switch, because showing it in a default position would
+  assert a schedule state we do not know.
+- `src/layouts/AppLayout.tsx` — bootstrap invalidates `['daily-job-search-automation']`.
+
+### Why the server side needed no change
+
+`processScheduledAutomations()` already filters `.eq('status','active')`, and
+`claimScheduledAutomation()` re-checks `.eq('status','active')` inside its atomic claim — so
+pausing mid-tick is also safe. `status` is the only gate, which is what makes the idempotent
+setter sufficient. **No Edge Function deploy is required for this fix.**
+
+### Validation
+
+`src/utils/daily-automation_test.ts` — 10 new cases, including the regression directly:
+*"does not resurrect the daily run when the user paused it."* `npm run typecheck` clean,
+`npx eslint` clean on all four changed files, `npm run build` succeeds,
+`npm run check:encoding` OK (228 files), **139 Deno cases green** across `_shared/workflow/`
+and `src/utils/`.
+
+> **Unverified by test:** the Settings card is UI — there is no browser tooling in the agent
+> environment. Needs a human check that the switch reflects the real state on load, that
+> flipping it off then reloading keeps it off, and that the card holds up at 320px.

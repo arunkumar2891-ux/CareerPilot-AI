@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
-  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield, X, Menu,
+  User, Bell, Palette, Key, Sun, Moon, Check, Briefcase, Shield, X, Menu, Loader2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { FadeIn } from '@/components/motion';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,8 @@ import { supabase } from '@/lib/supabase';
 import { JOB_POSTED_WITHIN_OPTIONS, DEFAULT_JOB_POSTED_WITHIN } from '@/constants';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId, googleDocResumeFileId } from '@/utils/google';
 import { normalizeJobSearchRoles, MAX_SEARCH_ROLES } from '@/utils/job-search-roles';
+import { invalidateAll } from '@/utils/query-keys';
+import { formatDateTime } from '@/utils';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
@@ -84,6 +87,36 @@ export function SettingsPage() {
   const overflowActive = SETTINGS_TABS.slice(2).find((t) => t.value === settingsTab);
 
   const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => services.settings.get() });
+
+  /* The daily run's on/off state lives on the automation row, not in settings,
+     so it is fetched separately and applied immediately on change rather than
+     waiting for a Save button — a control that gates whether an automated run
+     happens should not sit in a pending-edit state. */
+  const {
+    data: dailyAutomation,
+    isLoading: dailyLoading,
+    error: dailyError,
+    refetch: refetchDaily,
+  } = useQuery({
+    queryKey: ['daily-job-search-automation'],
+    queryFn: () => services.automation.dailyJobSearch(),
+  });
+  const dailyEnabled = dailyAutomation?.status === 'active';
+  const [dailyPending, setDailyPending] = useState(false);
+
+  const setDailyEnabled = async (next: boolean) => {
+    setDailyPending(true);
+    try {
+      await services.automation.setDailyJobSearchEnabled(next);
+      await qc.invalidateQueries({ queryKey: ['daily-job-search-automation'] });
+      invalidateAll(qc, ['automations', 'workflows']);
+      toast.success(next ? 'Daily job search resumed' : 'Daily job search paused — no scheduled runs will start');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not change the daily schedule');
+    } finally {
+      setDailyPending(false);
+    }
+  };
 
   useEffect(() => {
     if (settings) {
@@ -319,6 +352,53 @@ export function SettingsPage() {
         <TabsContent value="jobsearch" className="space-y-4">
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">Daily Scheduled Run</CardTitle>
+              <p className="text-sm text-muted-foreground">Controls whether the pipeline runs automatically each day. Manual runs are unaffected.</p>
+            </CardHeader>
+            <CardContent>
+              {dailyLoading ? (
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Checking schedule…
+                </div>
+              ) : dailyError ? (
+                /* A failed fetch must not render the switch: showing it in some
+                   default position would state a schedule status we do not know. */
+                <ErrorState
+                  title="Could not load the daily schedule"
+                  error={dailyError}
+                  onRetry={() => refetchDaily()}
+                  className="py-8"
+                />
+              ) : !dailyAutomation ? (
+                <p className="text-sm text-muted-foreground">
+                  The daily pipeline has not been provisioned yet. Reload the app once your master resume is in place and it will appear here.
+                </p>
+              ) : (
+                <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-4">
+                  <div className="min-w-0 space-y-1">
+                    <Label htmlFor="daily-run-enabled">Run the job search daily</Label>
+                    <p className="text-xs text-muted-foreground">
+                      {dailyEnabled
+                        ? dailyAutomation.nextRun
+                          ? `Next run ${formatDateTime(dailyAutomation.nextRun)}.`
+                          : 'Active. The next run time is being scheduled.'
+                        : 'Paused. No scheduled run will start until you turn this back on.'}
+                    </p>
+                  </div>
+                  <Switch
+                    id="daily-run-enabled"
+                    className="shrink-0"
+                    checked={dailyEnabled}
+                    disabled={dailyPending}
+                    onCheckedChange={setDailyEnabled}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
               <CardTitle className="text-base">Job Search Pipeline Config</CardTitle>
               <p className="text-sm text-muted-foreground">Used by the built-in Daily Job Search Pipeline (auto-provisioned on login).</p>
             </CardHeader>
@@ -382,7 +462,7 @@ export function SettingsPage() {
                 <div className="space-y-1">
                   <Label htmlFor="india-remote-search">Also search remote jobs in India</Label>
                   <p className="text-xs text-muted-foreground">
-                    On by default. Each role is searched again as remote-only with location India, in addition to your location above.
+                    Off by default. Each role is searched again as remote-only with location India, in addition to your location above — which doubles the runs and summary emails per day.
                   </p>
                 </div>
                 <Switch

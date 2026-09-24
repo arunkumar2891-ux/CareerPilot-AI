@@ -23,6 +23,10 @@ export function AppLayout() {
       .then(() => {
         qc.invalidateQueries({ queryKey: ['workflows'] });
         qc.invalidateQueries({ queryKey: ['automations'] });
+        /* Bootstrap can provision the daily automation on a first login, so the
+           Settings toggle must re-read its state rather than keep showing
+           "not provisioned yet". */
+        qc.invalidateQueries({ queryKey: ['daily-job-search-automation'] });
         qc.invalidateQueries({ queryKey: ['settings'] });
         qc.invalidateQueries({ queryKey: ['resumes'] });
         qc.invalidateQueries({ queryKey: ['knowledge'] });
