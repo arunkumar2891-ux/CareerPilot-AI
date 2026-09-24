@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -55,7 +56,7 @@ export function SettingsPage() {
   const [jobRoles, setJobRoles] = useState<string[]>(['AI Product Manager']);
   const [roleDraft, setRoleDraft] = useState('');
   const [jobLocation, setJobLocation] = useState('San Francisco, CA');
-  const [alsoSearchIndiaRemote, setAlsoSearchIndiaRemote] = useState(true);
+  const [alsoSearchIndiaRemote, setAlsoSearchIndiaRemote] = useState(false);
   const [maxJobs, setMaxJobs] = useState('5');
   const [minMatchScore, setMinMatchScore] = useState('80');
   const [postedWithin, setPostedWithin] = useState(DEFAULT_JOB_POSTED_WITHIN);
@@ -68,6 +69,7 @@ export function SettingsPage() {
   const [linkedin, setLinkedin] = useState('');
   const [github, setGithub] = useState('');
   const [startDate, setStartDate] = useState('');
+  const [education, setEducation] = useState('');
 
   const [searchParams, setSearchParams] = useSearchParams();
   const settingsTab = searchParams.get('tab') || 'profile';
@@ -93,7 +95,7 @@ export function SettingsPage() {
         setJobQuery(roles[0]);
       }
       if (js?.location) setJobLocation(String(js.location));
-      setAlsoSearchIndiaRemote(js?.alsoSearchIndiaRemote !== false && js?.alsoSearchIndiaRemote !== 'false');
+      setAlsoSearchIndiaRemote(js?.alsoSearchIndiaRemote === true || js?.alsoSearchIndiaRemote === 'true');
       if (js?.maxJobs) setMaxJobs(String(js.maxJobs));
       if (js?.minMatchScore !== undefined && js?.minMatchScore !== null && js?.minMatchScore !== '') {
         setMinMatchScore(String(js.minMatchScore));
@@ -111,13 +113,14 @@ export function SettingsPage() {
       if (contact?.linkedin) setLinkedin(contact.linkedin);
       if (contact?.github) setGithub(contact.github);
       if (contact?.startDate) setStartDate(contact.startDate);
+      if (contact?.education) setEducation(contact.education);
     }
   }, [settings]);
 
   const saveProfile = async () => {
     await services.user.updateProfile({ fullName: name, title });
     await services.settings.update({
-      contact: { phone, location, linkedin, github, startDate, email: user?.email || email },
+      contact: { phone, location, linkedin, github, startDate, education, email: user?.email || email },
     });
     await services.settings.applyContactToSeededResumes();
     qc.invalidateQueries({ queryKey: ['profile'] });
@@ -128,7 +131,7 @@ export function SettingsPage() {
 
   const saveContact = async () => {
     await services.settings.update({
-      contact: { phone, location, linkedin, github, startDate, email: user?.email || email },
+      contact: { phone, location, linkedin, github, startDate, education, email: user?.email || email },
     });
     await services.settings.applyContactToSeededResumes();
     toast.success('Contact written into the master resume');
@@ -291,7 +294,18 @@ export function SettingsPage() {
                 <div className="space-y-1.5"><Label>Location</Label><Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City, State" /></div>
                 <div className="space-y-1.5"><Label>LinkedIn URL</Label><Input value={linkedin} onChange={(e) => setLinkedin(e.target.value)} placeholder="https://linkedin.com/in/…" /></div>
                 <div className="space-y-1.5"><Label>GitHub URL</Label><Input value={github} onChange={(e) => setGithub(e.target.value)} placeholder="https://github.com/…" /></div>
-                <div className="space-y-1.5"><Label>PANW start date</Label><Input value={startDate} onChange={(e) => setStartDate(e.target.value)} placeholder="e.g. Jan 2021" /></div>
+                <div className="space-y-1.5"><Label htmlFor="current-role-start">Current role start date</Label><Input id="current-role-start" value={startDate} onChange={(e) => setStartDate(e.target.value)} placeholder="e.g. Jan 2021" /></div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="education">Education</Label>
+                <Textarea
+                  id="education"
+                  value={education}
+                  onChange={(e) => setEducation(e.target.value)}
+                  placeholder={'B.S. in Computer Science\nState University | City'}
+                  rows={2}
+                />
+                <p className="text-xs text-muted-foreground">Fills the <span className="font-mono">[Degree Name]</span> / <span className="font-mono">[University Name]</span> placeholders in your resume. Left blank, those placeholders stay visible rather than being guessed.</p>
               </div>
               <p className="text-xs text-muted-foreground">Save writes these into the master resume header (phone, location, LinkedIn, GitHub, email). Empty fields stay as placeholders.</p>
               <div className="flex flex-wrap gap-2">

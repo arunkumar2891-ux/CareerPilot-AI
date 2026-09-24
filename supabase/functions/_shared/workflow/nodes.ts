@@ -934,14 +934,17 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
         storage_path: path,
       });
       if (resumeId) {
-        await linkResumePdf(admin, resumeId, { storagePath: path, pdfUrl });
+        await linkResumePdf(admin, ctx.userId, resumeId, { storagePath: path, pdfUrl });
       }
       if (data.jobId) {
+        // Scoped by user_id as well as the job id: this writes a 7-day signed
+        // PDF URL, which is a bearer capability, so a mis-routed jobId would
+        // hand one user's resume link to another.
         await admin.from('jobs').update({
           pdf_url: pdfUrl,
           resume_status: 'ready',
           status: 'resume_ready',
-        }).eq('id', data.jobId);
+        }).eq('id', data.jobId).eq('user_id', ctx.userId);
       }
 
       const processed = (ctx.variables.processedJobs as Record<string, unknown>[]) || [];

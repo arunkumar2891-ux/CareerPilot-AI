@@ -140,6 +140,7 @@ export async function loadCareerCorpus(
     linkedin: stored.linkedin,
     github: stored.github,
     startDate: stored.startDate,
+    education: stored.education,
   };
 
   const matchedRole = await matchRoleSpecificResume(rows, {

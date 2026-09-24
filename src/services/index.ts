@@ -1018,7 +1018,12 @@ export class CoverLetterService {
     return this.create(`Cover Letter - ${job.company}`, job.company, job.role, data?.reply || '');
   }
   async update(id: string, content: string): Promise<void> {
-    const { error } = await supabase.from('cover_letters').update({ content, updated_at: new Date().toISOString() }).eq('id', id);
+    const userId = await requireUserId();
+    const { error } = await supabase
+      .from('cover_letters')
+      .update({ content, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', userId);
     if (error) throw error;
   }
 }
@@ -1094,9 +1099,13 @@ export class ApplicationService {
     return mapApplication(data);
   }
   async updateStatus(id: string, status: Application['status']): Promise<void> {
-    const { error } = await supabase.from('applications').update({ status }).eq('id', id);
-    if (error) throw error;
     const userId = await requireUserId();
+    const { error } = await supabase
+      .from('applications')
+      .update({ status })
+      .eq('id', id)
+      .eq('user_id', userId);
+    if (error) throw error;
     await supabase.from('application_events').insert({
       user_id: userId,
       application_id: id,
@@ -1254,13 +1263,18 @@ export class WorkflowService {
       keepId = extras?.find((row) => row.workflow_id === workflowId)?.id || extras?.[0]?.id;
       const pauseIds = (extras || []).map((row) => String(row.id)).filter((id) => id !== keepId);
       if (pauseIds.length) {
-        await supabase.from('automations').update({ status: 'paused' }).in('id', pauseIds);
+        await supabase
+          .from('automations')
+          .update({ status: 'paused' })
+          .eq('user_id', userId)
+          .in('id', pauseIds);
       }
     }
 
     const { data: autoRows } = await supabase
       .from('automations')
       .select('id, status, next_run, schedule')
+      .eq('user_id', userId)
       .eq('workflow_id', workflowId)
       .order('created_at', { ascending: true })
       .limit(1);
@@ -1296,7 +1310,11 @@ export class WorkflowService {
       }
     }
     if (Object.keys(patch).length) {
-      await supabase.from('automations').update(patch).eq('id', auto.id);
+      await supabase
+        .from('automations')
+        .update(patch)
+        .eq('id', auto.id)
+        .eq('user_id', userId);
     }
   }
   /** Ensure parse → filter → limit → match score → store → ATS (fixes legacy graph order). */
@@ -1876,7 +1894,12 @@ export class DocumentService {
     return mapDocument(data);
   }
   async delete(id: string): Promise<void> {
-    const { error } = await supabase.from('documents').delete().eq('id', id);
+    const userId = await requireUserId();
+    const { error } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
     if (error) throw error;
   }
 }
@@ -1932,11 +1955,26 @@ export class NotificationService {
     return (data || []).map(mapNotification);
   }
   async markRead(id: string): Promise<void> {
-    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+    // Scoped by user_id as defence in depth: RLS should cover this, but it is a
+    // user-triggered write taking a row id straight from the client.
+    const userId = await requireUserId();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', id)
+      .eq('user_id', userId);
     if (error) throw error;
   }
   async markAllRead(): Promise<void> {
-    const { error } = await supabase.from('notifications').update({ read: true }).eq('read', false);
+    // This is an UPDATE with no row id at all. Without the user_id filter the
+    // only thing standing between "mark my notifications read" and "mark every
+    // notification on the platform read" is an RLS policy on this table.
+    const userId = await requireUserId();
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', userId)
+      .eq('read', false);
     if (error) throw error;
   }
 }
@@ -1952,11 +1990,21 @@ export class IntegrationService {
     return (data || []).map((row: Record<string, unknown>) => mapIntegration({ ...row, integration_logs: [] }));
   }
   async testConnection(id: string): Promise<{ success: boolean; message: string }> {
-    const { data: row } = await supabase.from('integrations').select('name').eq('id', id).maybeSingle();
+    const userId = await requireUserId();
+    const { data: row } = await supabase
+      .from('integrations')
+      .select('name')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
     if (row?.name === 'Apify') {
       await supabase.functions.invoke('workflow-run', { body: { test: 'apify' } }).catch(() => null);
     }
-    const { error } = await supabase.from('integrations').update({ status: 'connected', last_sync: new Date().toISOString() }).eq('id', id);
+    const { error } = await supabase
+      .from('integrations')
+      .update({ status: 'connected', last_sync: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', userId);
     if (error) return { success: false, message: error.message };
     return { success: true, message: 'Connection test successful' };
   }
@@ -1970,10 +2018,20 @@ export class IntegrationService {
     return data.url;
   }
   async toggle(id: string): Promise<void> {
-    const { data } = await supabase.from('integrations').select('status').eq('id', id).maybeSingle();
+    const userId = await requireUserId();
+    const { data } = await supabase
+      .from('integrations')
+      .select('status')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
     if (data) {
       const next = data.status === 'connected' ? 'disconnected' : 'connected';
-      await supabase.from('integrations').update({ status: next }).eq('id', id);
+      await supabase
+        .from('integrations')
+        .update({ status: next })
+        .eq('id', id)
+        .eq('user_id', userId);
     }
   }
 }
@@ -2110,24 +2168,40 @@ export class AutomationService {
     return mapAutomation(data);
   }
   async toggle(id: string): Promise<void> {
-    const { data } = await supabase.from('automations').select('status, workflow_id').eq('id', id).maybeSingle();
+    const userId = await requireUserId();
+    const { data } = await supabase
+      .from('automations')
+      .select('status, workflow_id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
     if (data) {
       const next = data.status === 'active' ? 'paused' : 'active';
       if (next === 'active' && data.workflow_id) {
         await supabase
           .from('automations')
           .update({ status: 'paused' })
+          .eq('user_id', userId)
           .eq('workflow_id', data.workflow_id)
           .eq('status', 'active')
           .neq('id', id);
       }
-      await supabase.from('automations').update({ status: next }).eq('id', id);
+      await supabase
+        .from('automations')
+        .update({ status: next })
+        .eq('id', id)
+        .eq('user_id', userId);
     }
   }
   async clone(id: string): Promise<Automation> {
-    const { data: src } = await supabase.from('automations').select('*').eq('id', id).maybeSingle();
-    if (!src) throw new Error('Automation not found');
     const userId = await requireUserId();
+    const { data: src } = await supabase
+      .from('automations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!src) throw new Error('Automation not found');
     const { data, error } = await supabase.from('automations').insert({
       user_id: userId,
       name: `${src.name} (Copy)`,
@@ -2308,6 +2382,7 @@ export class SettingsService {
     linkedin?: string;
     github?: string;
     startDate?: string;
+    education?: string;
   }> {
     const { data: { user } } = await supabase.auth.getUser();
     const data = await this.get();
@@ -2328,6 +2403,7 @@ export class SettingsService {
       linkedin: contact.linkedin || undefined,
       github: contact.github || undefined,
       startDate: contact.startDate || undefined,
+      education: contact.education || undefined,
     };
   }
 
@@ -2410,13 +2486,20 @@ export class BootstrapService {
       ? (jobSearch.roles as unknown[]).map((role) => String(role).trim()).filter(Boolean)
       : [];
     if (!query) {
+      // Brand-new account. These are seeds for someone with no settings yet, so
+      // they must be neutral: the query used to default to 'Integration
+      // Architect' (the original user's own role) and the India-remote fan-out
+      // defaulted on, which doubled a new user's runs, AI spend, and summary
+      // emails regardless of where they live. 'Software Engineer' matches the
+      // backend's own fallback in `parseJobSearchRoles`.
       await this.settings.update({
         jobSearch: {
           ...jobSearch,
-          query: 'Integration Architect',
-          roles: ['Integration Architect'],
-          location: String(jobSearch.location || 'San Francisco, CA'),
-          alsoSearchIndiaRemote: jobSearch.alsoSearchIndiaRemote !== false && jobSearch.alsoSearchIndiaRemote !== 'false',
+          query: 'Software Engineer',
+          roles: ['Software Engineer'],
+          location: String(jobSearch.location || 'United States'),
+          alsoSearchIndiaRemote: jobSearch.alsoSearchIndiaRemote === true
+            || jobSearch.alsoSearchIndiaRemote === 'true',
           maxJobs: String(jobSearch.maxJobs || '5'),
           minMatchScore: String(jobSearch.minMatchScore ?? '80'),
           postedWithin: String(jobSearch.postedWithin || '1d'),
@@ -2433,6 +2516,10 @@ export class BootstrapService {
         patch.query = query;
         patch.roles = [query];
       }
+      // Migration guard, not a default. This branch only runs for an account
+      // that already has a query — i.e. one that predates India-remote becoming
+      // opt-in — so persisting `true` preserves the behaviour those users
+      // already see. New accounts take the `!query` branch above and get `false`.
       if (jobSearch.alsoSearchIndiaRemote === undefined) {
         patch.alsoSearchIndiaRemote = true;
       }

@@ -158,6 +158,49 @@ the other either rejects valid output or lets drift through.
   `_shared/career-corpus/generation-contract_test.ts` green, and needs an edge-function deploy
   (`workflow-run`, `workflow-step`, `ai-chat`) before tailored resumes pick it up.
 
+## Multi-Tenancy Guardrails
+
+This started as a single-user app and was audited for multi-user readiness (BUG-011 … BUG-014).
+Those fixes are easy to undo by accident, so:
+
+- **Edge Functions use the service-role key, which bypasses RLS entirely.** Every
+ `createAdminClient()` query must filter `user_id` itself. A `.eq('id', x)` with no
+ `.eq('user_id', …)` is a bug even when the current caller happens to fetch scoped first —
+ that is caller ordering, not a property of the function. Where a helper writes on a
+ caller-supplied id, make `userId` a **required** parameter (see
+ `_shared/resume-store.ts` → `linkResumePdf`), so a new call site cannot silently omit it.
+- **Only 7 tables are created in `supabase/migrations/`.** The other ~22 (`jobs`, `resumes`,
+ `profiles`, `integrations`, `notifications`, `agents`, `workflow_runs`, …) were created via the
+ Supabase dashboard, so **their RLS status is not knowable from this repo** — do not assume it.
+ Frontend `user_id` filters are defence-in-depth *on top of* RLS, not a substitute.
+- **An endpoint with no `Authorization` header cannot trust its input for identity.**
+ `google-oauth-callback` is a bare browser redirect, so `state` must be *verified*, not decoded.
+ `btoa(JSON.stringify(...))` is an encoding, not a signature. Use
+ `_shared/oauth-state.ts`. The signing key falls back to `SUPABASE_SERVICE_ROLE_KEY` on purpose,
+ so the protection needs no new configuration to be effective.
+- **Secret checks must fail closed.** `if (secret && authHeader !== …)` skips the check entirely
+ when the secret is unset. Use `_shared/scheduler-auth.ts` → `checkSchedulerAuth`, which returns
+ **503 for a missing secret** and 401 for a wrong one — a silently-dead scheduler otherwise looks
+ identical to "nothing is due".
+- **A per-user integration credential must outrank a global env secret.**
+ `getSecretOrIntegration()` checks the user's credential first. Inverting it pools every tenant's
+ quota, billing, and (for Apify) job-search history into one account, and silently ignores a key
+ the user connected themselves.
+- **Never hardcode biographical data, and never "correct" resume content.** There is no default
+ degree, employer, or name anchor. A rewrite rule keyed on real resume text (rather than a
+ `[Placeholder]`) *destroys* a valid credential for anyone it matches — that is what
+ `replaceEducationPlaceholders` used to do to an Anna University degree. When a field is not
+ configured, leave the placeholder **visible**: the user will notice a `[Degree Name]`, but they
+ will never think to double-check a plausible invented one.
+- **Match resume structure, not literal names.** The name/title overlay keys on position and shape
+ (`overlayResumeHeader`) and company headers on the contract's `COMPANY | Role` shape
+ (`isExperienceHeaderLine`). A literal `/^ARUN KUMAR/m` or an employer whitelist makes the feature
+ a silent no-op for every other user. `identity-overlay_test.ts` pins this.
+- **New-account defaults must be neutral and cheap.** `alsoSearchIndiaRemote` defaulted on for
+ everyone, doubling a new user's runs, AI spend, and summary emails. Anything that multiplies cost
+ or email volume is opt-in; migrate existing users with an explicit backfill rather than by
+ leaving the default on.
+
 ## Frontend UI & Motion Guardrails
 
 The UI was hardened in a four-phase pass (see `BUG_LOG.md` → BUG-006/BUG-007 and the
@@ -370,6 +413,8 @@ instead; callers must add `overflow-hidden`.
 | Jobs kanban board | `src/components/jobs/JobKanbanBoard.tsx` + `src/utils/job-kanban.ts` |
 | Job detail modal (badges, match panel, apply-via-email) | `src/components/jobs/JobDetailDialog.tsx` |
 | Jobs filter + apply-eligibility logic (tested) | `src/utils/job-filters.ts` + `job-filters_test.ts` |
+| Signed OAuth `state` | `supabase/functions/_shared/oauth-state.ts` |
+| Scheduler endpoint auth (fail-closed) | `supabase/functions/_shared/scheduler-auth.ts` |
 | Multi-cache invalidation helper | `src/utils/query-keys.ts` → `invalidateAll` |
 | Encoding audit for scripted edits | `scripts/check-encoding.mjs` (`npm run check:encoding`) + `check-encoding_test.mjs`; repair via `scripts/fix-mojibake.mjs` |
 

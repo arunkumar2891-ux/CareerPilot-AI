@@ -654,6 +654,44 @@ function formatTwoColumnProjects(raw: string): string {
   return blocks.map((block) => renderProjectBlockParts(block).join('\n')).join('\n\n\\vspace{6pt}\n\n');
 }
 
+/**
+ * Does this line start a new experience entry (a company/role header) rather
+ * than continue the current one?
+ *
+ * This was a literal whitelist of four employers —
+ * `/^(PALO ALTO|INFOSYS|TATA|TCS|PROJECT:|CRITICAL|SECURITY|LEADERSHIP)/i` —
+ * duplicated in both experience parsers. A candidate at any other company had
+ * their company line fall through to the generic branch and render as a body
+ * bullet, or get dropped entirely when it was under 20 characters.
+ *
+ * Two structural signals replace it, both taken from the output contract in
+ * `career-corpus/prompt.ts` ("write each entry as `COMPANY | Role` on one line,
+ * then `Dates | Location` on the next"):
+ *
+ *   1. A pipe-separated header whose left side carries no digits —
+ *      `ACME CORP | Staff Engineer` qualifies, while the following
+ *      `Jan 2020 - Present | Bengaluru` does not, so the date line still falls
+ *      through to the preamble as it did before.
+ *   2. A short, wholly upper-case label — `LEADERSHIP`, `TCS`, `PALO ALTO`.
+ *      This is what keeps the old whitelist's non-employer labels working.
+ */
+export function isExperienceHeaderLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.length >= 100) return false;
+  if (/^PROJECT:/i.test(trimmed)) return true;
+
+  const pipe = trimmed.indexOf('|');
+  if (pipe > 0) {
+    const head = trimmed.slice(0, pipe).trim();
+    if (head && !/\d/.test(head)) return true;
+  }
+
+  const letters = trimmed.replace(/[^A-Za-z]/g, '');
+  if (letters.length < 3) return false;
+  if (letters !== letters.toUpperCase()) return false;
+  return trimmed.split(/\s+/).length <= 6;
+}
+
 function formatExperienceLatex(experienceRaw: string): string {
   if (!experienceRaw.trim()) return '';
   const lines = experienceRaw.split('\n');
@@ -698,7 +736,7 @@ function formatExperienceLatex(experienceRaw: string): string {
       continue;
     }
 
-    if (/^(PALO ALTO|INFOSYS|TATA|TCS|PROJECT:|CRITICAL|SECURITY|LEADERSHIP)/i.test(t) && t.length < 100) {
+    if (isExperienceHeaderLine(t)) {
       flush();
       currentLabel = t.slice(0, 72);
       continue;
@@ -808,7 +846,7 @@ function formatTwoColumnExperience(experienceRaw: string): string {
       continue;
     }
 
-    if (/^(PALO ALTO|INFOSYS|TATA|TCS|PROJECT:|CRITICAL|SECURITY|LEADERSHIP)/i.test(t) && t.length < 100) {
+    if (isExperienceHeaderLine(t)) {
       flush();
       currentLabel = t;
       continue;

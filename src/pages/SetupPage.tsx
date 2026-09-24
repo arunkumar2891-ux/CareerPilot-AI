@@ -35,8 +35,8 @@ const ACCOUNT_STEPS: SetupStep[] = [
     time: '2 min',
     description: 'These values are written into the master resume header. Do this before generating a PDF.',
     details: [
-      'Settings → Profile → Full Name and Title (e.g. Integration Architect).',
-      'On the same page fill Phone, Location, LinkedIn URL, GitHub URL, and PANW start date.',
+      'Settings → Profile → Full Name and Title (e.g. Senior Software Engineer).',
+      'On the same page fill Phone, Location, LinkedIn URL, GitHub URL, current role start date, and Education.',
       'Click Save Profile (writes name/title plus contact) or Save Contact for Resumes. Then open Corpus — the master resume should show real phone/LinkedIn/GitHub, not [Phone Number].',
       'Skip any field you do not want on the resume; blank fields stay as placeholders.',
     ],

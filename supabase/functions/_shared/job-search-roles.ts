@@ -48,10 +48,22 @@ export function maxJobsPerRole(jobSearch: Record<string, unknown> | undefined): 
   return Math.min(40, Math.floor(n));
 }
 
+/**
+ * Whether to add a second "remote in India" search target per role.
+ *
+ * Opt-**in**. This used to default to `true` for everyone, which doubled the
+ * number of runs, the AI spend, and the summary emails for any user who does
+ * not want jobs in India — a global default that only made sense for the app's
+ * original single user.
+ *
+ * Existing users are unaffected: `ensureJobSearchDefaults` in
+ * `src/services/index.ts` persists an explicit `alsoSearchIndiaRemote: true`
+ * for accounts that predate this change, so only the *absence* of the setting
+ * now means off.
+ */
 export function alsoSearchIndiaRemote(jobSearch: Record<string, unknown> | undefined): boolean {
   const value = jobSearch?.alsoSearchIndiaRemote;
-  if (value === false || value === 'false') return false;
-  return true;
+  return value === true || value === 'true';
 }
 
 export function buildSearchTargets(jobSearch: Record<string, unknown> | undefined): SearchTarget[] {

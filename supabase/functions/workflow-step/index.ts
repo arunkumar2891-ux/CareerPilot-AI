@@ -1,15 +1,13 @@
 import { jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { processDueSteps } from '../_shared/workflow/executor.ts';
+import { checkSchedulerAuth } from '../_shared/scheduler-auth.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() });
 
   try {
-    const secret = Deno.env.get('WORKFLOW_SCHEDULER_SECRET');
-    const authHeader = req.headers.get('Authorization');
-    if (secret && authHeader !== `Bearer ${secret}`) {
-      return jsonResponse({ error: 'Unauthorized' }, 401);
-    }
+    const denied = checkSchedulerAuth(req);
+    if (denied) return denied;
     const processed = await processDueSteps();
     return jsonResponse({ processed });
   } catch (err) {

@@ -44,12 +44,30 @@ export async function getIntegrationCredentials(
   return (data?.credentials as Record<string, string>) ?? {};
 }
 
+/**
+ * Resolve a credential that can come from either the user's own connected
+ * integration or a platform-wide environment secret.
+ *
+ * The **user's own credential wins.** The original order put
+ * `Deno.env.get(secretName)` first, which meant a deployment with a global
+ * `APIFY_TOKEN` silently ignored every user's connected Apify account: all
+ * tenants' scrapes ran through one shared account, pooling quota and billing,
+ * letting one heavy user rate-limit everyone, and collecting every user's
+ * search intent in a single run history. A user who connected their own key
+ * also had no way to tell it was not being used.
+ *
+ * The env var remains as a platform fallback for users who have not connected
+ * their own account.
+ */
 export function getSecretOrIntegration(
   secretName: string,
   integrationCreds: Record<string, string>,
   integrationKey = 'token',
 ): string {
-  return Deno.env.get(secretName) || integrationCreds[integrationKey] || integrationCreds.apiKey || '';
+  return integrationCreds[integrationKey] ||
+    integrationCreds.apiKey ||
+    Deno.env.get(secretName) ||
+    '';
 }
 
 export async function getUserSettings(userId: string): Promise<Record<string, unknown>> {

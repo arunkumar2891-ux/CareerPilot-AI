@@ -167,8 +167,20 @@ export async function upsertTailoredResume(
   return resumeId;
 }
 
+/*
+ * Both helpers below take `userId` and filter on it as well as the primary key.
+ *
+ * They are RLS-bypassing writes (service-role client) keyed on a caller-supplied
+ * `resumeId`, and they previously took no `userId` at all — so they *could not*
+ * scope even if the caller wanted to. Today's callers happen to be safe because
+ * each performs a `user_id`-scoped fetch first, but that is caller ordering, not
+ * a property of these functions. `userId` is required rather than optional so a
+ * new call site cannot silently omit it.
+ */
+
 export async function linkResumePdf(
   admin: AdminClient,
+  userId: string,
   resumeId: string,
   input: { storagePath: string; pdfUrl?: string },
 ): Promise<void> {
@@ -177,19 +189,28 @@ export async function linkResumePdf(
     updated_at: new Date().toISOString(),
   };
   if (input.pdfUrl) patch.pdf_url = input.pdfUrl;
-  const { error } = await admin.from('resumes').update(patch).eq('id', resumeId);
+  const { error } = await admin
+    .from('resumes')
+    .update(patch)
+    .eq('id', resumeId)
+    .eq('user_id', userId);
   if (error) throw error;
 }
 
 export async function markResumeDriveSync(
   admin: AdminClient,
+  userId: string,
   resumeId: string,
   driveFileId: string,
 ): Promise<void> {
-  const { error } = await admin.from('resumes').update({
-    drive_file_id: driveFileId,
-    drive_synced_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }).eq('id', resumeId);
+  const { error } = await admin
+    .from('resumes')
+    .update({
+      drive_file_id: driveFileId,
+      drive_synced_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', resumeId)
+    .eq('user_id', userId);
   if (error) throw error;
 }

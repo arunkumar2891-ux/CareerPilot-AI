@@ -187,20 +187,117 @@ export function formatContact(contact: Record<string, string | undefined>): stri
   ].filter(Boolean).join('\n');
 }
 
-export const DEFAULT_EDUCATION = `B.Tech in Information Technology
-SASTRA University | Thanjavur`;
+/**
+ * The template block a starter resume uses in place of real education.
+ * Matched as a unit so a partially-filled block is left alone.
+ */
+const EDUCATION_PLACEHOLDER_RE =
+  /\[Degree Name\][^\n]*\n\[University Name\][^\n]*(?:\n\[Graduation Year\][^\n]*)?/g;
 
-export function replaceEducationPlaceholders(text: string): string {
-  let out = text;
-  out = out.replace(
-    /\[Degree Name\][^\n]*\n\[University Name\][^\n]*(?:\n\[Graduation Year\][^\n]*)?/g,
-    DEFAULT_EDUCATION,
-  );
-  out = out.replace(
-    /Bachelor of Engineering in Computer Science\s*\n\s*Anna University[^\n]*/gi,
-    DEFAULT_EDUCATION,
-  );
-  return out;
+/**
+ * Fill the `[Degree Name]` / `[University Name]` / `[Graduation Year]` template
+ * block from the user's own configured education.
+ *
+ * This used to substitute a module-level `DEFAULT_EDUCATION` constant holding
+ * one specific person's degree (`B.Tech / SASTRA University`), and separately
+ * rewrote any resume containing `Bachelor of Engineering in Computer Science /
+ * Anna University` to that same value. The second rule was not a placeholder
+ * fill at all — it silently destroyed a *real* credential on any resume that
+ * happened to match, and shipped the falsified degree in the PDF the user sends
+ * to employers. Both are gone; there is no global default degree.
+ *
+ * When the user has configured nothing, the placeholders are left **as-is**. A
+ * visible `[Degree Name]` prompts them to go fill it in, whereas a
+ * confident-looking invented degree is something they have no reason to check.
+ */
+export function replaceEducationPlaceholders(text: string, education?: string): string {
+  const block = education?.trim();
+  if (!block) return text;
+  return text.replace(EDUCATION_PLACEHOLDER_RE, block);
+}
+
+/**
+ * Section headers that must never be mistaken for the candidate's name. Without
+ * this, a canonicalized resume beginning with `CONTACT` would have that header
+ * overwritten by the user's name.
+ */
+const SECTION_HEADER_LINES = new Set([
+  'NAME',
+  'CONTACT',
+  'SUMMARY',
+  'SKILLS',
+  'PROFESSIONAL EXPERIENCE',
+  'EXPERIENCE',
+  'SELECTED PROJECTS',
+  'PERSONAL PROJECTS',
+  'PROJECTS',
+  'CERTIFICATION',
+  'CERTIFICATIONS',
+  'EDUCATION',
+]);
+
+const NAME_LINE_MAX_LENGTH = 60;
+const TAGLINE_MAX_LENGTH = 120;
+
+function firstContentLineIndex(lines: string[], from = 0): number {
+  for (let i = from; i < lines.length; i += 1) {
+    if (lines[i].trim()) return i;
+  }
+  return -1;
+}
+
+function looksLikeNameLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.length > NAME_LINE_MAX_LENGTH) return false;
+  if (SECTION_HEADER_LINES.has(trimmed.toUpperCase())) return false;
+  // A label (`Phone:`) or anything with a digit is not a name.
+  if (trimmed.includes(':') || /\d/.test(trimmed)) return false;
+  return trimmed.split(/\s+/).length <= 6;
+}
+
+/**
+ * A role tagline such as `Integration Architect | GenAI Developer`. Requiring a
+ * `|` keeps this conservative: it is the near-universal resume convention for a
+ * tagline, and it cannot match a `Label: value` contact line or a date range.
+ */
+function looksLikeTaglineLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.length > TAGLINE_MAX_LENGTH) return false;
+  if (SECTION_HEADER_LINES.has(trimmed.toUpperCase())) return false;
+  if (trimmed.includes(':') || /\d/.test(trimmed)) return false;
+  return trimmed.includes('|');
+}
+
+/**
+ * Overlay the user's name and role tagline onto the resume header.
+ *
+ * Both were previously matched by literal string: the name via
+ * `/^ARUN KUMAR/m` and the title against two exact taglines. That made the
+ * Settings → Full Name and Title fields a silent no-op for every other user —
+ * they appeared to save but never reached the resume. Position plus shape is
+ * used instead, so this works for any candidate.
+ *
+ * Deliberately scoped to the header: only the first content line (after an
+ * optional `NAME` section header) and the line following it are considered.
+ */
+export function overlayResumeHeader(text: string, fullName?: string, title?: string): string {
+  if (!fullName && !title) return text;
+  const lines = text.split('\n');
+
+  let cursor = firstContentLineIndex(lines);
+  if (cursor >= 0 && lines[cursor].trim().toUpperCase() === 'NAME') {
+    cursor = firstContentLineIndex(lines, cursor + 1);
+  }
+  if (cursor < 0 || !looksLikeNameLine(lines[cursor])) return text;
+
+  if (fullName) lines[cursor] = fullName.toUpperCase();
+
+  if (title) {
+    const next = firstContentLineIndex(lines, cursor + 1);
+    if (next >= 0 && looksLikeTaglineLine(lines[next])) lines[next] = title;
+  }
+
+  return lines.join('\n');
 }
 
 export function applyContactOverlay(
@@ -232,8 +329,8 @@ export function applyContactOverlay(
     if (!value) continue;
     out = out.replace(new RegExp(`^${label}:.*$`, 'm'), `${label}: ${value}`);
   }
-  if (contact.fullName) out = out.replace(/^ARUN KUMAR/m, contact.fullName.toUpperCase());
-  return replaceEducationPlaceholders(out);
+  out = overlayResumeHeader(out, contact.fullName, contact.title);
+  return replaceEducationPlaceholders(out, contact.education);
 }
 
 export const ROLE_MATCH_SYSTEM_PROMPT = `You match a job title to a named resume variant. Return only the resume name, or master.`;

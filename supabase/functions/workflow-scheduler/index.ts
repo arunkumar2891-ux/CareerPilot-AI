@@ -1,29 +1,29 @@
 import { jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
 import { processDueSteps, processScheduledAutomations } from '../_shared/workflow/executor.ts';
 import { createAdminClient } from '../_shared/supabase-admin.ts';
+import { checkSchedulerAuth } from '../_shared/scheduler-auth.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() });
 
   try {
-    const secret = Deno.env.get('WORKFLOW_SCHEDULER_SECRET');
-    const authHeader = req.headers.get('Authorization');
-    if (secret && authHeader !== `Bearer ${secret}`) {
-      return jsonResponse({ error: 'Unauthorized' }, 401);
-    }
+    const denied = checkSchedulerAuth(req);
+    if (denied) return denied;
     const steps = await processDueSteps();
     const automations = await processScheduledAutomations();
     const admin = createAdminClient();
-    const { data: activeAutomations } = await admin
+    // Count only. This used to select and return id/name/schedule for every
+    // tenant's active automations, which is a cross-tenant disclosure in a
+    // payload that exists purely for operational debugging.
+    const { count: activeAutomationCount } = await admin
       .from('automations')
-      .select('id, name, schedule, next_run, last_run, status')
-      .eq('status', 'active')
-      .limit(20);
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'active');
     return jsonResponse({
       steps,
       automations,
       utcNow: new Date().toISOString(),
-      activeAutomations: activeAutomations ?? [],
+      activeAutomationCount: activeAutomationCount ?? 0,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

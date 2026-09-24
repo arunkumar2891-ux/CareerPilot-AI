@@ -44,7 +44,11 @@ Deno.test('parseJobSearchRoles truncates beyond the role cap', () => {
 
 Deno.test('the role cap bounds daily runs and emails at 10', () => {
   const roles = ['Role A', 'Role B', 'Role C', 'Role D', 'Role E', 'Role F'];
-  const withIndia = buildSearchTargets({ roles, location: 'San Francisco, CA' });
+  const withIndia = buildSearchTargets({
+    roles,
+    location: 'San Francisco, CA',
+    alsoSearchIndiaRemote: true,
+  });
   if (withIndia.length !== MAX_SEARCH_ROLES * 2) throw new Error(String(withIndia.length));
   const withoutIndia = buildSearchTargets({
     roles,
@@ -54,17 +58,22 @@ Deno.test('the role cap bounds daily runs and emails at 10', () => {
   if (withoutIndia.length !== MAX_SEARCH_ROLES) throw new Error(String(withoutIndia.length));
 });
 
-Deno.test('alsoSearchIndiaRemote defaults on', () => {
-  if (!alsoSearchIndiaRemote(undefined)) throw new Error('undefined');
-  if (!alsoSearchIndiaRemote({})) throw new Error('empty');
+Deno.test('alsoSearchIndiaRemote is opt-in', () => {
+  // Defaulting this on doubled every user's runs, AI spend, and summary emails
+  // regardless of where they live.
+  if (alsoSearchIndiaRemote(undefined)) throw new Error('undefined should be off');
+  if (alsoSearchIndiaRemote({})) throw new Error('empty should be off');
   if (alsoSearchIndiaRemote({ alsoSearchIndiaRemote: false })) throw new Error('false');
   if (alsoSearchIndiaRemote({ alsoSearchIndiaRemote: 'false' })) throw new Error('string false');
+  if (!alsoSearchIndiaRemote({ alsoSearchIndiaRemote: true })) throw new Error('true');
+  if (!alsoSearchIndiaRemote({ alsoSearchIndiaRemote: 'true' })) throw new Error('string true');
 });
 
 Deno.test('buildSearchTargets adds India remote after each location scrape', () => {
   const targets = buildSearchTargets({
     roles: ['FDE', 'EM'],
     location: 'Bengaluru, India',
+    alsoSearchIndiaRemote: true,
   });
   if (targets.length !== 4) throw new Error(String(targets.length));
   if (targets[0].location !== 'Bengaluru, India' || targets[0].remoteOnly) throw new Error('FDE location');
@@ -73,6 +82,15 @@ Deno.test('buildSearchTargets adds India remote after each location scrape', () 
   if (!String(targets[1].label).includes('India remote')) throw new Error(targets[1].label);
   if (targets[2].role !== 'Engineering Manager' || targets[2].remoteOnly) throw new Error('EM location');
   if (targets[3].role !== 'Engineering Manager' || !targets[3].remoteOnly) throw new Error('EM India remote');
+});
+
+Deno.test('buildSearchTargets omits India remote by default', () => {
+  const targets = buildSearchTargets({
+    roles: ['EM', 'SWE'],
+    location: 'San Francisco, CA',
+  });
+  if (targets.length !== 2) throw new Error(String(targets.length));
+  if (targets.some((target) => target.remoteOnly)) throw new Error('unexpected remote scrape');
 });
 
 Deno.test('buildSearchTargets skips India remote when disabled', () => {

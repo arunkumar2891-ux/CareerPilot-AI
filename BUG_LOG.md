@@ -845,3 +845,189 @@ Recorded for traceability; all were corrected in the same pass.
 | **Two-machine hazard:** no `.gitattributes`, `core.autocrlf` unset, and all 124 files under `src/` are CRLF. Editing the same file on both the Windows box and the MacBook produces whole-file phantom diffs. | Documented in `AGENTS.md` → Development Environments and `RESTORE_POINTS.md`. **Not fixed** — `* text=auto eol=lf` forces a one-time renormalization commit touching nearly every file, which should be its own deliberate commit made on the Mac. |
 
 ---
+
+## BUG-011 — OAuth `state` was unsigned: any user's Google/Gmail credentials could be overwritten
+
+**Status:** Fixed
+**Feature:** Google integration / OAuth
+
+**Symptom:** None observed in production. Found by audit.
+
+**Root Cause:** `google-oauth-callback` is an unauthenticated browser redirect — no `Authorization`
+header, no `auth.getUser()` — so it trusted `state` for the user's identity. `state` was
+`btoa(JSON.stringify({ userId }))`, which is an *encoding*, not a signature. An attacker could
+complete Google consent with their own account while substituting
+`state = btoa('{"userId":"<victim-uuid>"}')`, and the service-role write at
+`google-oauth-callback/index.ts:43/63/66` would store the **attacker's** `refresh_token` in the
+victim's `integrations` row. Granted scopes include `drive`, `documents`, `gmail.send`, and
+`gmail.compose`, so afterwards the victim's runs would read the attacker's Drive, upload resumes
+into it, and **send auto-apply email from the attacker's Gmail**. It also destroyed the victim's
+own refresh token. `google-oauth-start` did authenticate, but the callback is directly reachable,
+so that was not a gate.
+
+**Files:**
+- `supabase/functions/_shared/oauth-state.ts` (new — `signOAuthState` / `verifyOAuthState`)
+- `supabase/functions/_shared/oauth-state_test.ts` (new — 10 cases)
+- `supabase/functions/google-oauth-start/index.ts`
+- `supabase/functions/google-oauth-callback/index.ts`
+
+**Fix:** `state` is HMAC-SHA256 signed with a 10-minute TTL and constant-time comparison. The
+signing key prefers `OAUTH_STATE_SECRET` and falls back to `SUPABASE_SERVICE_ROLE_KEY`, which is
+always present in an Edge Function environment — deliberate, so the fix needs **no new
+configuration** to be effective. There is no lenient path and no fallback to the old unsigned
+format: accepting a legacy token would leave the forgery open.
+
+**Validation:** 10 new Deno cases, including a forged unsigned `state` (the original exploit), a
+payload swapped onto a valid signature, a wrong signing key, and expiry.
+
+---
+
+## BUG-012 — Scheduler endpoints failed open when `WORKFLOW_SCHEDULER_SECRET` was unset
+
+**Status:** Fixed
+**Feature:** Workflow scheduler
+
+**Symptom:** None observed. Found by audit. Whether this was live depends on whether the secret is
+actually set in the deployed environment.
+
+**Root Cause:** Both `workflow-step` and `workflow-scheduler` guarded with
+`if (secret && authHeader !== ...)`. The `secret &&` meant that when the env var was **absent the
+check was skipped entirely** and the endpoint was fully anonymous. Both then call `processDueSteps()`
+/ `processScheduledAutomations()`, which operate on the **global** cross-tenant queue, so any
+anonymous caller could force AI spend, Apify scrapes, and outbound auto-apply email for every user.
+`003_cron.sql` requires the operator to hand-substitute `<YOUR_SCHEDULER_SECRET>`, making an unset
+secret a realistic deployment state. `careerpilot-doc-sync` already had the correct fail-closed
+shape.
+
+Separately, `workflow-scheduler` returned `id, name, schedule, next_run` for **every tenant's**
+active automations in its debug payload. Nothing consumed it.
+
+**Files:**
+- `supabase/functions/_shared/scheduler-auth.ts` (new — shared `checkSchedulerAuth`)
+- `supabase/functions/_shared/scheduler-auth_test.ts` (new — 6 cases)
+- `supabase/functions/workflow-step/index.ts`
+- `supabase/functions/workflow-scheduler/index.ts`
+
+**Fix:** Extracted one shared guard so the two endpoints cannot drift. A missing secret now returns
+**503** (distinct from 401) so an operator can tell a misconfigured deployment from a rejected
+caller — a silently-dead scheduler otherwise looks like "no automations are due". The
+cross-tenant automation list was reduced to a `count`.
+
+**Validation:** 6 new Deno cases, including the fail-open case that previously returned authorized.
+
+---
+
+## BUG-013 — One user's biographical details were compiled into every other user's resume
+
+**Status:** Fixed
+**Feature:** Resume generation / career corpus
+
+**Symptom:** None observed with a single user — by construction. Found by audit.
+
+**Root Cause:** Four separate hardcodings of the original user's identity, each duplicated across
+`src/content/career-corpus/index.ts` (frontend, on Settings save) and
+`supabase/functions/_shared/career-corpus/prompt.ts` (backend, every tailoring run):
+
+1. **The worst: a destructive rewrite.** `replaceEducationPlaceholders()` regex-matched
+   `Bachelor of Engineering in Computer Science\nAnna University` and replaced it with
+   `DEFAULT_EDUCATION`. This was **not** a placeholder fill — a second user who genuinely held
+   that degree had a *true credential silently overwritten* with a SASTRA B.Tech, on every
+   tailoring pass, in the PDF they send to employers.
+2. `DEFAULT_EDUCATION` itself hardcoded `B.Tech in Information Technology / SASTRA University |
+   Thanjavur` as a global fallback degree.
+3. The name overlay was `out.replace(/^ARUN KUMAR/m, ...)`, so Settings → Full Name was a silent
+   **no-op** for every other user.
+4. The title overlay matched two literal taglines, so Settings → Title was likewise a no-op. (It
+   existed only in the frontend copy — the two implementations had already drifted.)
+
+Also: `resume-latex.ts` gated company-header detection on
+`/^(PALO ALTO|INFOSYS|TATA|TCS|...)/i` in **two** parsers, so a candidate at any other employer
+had their company line render as a body bullet or be dropped when under 20 characters.
+
+**Files:**
+- `supabase/functions/_shared/career-corpus/prompt.ts`
+- `src/content/career-corpus/index.ts`
+- `supabase/functions/_shared/career-corpus/load.ts`
+- `supabase/functions/_shared/resume-latex.ts` (+ `_test.ts`)
+- `src/services/index.ts`, `src/pages/SettingsPage.tsx`, `src/pages/SetupPage.tsx`
+- `supabase/functions/_shared/career-corpus/identity-overlay_test.ts` (new — 13 cases)
+
+**Fix:** The Anna University rewrite is **deleted outright**. Education is now a user-supplied
+Settings field threaded through `contact.education`; with nothing configured the `[Degree Name]`
+placeholders are **left visible**, because a visible placeholder prompts the user to fill it in
+whereas an invented degree is something they would never think to check. Name and title are matched
+by *position and shape* (`overlayResumeHeader`) rather than literal strings. The employer whitelist
+became `isExperienceHeaderLine()`, keyed on the output contract's own `COMPANY | Role` shape plus
+short all-caps labels — with an explicit guard so the following `Dates | Location` line still falls
+through as before.
+
+**Validation:** 13 new cases in `identity-overlay_test.ts` (including "a real Anna University degree
+survives untouched" and "no hardcoded degree is emitted when the user configured none") and 5 new
+`resume-latex_test.ts` cases covering Google/Stripe/GmbH employers, the retained all-caps labels,
+and date-line rejection. Full suites green.
+
+---
+
+## BUG-014 — Cross-tenant write exposure in service-role and RLS-only paths
+
+**Status:** Fixed (code); one prerequisite **unverified** — see below
+**Feature:** Data access / multi-tenancy
+
+**Symptom:** None observed. Found by audit.
+
+**Root Cause:** Edge Functions use the service-role key via `createAdminClient()`, which **bypasses
+RLS entirely**, so every query must scope by `user_id` itself. Several did not:
+
+- `linkResumePdf()` and `markResumeDriveSync()` (`_shared/resume-store.ts`) updated `resumes` by
+  primary key and **took no `userId` parameter at all** — they could not scope even if a caller
+  wanted to. Safe today only by caller ordering (each caller happens to do a scoped fetch first).
+- `resume-actions/index.ts` overwrote `resumes.content` filtered only by `id`.
+- `nodes.ts` wrote a 7-day signed `pdf_url` into `jobs` filtered only by `id`.
+- On the frontend, `NotificationService.markAllRead()` was
+  `.update({ read: true }).eq('read', false)` — an **unbounded UPDATE with no user scope at all**.
+  If `notifications` lacks an UPDATE policy, one click marks every notification read for every user.
+  Ten sibling sites across `applications`, `cover_letters`, `documents`, `integrations`, and
+  `automations` were also id-only.
+
+**Files:**
+- `supabase/functions/_shared/resume-store.ts`, `resume-actions/index.ts`, `_shared/workflow/nodes.ts`
+- `supabase/functions/_shared/credentials.ts` (+ `credentials_test.ts`, new — 6 cases)
+- `supabase/functions/_shared/job-search-roles.ts` (+ `_test.ts`)
+- `src/services/index.ts`, `src/pages/SettingsPage.tsx`
+
+**Fix:** `userId` is now a **required** parameter on both `resume-store.ts` helpers (required, not
+optional, so a new call site cannot silently omit it) and every affected query filters on it,
+following the `JobSearchService.updateStatus` precedent.
+
+Two related defaults were also corrected: `getSecretOrIntegration()` put the global env secret
+**ahead** of the per-user credential, so a deployment-wide `APIFY_TOKEN` silently ignored every
+user's own connected Apify account — pooling quota, billing, and all tenants' search history into
+one account. Precedence is now user-credential-first. And `alsoSearchIndiaRemote` defaulted to
+**true** for everyone, doubling a new user's runs, AI spend, and summary emails regardless of where
+they live; it is now opt-in, with the pre-existing `ensureJobSearchDefaults` backfill preserving
+behaviour for accounts that predate the change.
+
+**Validation:** `npm run typecheck` clean, `npx eslint` clean on all changed files, `npm run build`
+succeeds, `npm run check:encoding` OK (226 files), 281 Deno cases green across
+`_shared/workflow/`, `_shared/career-corpus/`, `_shared/ai/`, `src/utils/`, and the new suites.
+
+> ⚠️ **Unverified prerequisite.** Only **7 tables** are created in `supabase/migrations/`
+> (`workflow_step_queue`, `knowledge_chunks`, `workflow_job_executions`, `workflow_node_executions`,
+> `ai_usage_events`, `scheduled_run_slots`, `workflow_run_batches`). The other ~22 the code uses —
+> `jobs`, `resumes`, `profiles`, `settings`, `integrations`, `workflows`, `workflow_runs`,
+> `automations`, `applications`, `notifications`, `agents`, `documents`, … — were created
+> out-of-band via the Supabase dashboard, so **their RLS status cannot be established from this
+> repository.** No `SELECT`/`INSERT` policy for `workflow_runs` appears in any migration even
+> though the frontend reads it, confirming policies live outside version control. The frontend
+> fixes above are defence-in-depth *on top of* RLS; they are not a substitute for it. Confirm with:
+>
+> ```sql
+> SELECT c.relname, c.relrowsecurity AS rls_enabled, count(p.polname) AS policy_count
+> FROM pg_class c
+> JOIN pg_namespace n ON n.oid = c.relnamespace
+> LEFT JOIN pg_policy p ON p.polrelid = c.oid
+> WHERE n.nspname = 'public' AND c.relkind = 'r'
+> GROUP BY 1,2 ORDER BY rls_enabled, policy_count;
+> ```
+
+---

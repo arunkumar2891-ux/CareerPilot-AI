@@ -129,7 +129,7 @@ async function ensureResumePdf(
     .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
   if (signError || !signed?.signedUrl) throw signError || new Error('Failed to create signed PDF URL');
 
-  await linkResumePdf(admin, resume.id, { storagePath, pdfUrl: signed.signedUrl });
+  await linkResumePdf(admin, userId, resume.id, { storagePath, pdfUrl: signed.signedUrl });
   return { pdfBytes, storagePath, signedUrl: signed.signedUrl };
 }
 
@@ -170,11 +170,12 @@ async function syncResumeToDrive(
       .from('resumes')
       .select('ats_score')
       .eq('id', resumeId)
+      .eq('user_id', userId)
       .maybeSingle();
     await admin.from('resumes').update({
       content: contentOverride,
       updated_at: new Date().toISOString(),
-    }).eq('id', resumeId);
+    }).eq('id', resumeId).eq('user_id', userId);
     resume.content = contentOverride;
     await appendResumeVersion(
       admin,
@@ -202,7 +203,7 @@ async function syncResumeToDrive(
     folderId,
     existingFileId: resume.drive_file_id,
   });
-  await markResumeDriveSync(admin, resumeId, drive.fileId);
+  await markResumeDriveSync(admin, userId, resumeId, drive.fileId);
   return {
     resumeId,
     driveFileId: drive.fileId,
@@ -245,11 +246,12 @@ Deno.serve(async (req) => {
           .from('resumes')
           .select('ats_score')
           .eq('id', resumeId)
+          .eq('user_id', userId)
           .maybeSingle();
         await admin.from('resumes').update({
           content: contentOverride,
           updated_at: new Date().toISOString(),
-        }).eq('id', resumeId);
+        }).eq('id', resumeId).eq('user_id', userId);
         resume.content = contentOverride;
         await appendResumeVersion(
           admin,

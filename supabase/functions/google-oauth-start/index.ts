@@ -1,4 +1,5 @@
 import { createUserClient, jsonResponse, corsHeaders } from '../_shared/supabase-admin.ts';
+import { signOAuthState } from '../_shared/oauth-state.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() });
@@ -16,7 +17,10 @@ Deno.serve(async (req) => {
     const supabase = createUserClient(authHeader);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const state = btoa(JSON.stringify({ userId: user.id }));
+      // Signed, not just base64-encoded: the callback has no Authorization
+      // header and trusts `state` for the user's identity, so an unsigned
+      // state let anyone write their Google tokens into any user's row.
+      const state = await signOAuthState(user.id);
       // drive.readonly: read resume by Doc ID (Drive export API in gdocs node)
       // drive.file: upload PDFs created by the workflow
       // gmail.send + gmail.compose: send application emails via Gmail API

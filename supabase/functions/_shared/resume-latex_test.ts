@@ -6,6 +6,7 @@ import {
   extractGitHubHandle,
   extractLinkedInHandle,
   formatWebsiteLabel,
+  isExperienceHeaderLine,
   normalizeResumeTextForPdf,
 } from './resume-latex.ts';
 
@@ -745,5 +746,82 @@ Deno.test('a resume with no website emits no homepage command', () => {
   // Contact block should still render the other fields.
   if (!twoCol.includes('jane@example.com')) {
     throw new Error('two-column contact block lost the email');
+  }
+});
+
+/* Experience header detection — previously a four-employer whitelist, so a
+   candidate at any other company lost their company line in the PDF. */
+
+Deno.test('recognizes any employer as an experience header', () => {
+  for (const line of [
+    'ACME CORP | Staff Engineer',
+    'Google | Senior SWE',
+    'Stripe | Payments Engineer',
+    'Kleine & Schmidt GmbH | Consultant',
+    'PALO ALTO NETWORKS | Integration Architect',
+  ]) {
+    if (!isExperienceHeaderLine(line)) throw new Error(`not detected as a header: ${line}`);
+  }
+});
+
+Deno.test('still recognizes the labels the old whitelist covered', () => {
+  for (const line of ['LEADERSHIP', 'SECURITY', 'CRITICAL', 'TCS', 'INFOSYS', 'PROJECT: Atlas']) {
+    if (!isExperienceHeaderLine(line)) throw new Error(`regressed on: ${line}`);
+  }
+});
+
+Deno.test('does not treat a date/location line as an experience header', () => {
+  // This is the line directly below the company header in the output contract.
+  for (const line of [
+    'Jan 2020 - Present | Bengaluru, India',
+    '2019 - 2021 | Remote',
+    'Jul 2024 | San Francisco, CA',
+  ]) {
+    if (isExperienceHeaderLine(line)) throw new Error(`date line misread as a header: ${line}`);
+  }
+});
+
+Deno.test('does not treat prose or bullets as an experience header', () => {
+  for (const line of [
+    'Built a distributed ingestion pipeline handling 4M events per day across regions.',
+    'Reduced p95 latency from 800ms to 120ms',
+    'Technologies: Go, Kafka, Kubernetes',
+    '',
+    '   ',
+  ]) {
+    if (isExperienceHeaderLine(line)) throw new Error(`misread as a header: ${line}`);
+  }
+});
+
+Deno.test('a non-whitelisted employer keeps its company line in the PDF', () => {
+  const resume = `NAME
+Jane Doe
+
+CONTACT
+Email: jane@example.com
+
+SUMMARY
+I build systems.
+
+SKILLS
+Cloud:
+- AWS, GCP
+
+PROFESSIONAL EXPERIENCE
+STRIPE | Senior Payments Engineer
+Jan 2021 - Present | Dublin, Ireland
+- Shipped a ledger reconciliation service handling 2M transactions a day.
+
+EDUCATION
+- B.S. in Computer Science, State University`;
+
+  for (const template of ['classic', 'modern_single', 'modern_two_column'] as const) {
+    const latex = buildLatexFromAtsText(resume, { template });
+    if (!latex.includes('Stripe') && !latex.includes('STRIPE')) {
+      throw new Error(`${template}: employer name missing from the PDF`);
+    }
+    if (!latex.includes('Senior Payments Engineer')) {
+      throw new Error(`${template}: role missing from the PDF`);
+    }
   }
 });

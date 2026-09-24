@@ -1,4 +1,5 @@
 import { createAdminClient, jsonResponse } from '../_shared/supabase-admin.ts';
+import { verifyOAuthState } from '../_shared/oauth-state.ts';
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -17,7 +18,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { userId } = JSON.parse(atob(state));
+    // This request is an unauthenticated browser redirect, so `state` is the
+    // only evidence of who is connecting. It must be verified, not decoded:
+    // the previous `atob` let any caller name any victim's user id and have
+    // their own Google/Gmail tokens written into that user's integration.
+    const { userId } = await verifyOAuthState(state);
     const clientId = Deno.env.get('GOOGLE_CLIENT_ID')!;
     const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
     const redirectUri = Deno.env.get('GOOGLE_REDIRECT_URI') || `${Deno.env.get('SUPABASE_URL')}/functions/v1/google-oauth-callback`;
