@@ -29,6 +29,7 @@ import { fetchWithTimeout, fetchJsonChecked } from '../fetch-timeout.ts';
 import { parseGoogleDocFileId, parseGoogleDriveFolderId } from '../google-drive.ts';
 import { currentSearchLabel, currentSearchLocation, currentSearchRole, isRemoteOnlySearch } from './role-loop.ts';
 import { extractEmailFromText } from '../apply-email.ts';
+import { sendGmailMessage } from '../gmail-send.ts';
 import { loadMasterResumeText } from '../career-corpus/load.ts';
 import { scoreJobsAgainstResume } from '../career-corpus/score.ts';
 import { maxJobsPerRole } from '../job-search-roles.ts';
@@ -996,27 +997,19 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
           skippedQueryMismatch: Number(ctx.variables.jobsSkippedQueryMismatch ?? 0),
         })}</p>`;
       }
-      const resendKey = Deno.env.get('RESEND_API_KEY');
-      if (resendKey && to && body) {
-        const res = await fetchWithTimeout(
-          'https://api.resend.com/emails',
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              from: Deno.env.get('RESEND_FROM_EMAIL') || 'CareerPilot <onboarding@resend.dev>',
-              to: [to],
-              subject,
-              html: body,
-            }),
-          },
-          30000,
-          'Resend email',
-        );
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || 'Email send failed');
+      if (to && body) {
+        const googleCreds = await getIntegrationCredentials(ctx.userId, 'Google Drive');
+        if (!googleCreds.refresh_token) {
+          throw new Error(
+            'Connect Google in Integrations to send summary email. Messages are sent from your Gmail account.',
+          );
         }
+        await sendGmailMessage(ctx.userId, {
+          to,
+          subject,
+          body,
+          bodyContentType: 'text/html',
+        });
       }
       const admin = createAdminClient();
       await admin.from('notifications').insert({

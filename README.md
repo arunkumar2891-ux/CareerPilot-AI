@@ -30,7 +30,7 @@ Supabase Edge Functions
   ai-chat · resume-actions · Google OAuth helpers
         │
         ▼
-Apify · Gemini (primary) · Groq (fallback) · Resend · Google APIs · LaTeX compiler
+Apify · Gemini (primary) · Groq (fallback) · Google APIs (Gmail, Drive) · LaTeX compiler
 ```
 
 The client uses React Router, TanStack Query, Zustand, Tailwind CSS, shadcn/ui, and Framer Motion. Server-side operations are implemented in TypeScript/Deno Edge Functions, keeping provider keys out of the browser.
@@ -208,8 +208,7 @@ Project documentation:
 - A Supabase project
 - Gemini API key for AI functionality
 - Apify token for the automated LinkedIn search
-- Resend API key for email summaries
-- Google OAuth credentials only if using Google Docs or Drive
+- Google OAuth credentials for summary email (Gmail), auto-apply, and optional Docs/Drive sync
 
 ## Local development
 
@@ -281,8 +280,8 @@ supabase secrets set \
   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key \
   GEMINI_API_KEY=your_gemini_key \
   APIFY_TOKEN=your_apify_token \
-  RESEND_API_KEY=your_resend_key \
-  RESEND_FROM_EMAIL='CareerPilot <onboarding@resend.dev>' \
+  GOOGLE_CLIENT_ID=your_google_client_id \
+  GOOGLE_CLIENT_SECRET=your_google_client_secret \
   WORKFLOW_SCHEDULER_SECRET=your_random_secret \
   APP_URL=http://localhost:5173
 ```

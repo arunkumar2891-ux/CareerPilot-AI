@@ -41,8 +41,8 @@ const CORE: CoreIntegration[] = [
   {
     name: 'Google Drive',
     category: 'Storage',
-    description: 'Copy tailored PDFs to your Drive from Resume Studio. Job search saves resumes in-app by default.',
-    note: 'Connect with OAuth, set a Drive folder in Settings → Job Search, then use Copy to Google Drive on the Resumes page.',
+    description: 'Required for daily summary email, auto-apply, and optional Drive PDF upload.',
+    note: 'Connect with OAuth (includes Gmail send). Set Summary Email in Settings → Job Search. Optional: set a Drive folder and use Copy to Google Drive on Resumes.',
     icon: Cloud,
     optional: true,
   },
@@ -134,7 +134,7 @@ export function IntegrationsPage() {
     <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
       <PageHeader
         title="Integrations"
-        description="Only two connections exist: Apify for job scrape, Google Drive for optional PDF upload. Gemini and email use Edge Function secrets, not this page."
+        description="Apify powers job scrape. Google sends summary and application email from your Gmail. Gemini keys live in Edge Function secrets."
       />
 
       <StaggerList as="ul" label="Integrations" className="grid gap-4 md:grid-cols-2">
