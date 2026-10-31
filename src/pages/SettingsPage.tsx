@@ -580,7 +580,13 @@ export function SettingsPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">Email Notifications</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-1.5"><Label>Summary Email</Label><Input type="email" value={notifyEmail} onChange={(e) => setNotifyEmail(e.target.value)} /></div>
+              <div className="space-y-1.5">
+                <Label>Summary Email</Label>
+                <Input type="email" value={notifyEmail} onChange={(e) => setNotifyEmail(e.target.value)} />
+                <p className="text-xs text-muted-foreground">
+                  Daily summaries are sent from your connected Gmail (Integrations → Connect Google). You can use any recipient address here.
+                </p>
+              </div>
               <Button onClick={saveJobSearch} className="gap-2"><Check className="h-4 w-4" /> Save</Button>
             </CardContent>
           </Card>
@@ -603,8 +609,7 @@ export function SettingsPage() {
                 <li><code>AI_FORCE_GROQ</code> — set to <code>true</code> to use Groq after Gemini on chat. ATS already uses Groq when this key is set</li>
                 <li><code>AI_MAX_RETRIES</code> — optional; only used when <code>AI_GEMINI_RETRY_ENABLED=true</code></li>
                 <li><code>AI_GEMINI_RETRY_ENABLED</code> — optional; default off — one Gemini attempt per key, then next provider</li>
-                <li><code>RESEND_API_KEY</code> — Resend email API key</li>
-                <li><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> — Google OAuth</li>
+                <li><code>GOOGLE_CLIENT_ID</code> / <code>GOOGLE_CLIENT_SECRET</code> — Google OAuth (Drive, Doc sync, Gmail summaries, auto-apply)</li>
                 <li><code>SUPABASE_SERVICE_ROLE_KEY</code> — Service role key</li>
                 <li><code>WORKFLOW_SCHEDULER_SECRET</code> — Cron auth token</li>
               </ul>

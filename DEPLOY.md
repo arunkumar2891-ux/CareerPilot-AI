@@ -5,7 +5,7 @@ End-to-end setup for CareerPilot AI: database, Edge Functions, scheduler, and fr
 ## Prerequisites
 
 1. Supabase project
-2. API keys: Apify, Gemini, Resend (optional: Google OAuth)
+2. API keys: Apify, Gemini, Google OAuth (Gmail summaries + auto-apply)
 3. Node.js 18+
 
 ## 1. Apply database migrations
@@ -96,8 +96,6 @@ supabase secrets set \
   AI_TIMEOUT_MS=30000 \
   AI_ATS_TIMEOUT_MS=75000 \
   AI_MAX_RETRIES=1 \
-  RESEND_API_KEY=your_resend_key \
-  RESEND_FROM_EMAIL="CareerPilot <onboarding@resend.dev>" \
   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key \
   WORKFLOW_SCHEDULER_SECRET=your_random_secret_string \
   DEPLOY_SYNC_SECRET=your_random_secret_string \
@@ -294,7 +292,7 @@ Open **Workflow Studio** to inspect or edit the built-in graph. The source defin
        ▼
 ┌──────────────────────────────────────────────┐
 │  External APIs                               │
-│  Apify · Gemini · Resend · Google · LaTeX    │
+│  Apify · Gemini · Google (Gmail) · LaTeX     │
 └──────────────────────────────────────────────┘
 ```
 
