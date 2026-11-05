@@ -40,4 +40,4 @@ jobs:
           else
             PROJECT_REF="$RAW"
           fi
-          supabase functions deploy --use-api --project-ref "$PROJECT_REF"
+          supabase functions deploy --use-api --yes --project-ref "$PROJECT_REF"

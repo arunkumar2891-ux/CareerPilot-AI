@@ -138,7 +138,7 @@ When in doubt, `supabase functions deploy --project-ref YOUR_PROJECT_REF` deploy
 
 ### Automated deploy (GitHub Actions)
 
-Merges to `main` that touch `supabase/functions/**` or `supabase/config.toml` trigger `.github/workflows/deploy-supabase-functions.yml`, which deploys all Edge Functions to your linked Supabase project.
+Merges to `main` that touch `supabase/functions/**` or `supabase/config.toml` trigger `.github/workflows/deploy-supabase-functions.yml`, which deploys all Edge Functions to your linked Supabase project. The workflow passes `--yes` so the Supabase CLI does not block on a confirmation prompt in CI.
 
 **One-time setup** — add these repository secrets in GitHub → **Settings** → **Secrets and variables** → **Actions**:
 
