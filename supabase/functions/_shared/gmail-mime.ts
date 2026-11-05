@@ -8,6 +8,20 @@ function encodeBase64(data: Uint8Array): string {
   return btoa(binary);
 }
 
+/** RFC 2047 encoded-word for non-ASCII header values (Subject, etc.). */
+export function encodeMimeHeaderValue(value: string): string {
+  if (!/[^\x00-\x7F]/.test(value)) return value;
+  const b64 = encodeBase64(encodeUtf8(value)).replace(/=+$/, '');
+  const prefix = '=?UTF-8?B?';
+  const suffix = '?=';
+  const maxChunk = 75 - prefix.length - suffix.length;
+  const words: string[] = [];
+  for (let i = 0; i < b64.length; i += maxChunk) {
+    words.push(`${prefix}${b64.slice(i, i + maxChunk)}${suffix}`);
+  }
+  return words.join('\r\n ');
+}
+
 export function buildMimeMessage(opts: {
   to: string;
   subject: string;
@@ -20,7 +34,7 @@ export function buildMimeMessage(opts: {
   const lines: string[] = [];
 
   lines.push(`To: ${opts.to}`);
-  lines.push(`Subject: ${opts.subject}`);
+  lines.push(`Subject: ${encodeMimeHeaderValue(opts.subject)}`);
   lines.push('MIME-Version: 1.0');
 
   if (opts.attachment) {
