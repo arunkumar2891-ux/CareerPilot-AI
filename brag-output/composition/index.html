@@ -1,0 +1,170 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[
+    {"id":"color-ground","type":"color","label":"Background","default":"#0B120E"},
+    {"id":"color-ink","type":"color","label":"Text","default":"#F7F5F3"},
+    {"id":"color-accent","type":"color","label":"Accent","default":"#3DA988"},
+    {"id":"font-display","type":"string","label":"Display font","default":"Inter"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --color-ground: #0b120e;
+        --color-ink: #f7f5f3;
+        --color-accent: #3da988;
+        --font-display: Inter, sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--color-ground);
+        font-family: var(--font-display);
+        color: var(--color-ink);
+      }
+      #root { position: relative; width: 1920px; height: 1080px; }
+      #ground { position: absolute; inset: 0; background: var(--color-ground); z-index: 0; }
+      #atmosphere { position: absolute; inset: 0; z-index: 1; }
+      #grid {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background-image:
+          linear-gradient(to right, rgba(38, 49, 44, 0.85) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(38, 49, 44, 0.85) 1px, transparent 1px);
+        background-size: 48px 48px;
+        opacity: 0.45;
+      }
+      #hook, #command, #board, #lockup {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="20"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="ground" data-layout-ignore></div>
+      <div
+        id="atmosphere"
+        class="clip"
+        data-composition-id="atmosphere"
+        data-composition-src="compositions/atmosphere.html"
+        data-start="0"
+        data-duration="20"
+        data-track-index="0"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+        data-layout-ignore
+      ></div>
+      <div id="grid" data-layout-ignore></div>
+
+      <div
+        id="hook"
+        class="clip"
+        data-composition-id="hook"
+        data-composition-src="compositions/hook.html"
+        data-start="0"
+        data-duration="4.2"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+      <div
+        id="command"
+        class="clip"
+        data-composition-id="command"
+        data-composition-src="compositions/command.html"
+        data-start="4.2"
+        data-duration="6.2"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+      <div
+        id="board"
+        class="clip"
+        data-composition-id="board"
+        data-composition-src="compositions/board.html"
+        data-start="10.4"
+        data-duration="5.6"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+      <div
+        id="lockup"
+        class="clip"
+        data-composition-id="lockup"
+        data-composition-src="compositions/lockup.html"
+        data-start="16"
+        data-duration="4"
+        data-track-index="1"
+        data-track-kind="graphics"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <audio
+        id="bed"
+        class="clip"
+        src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"
+        data-start="0"
+        data-duration="20"
+        data-track-index="10"
+        data-volume="0.34"
+        data-fade-in="0.6"
+        data-fade-out="1.6"
+      ></audio>
+      <audio
+        id="sfx-hook"
+        class="clip"
+        src="assets/sfx/interface/bong_001.ogg"
+        data-start="0.8"
+        data-duration="0.13"
+        data-track-index="11"
+        data-volume="0.4"
+      ></audio>
+      <audio
+        id="sfx-card"
+        class="clip"
+        src="assets/sfx/interface/drop_001.ogg"
+        data-start="11.4"
+        data-duration="0.11"
+        data-track-index="12"
+        data-volume="0.38"
+      ></audio>
+      <audio
+        id="sfx-score"
+        class="clip"
+        src="assets/sfx/impact/impactSoft_medium_001.ogg"
+        data-start="13.05"
+        data-duration="0.19"
+        data-track-index="13"
+        data-volume="0.46"
+      ></audio>
+    </div>
+    <script>
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

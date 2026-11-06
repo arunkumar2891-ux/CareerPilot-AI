@@ -1,0 +1,88 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      color: var(--color-ink, #f7f5f3);
+      font-family: Inter, sans-serif;
+    }
+    .frame {
+      position: absolute;
+      left: 200px;
+      right: 200px;
+      top: 250px;
+    }
+    .kicker {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #96a69d;
+      margin-bottom: 22px;
+      opacity: 0;
+    }
+    .title {
+      font-size: 60px;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.08;
+      max-width: 1280px;
+      opacity: 0;
+    }
+    .row {
+      display: flex;
+      gap: 22px;
+      margin-top: 56px;
+    }
+    .chip {
+      min-width: 240px;
+      padding: 22px 26px 20px;
+      border-radius: 16px;
+      background: #131b17;
+      border: 1px solid #26312c;
+      opacity: 0;
+    }
+    .chip span {
+      display: block;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+  </style>
+  <div id="root" data-composition-id="command" data-width="1920" data-height="1080">
+    <div class="frame">
+      <div id="command-copy" class="clip" data-start="0.2" data-duration="5.85" data-track-index="2">
+        <div class="copy-inner">
+          <p class="kicker">Dashboard</p>
+          <h1 class="title">Your autonomous job search command center</h1>
+        </div>
+      </div>
+      <div class="row">
+        <div id="chip-discovered" class="clip" data-start="2.36" data-duration="3.7" data-track-index="3">
+          <div class="chip"><span>Discovered</span></div>
+        </div>
+        <div id="chip-scored" class="clip" data-start="3.44" data-duration="2.62" data-track-index="4">
+          <div class="chip"><span>Scored</span></div>
+        </div>
+        <div id="chip-tailored" class="clip" data-start="4.54" data-duration="1.52" data-track-index="5">
+          <div class="chip"><span>Tailored</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#command-copy .kicker", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power4.out" }, 0.25);
+    tl.fromTo("#command-copy .title", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.24, ease: "power4.out" }, 0.4);
+    // beat-grid: 6.56, 7.64, 8.74 (every other beat so each word can be read)
+    tl.fromTo("#chip-discovered .chip", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "expo.out" }, 2.36); // beat-grid
+    tl.fromTo("#chip-scored .chip", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "expo.out" }, 3.44); // beat-grid
+    tl.fromTo("#chip-tailored .chip", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.32, ease: "expo.out" }, 4.54); // beat-grid beat-locked
+    tl.to("#command-copy .copy-inner", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 5.85);
+    tl.to(".chip", { opacity: 0, duration: 0.16, ease: "power3.in" }, 5.85);
+    window.__timelines["command"] = tl;
+  </script>
+</template>
