@@ -1103,3 +1103,29 @@ and `src/utils/`.
 > **Unverified by test:** the Settings card is UI — there is no browser tooling in the agent
 > environment. Needs a human check that the switch reflects the real state on load, that
 > flipping it off then reloading keeps it off, and that the card holds up at 320px.
+
+---
+
+## BUG-016 — Long Gmail summary subjects rendered with replacement characters
+
+**Status:** Fixed
+**Feature:** Workflow summary email / Gmail MIME
+
+**Symptom:** Long summary subjects containing em dashes rendered with junk characters after the
+first encoded segment, for example `Snaplogic Ar���…`.
+
+**Root Cause:** `encodeMimeHeaderValue()` encoded the complete UTF-8 subject once, removed Base64
+padding, and split the result into 63-character RFC 2047 encoded-words. Mail clients decode each
+encoded-word independently, but 63 is not a Base64 quartet boundary. The resulting words were
+invalid; splitting the encoded stream could also divide a multibyte UTF-8 character.
+
+**Files:**
+- `supabase/functions/_shared/gmail-mime.ts`
+- `supabase/functions/_shared/gmail-mime_test.ts`
+
+**Fix:** Build each encoded-word from complete Unicode code points, cap its padded Base64 payload
+at 60 characters (a multiple of four), and preserve padding so every word is independently valid.
+
+**Validation:** Regression tests independently decode both reported production-style subjects and
+adversarial em-dash/emoji boundaries. The focused suite passes 4/4, `npm run typecheck` passes,
+and `npm run check:encoding` reports no mojibake across 230 files.
