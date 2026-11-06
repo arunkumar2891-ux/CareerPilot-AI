@@ -1,0 +1,27 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; background: transparent; }
+    #glow {
+      position: absolute;
+      width: 900px;
+      height: 900px;
+      left: 90px;
+      top: -80px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(61, 169, 136, 0.55) 0%, rgba(61, 169, 136, 0) 68%);
+      opacity: 0.16;
+      transform-origin: 50% 50%;
+    }
+  </style>
+  <div id="root" data-composition-id="atmosphere" data-width="1080" data-height="1920" data-layout-ignore>
+    <div id="glow"></div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#glow", { opacity: 0.16, scale: 1 }, 0);
+    tl.to("#glow", { opacity: 0.31, scale: 1.027, duration: 0.45, ease: "expo.out" }, 8.74); // beat-locked
+    tl.to("#glow", { opacity: 0.31, scale: 1.028, duration: 0.4, ease: "expo.out" }, 13.11); // beat-locked
+    tl.to("#glow", { opacity: 0.32, scale: 1.029, duration: 0.45, ease: "expo.out" }, 17.47); // beat-locked
+    window.__timelines["atmosphere"] = tl;
+  </script>
+</template>
