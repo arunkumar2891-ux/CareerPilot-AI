@@ -11,13 +11,26 @@ function encodeBase64(data: Uint8Array): string {
 /** RFC 2047 encoded-word for non-ASCII header values (Subject, etc.). */
 export function encodeMimeHeaderValue(value: string): string {
   if (!/[^\x00-\x7F]/.test(value)) return value;
-  const b64 = encodeBase64(encodeUtf8(value)).replace(/=+$/, '');
   const prefix = '=?UTF-8?B?';
   const suffix = '?=';
-  const maxChunk = 75 - prefix.length - suffix.length;
+  const maxChunk = Math.floor((75 - prefix.length - suffix.length) / 4) * 4;
+  const chunks: string[] = [];
+  let textChunk = '';
+  for (const char of value) {
+    const candidate = textChunk + char;
+    if (textChunk && encodeBase64(encodeUtf8(candidate)).length > maxChunk) {
+      chunks.push(encodeBase64(encodeUtf8(textChunk)));
+      textChunk = char;
+    } else {
+      textChunk = candidate;
+    }
+  }
+  if (textChunk) chunks.push(encodeBase64(encodeUtf8(textChunk)));
+
   const words: string[] = [];
-  for (let i = 0; i < b64.length; i += maxChunk) {
-    words.push(`${prefix}${b64.slice(i, i + maxChunk)}${suffix}`);
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    words.push(`${prefix}${chunk}${suffix}`);
   }
   return words.join('\r\n ');
 }
