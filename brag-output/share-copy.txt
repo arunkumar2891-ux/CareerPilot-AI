@@ -1,0 +1,3 @@
+Introducing CareerPilot AI: autonomous job search that discovers roles, scores your match, and tailors the resume.
+Built as a React workspace on a resumable pipeline.
+Music: Sascha Ende, ende.app (CC BY 4.0).

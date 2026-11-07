@@ -1,0 +1,77 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      color: var(--color-ink, #f7f5f3);
+      font-family: Inter, sans-serif;
+    }
+    .stage {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .mark { width: 520px; opacity: 0; }
+    .mark svg { width: 100%; height: auto; display: block; }
+    .word {
+      margin-top: 28px;
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      opacity: 0;
+    }
+    .word strong {
+      font-size: 84px;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1;
+    }
+    .word em {
+      font-style: normal;
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #96a69d;
+    }
+    .claim {
+      margin-top: 28px;
+      font-size: 36px;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      color: #e7eeea;
+      opacity: 0;
+    }
+  </style>
+  <div id="root" data-composition-id="lockup" data-width="1920" data-height="1080">
+    <div class="stage">
+      <div id="lock-mark" class="clip" data-start="0.15" data-duration="3.75" data-track-index="2">
+        <div class="mark">
+          <svg viewBox="0 0 300 68" fill="none" aria-hidden="true">
+            <path d="M4 46V64M4 55H296M296 46V64" stroke="rgba(247,245,243,0.75)" stroke-width="3" stroke-linecap="square" />
+            <path d="M50 30C112 2 208 0 254 16" stroke="rgba(247,245,243,0.45)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="7 9" />
+            <path d="M16 4C17.1 4 17.8 5.6 17.8 7.4V11.8L28 18.4V20.6L17.8 17.9V23.4L21.5 26.2V27.8L16 26.3L10.5 27.8V26.2L14.2 23.4V17.9L4 20.6V18.4L14.2 11.8V7.4C14.2 5.6 14.9 4 16 4Z" transform="translate(26 30) rotate(58) scale(1) translate(-16 -16)" fill="#3DA988" />
+            <path d="M16 4C17.1 4 17.8 5.6 17.8 7.4V11.8L28 18.4V20.6L17.8 17.9V23.4L21.5 26.2V27.8L16 26.3L10.5 27.8V26.2L14.2 23.4V17.9L4 20.6V18.4L14.2 11.8V7.4C14.2 5.6 14.9 4 16 4Z" transform="translate(272 18) rotate(80) scale(1.2) translate(-16 -16)" fill="#3DA988" />
+          </svg>
+        </div>
+      </div>
+      <div id="lock-word" class="clip" data-start="1.4" data-duration="2.5" data-track-index="3">
+        <div class="word"><strong>CareerPilot</strong><em>AI</em></div>
+      </div>
+      <div id="lock-claim" class="clip" data-start="1.4" data-duration="2.5" data-track-index="4">
+        <p class="claim">Scores your match. Tailors the resume.</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#lock-mark .mark", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "expo.out" }, 0.2);
+    tl.fromTo("#lock-word .word", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 1.47); // beat-locked 17.47
+    tl.fromTo("#lock-claim .claim", { opacity: 0 }, { opacity: 1, duration: 0.28, ease: "power3.out" }, 1.7);
+    window.__timelines["lockup"] = tl;
+  </script>
+</template>

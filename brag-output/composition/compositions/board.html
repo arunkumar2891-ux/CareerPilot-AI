@@ -1,0 +1,139 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      color: var(--color-ink, #f7f5f3);
+      font-family: Inter, sans-serif;
+    }
+    .frame { position: absolute; left: 396px; top: 168px; width: 1128px; }
+    .kicker {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #96a69d;
+      margin-bottom: 28px;
+      opacity: 0;
+    }
+    .cols { display: flex; gap: 24px; }
+    .col {
+      width: 360px;
+      min-height: 560px;
+      border-radius: 20px;
+      background: rgba(19, 27, 23, 0.72);
+      border: 1px solid #26312c;
+      padding: 22px 20px;
+      opacity: 0;
+    }
+    .col h2 {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #c5d0cb;
+    }
+    .hint {
+      margin-top: 10px;
+      font-size: 28px;
+      line-height: 1.35;
+      color: #96a69d;
+      max-width: 300px;
+    }
+    #board-card {
+      position: absolute;
+      left: 416px;
+      top: 470px;
+      width: 320px;
+      z-index: 4;
+    }
+    .card {
+      background: #18211c;
+      border: 1px solid #3da988;
+      border-radius: 16px;
+      padding: 22px 22px 18px;
+    }
+    .company { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
+    .role { margin-top: 6px; font-size: 28px; color: #c5d0cb; }
+    .score {
+      margin-top: 18px;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      opacity: 0;
+    }
+    .score b {
+      font-size: 54px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      color: #3da988;
+      line-height: 1;
+    }
+    .score span {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #c5d0cb;
+    }
+    .summary {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #26312c;
+      opacity: 0;
+    }
+    .summary strong {
+      display: block;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.14em;
+    }
+    .summary p { margin-top: 6px; font-size: 28px; color: #c5d0cb; }
+  </style>
+  <div id="root" data-composition-id="board" data-width="1920" data-height="1080" data-layout-allow-overflow>
+    <div class="frame">
+      <p id="board-kicker" class="kicker">Job Discovery</p>
+      <div id="board-cols" class="clip" data-start="0.2" data-duration="5.25" data-track-index="2">
+        <div class="cols">
+          <div class="col" id="col-discovered">
+            <h2>Discovered</h2>
+            <p class="hint">Newly found jobs land here</p>
+          </div>
+          <div class="col" id="col-ready">
+            <h2>Resume Ready</h2>
+            <p class="hint">Tailored resume is ready to send</p>
+          </div>
+          <div class="col">
+            <h2>Applied</h2>
+            <p class="hint">Application submitted</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="board-card" class="clip" data-start="0.45" data-duration="5" data-track-index="3">
+      <div class="card">
+        <div class="company">Northwind Labs</div>
+        <div class="role">Staff Engineer</div>
+        <div class="score" id="board-score"><b>94</b><span>Match</span></div>
+        <div class="summary" id="board-summary">
+          <strong>Summary</strong>
+          <p>Tailored resume is ready.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#board-kicker", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power3.out" }, 0.2);
+    tl.fromTo(".col", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.4, ease: "expo.out", stagger: 0.06 }, 0.28);
+    tl.fromTo("#board-card .card", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: "expo.out" }, 0.5);
+    tl.to("#board-card .card", { x: 384, duration: 0.62, ease: "power2.inOut" }, 1.06); // beat-grid 11.46
+    tl.fromTo("#board-score", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 2.71); // beat-locked 13.11
+    tl.fromTo("#board-summary", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power3.out" }, 3.45);
+    tl.to("#board-card .card, .col, #board-kicker", { opacity: 0, duration: 0.16, ease: "power3.in" }, 5.3);
+    window.__timelines["board"] = tl;
+  </script>
+</template>

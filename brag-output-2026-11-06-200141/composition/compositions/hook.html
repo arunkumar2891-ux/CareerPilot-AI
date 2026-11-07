@@ -1,0 +1,59 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      color: #f7f5f3;
+      font-family: Inter, sans-serif;
+    }
+    .stage {
+      position: absolute;
+      left: 96px;
+      right: 96px;
+      top: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 48px;
+    }
+    .mark { width: 760px; opacity: 1; }
+    .mark svg { width: 100%; height: auto; display: block; }
+    .line {
+      width: 860px;
+      text-align: center;
+      font-size: 64px;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      line-height: 1.08;
+      opacity: 0;
+    }
+  </style>
+  <div id="root" data-composition-id="hook" data-width="1080" data-height="1920">
+    <div class="stage">
+      <div id="hook-mark" class="clip" data-start="0" data-duration="4.05" data-track-index="2">
+        <div class="mark">
+          <svg viewBox="0 0 300 68" fill="none" aria-hidden="true">
+            <path d="M4 46V64M4 55H296M296 46V64" stroke="rgba(247,245,243,0.75)" stroke-width="3" stroke-linecap="square" />
+            <path id="hook-route" d="M50 30C112 2 208 0 254 16" stroke="rgba(247,245,243,0.45)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="7 9" />
+            <path d="M16 4C17.1 4 17.8 5.6 17.8 7.4V11.8L28 18.4V20.6L17.8 17.9V23.4L21.5 26.2V27.8L16 26.3L10.5 27.8V26.2L14.2 23.4V17.9L4 20.6V18.4L14.2 11.8V7.4C14.2 5.6 14.9 4 16 4Z" transform="translate(26 30) rotate(58) scale(1) translate(-16 -16)" fill="#3DA988" />
+            <path d="M16 4C17.1 4 17.8 5.6 17.8 7.4V11.8L28 18.4V20.6L17.8 17.9V23.4L21.5 26.2V27.8L16 26.3L10.5 27.8V26.2L14.2 23.4V17.9L4 20.6V18.4L14.2 11.8V7.4C14.2 5.6 14.9 4 16 4Z" transform="translate(272 18) rotate(80) scale(1.2) translate(-16 -16)" fill="#3DA988" />
+          </svg>
+        </div>
+      </div>
+      <div id="hook-line" class="clip" data-start="0.7" data-duration="3.3" data-track-index="3">
+        <h1 class="line">The search shouldn't be a second job.</h1>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#hook-route", { strokeDashoffset: 260 }, { strokeDashoffset: 0, duration: 1.05, ease: "power2.out" }, 0.15);
+    tl.fromTo("#hook-line .line", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 0.85);
+    tl.to("#hook-line .line", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 3.85);
+    tl.to("#hook-mark .mark", { opacity: 0, duration: 0.16, ease: "power3.in" }, 3.85);
+    window.__timelines["hook"] = tl;
+  </script>
+</template>

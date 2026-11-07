@@ -1,0 +1,120 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      color: #f7f5f3;
+      font-family: Inter, sans-serif;
+    }
+    .kicker {
+      position: absolute;
+      left: 96px;
+      top: 180px;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: #96a69d;
+      opacity: 0;
+    }
+    .row {
+      position: absolute;
+      left: 96px;
+      width: 888px;
+      height: 420px;
+      border-radius: 24px;
+      background: rgba(19, 27, 23, 0.72);
+      border: 1px solid #26312c;
+      padding: 28px 32px;
+      opacity: 0;
+    }
+    #row-discovered { top: 260px; }
+    #row-ready { top: 704px; }
+    #row-applied { top: 1148px; }
+    .row h2 {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #c5d0cb;
+    }
+    .hint { margin-top: 10px; font-size: 28px; line-height: 1.3; color: #96a69d; }
+    #board-card {
+      position: absolute;
+      left: 128px;
+      top: 400px;
+      width: 824px;
+      z-index: 4;
+    }
+    .card {
+      background: #18211c;
+      border: 1px solid #3da988;
+      border-radius: 20px;
+      padding: 18px 28px 14px;
+      height: 270px;
+      overflow: hidden;
+    }
+    .company { font-size: 36px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; }
+    .role { margin-top: 4px; font-size: 28px; line-height: 1.15; color: #c5d0cb; }
+    .score { margin-top: 12px; display: flex; align-items: baseline; gap: 14px; opacity: 0; }
+    .score b { font-size: 56px; font-weight: 700; letter-spacing: -0.04em; color: #3da988; line-height: 1; }
+    .score span {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #c5d0cb;
+    }
+    .summary { margin-top: 10px; padding-top: 10px; border-top: 1px solid #26312c; opacity: 0; }
+    .summary strong {
+      display: block;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .summary p { margin-top: 4px; font-size: 28px; line-height: 1.15; color: #c5d0cb; }
+  </style>
+  <div id="root" data-composition-id="board" data-width="1080" data-height="1920" data-layout-allow-overflow>
+    <p id="board-kicker" class="kicker">Job Discovery</p>
+    <div id="board-rows" class="clip" data-start="0.2" data-duration="5.25" data-track-index="2">
+      <div class="row" id="row-discovered">
+        <h2>Discovered</h2>
+        <p class="hint">Newly found jobs land here</p>
+      </div>
+      <div class="row" id="row-ready">
+        <h2>Resume Ready</h2>
+        <p class="hint">Tailored resume is ready to send</p>
+      </div>
+      <div class="row" id="row-applied">
+        <h2>Applied</h2>
+        <p class="hint">Application submitted</p>
+      </div>
+    </div>
+    <div id="board-card" class="clip" data-start="0.45" data-duration="5" data-track-index="3">
+      <div class="card">
+        <div class="company">Northwind Labs</div>
+        <div class="role">Staff Engineer</div>
+        <div class="score" id="board-score"><b>94</b><span>Match</span></div>
+        <div class="summary" id="board-summary">
+          <strong>Summary</strong>
+          <p>Tailored resume is ready.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#board-kicker", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power3.out" }, 0.2);
+    tl.fromTo(".row", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.4, ease: "expo.out", stagger: 0.06 }, 0.28);
+    tl.fromTo("#board-card .card", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.4, ease: "expo.out" }, 0.5);
+    tl.to("#board-card .card", { y: 444, duration: 0.62, ease: "power2.inOut" }, 1.06); // beat-grid 11.46
+    tl.fromTo("#board-score", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 2.71); // beat-locked 13.11
+    tl.fromTo("#board-summary", { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power3.out" }, 3.45);
+    tl.to("#board-card .card, .row, #board-kicker", { opacity: 0, duration: 0.16, ease: "power3.in" }, 5.3);
+    window.__timelines["board"] = tl;
+  </script>
+</template>
