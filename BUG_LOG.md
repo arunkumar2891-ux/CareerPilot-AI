@@ -1129,3 +1129,43 @@ at 60 characters (a multiple of four), and preserve padding so every word is ind
 **Validation:** Regression tests independently decode both reported production-style subjects and
 adversarial em-dash/emoji boundaries. The focused suite passes 4/4, `npm run typecheck` passes,
 and `npm run check:encoding` reports no mojibake across 230 files.
+
+---
+
+## BUG-017 — A finished tailor run stored the PDF, but the job did not show it
+
+**Status:** Fixed
+**Feature:** Resume tailoring / Job Discovery
+
+**Symptom:** Upload to Storage logged `Stored file: ….pdf` and the job moved to Resume Ready.
+The Jobs board did not show that file. Opening the job showed the description and a Generate
+button, not the compiled resume.
+
+**Root Cause:** The pipeline writes the PDF onto `jobs.pdf_url` (and, when the resume id survives
+the chain, onto `resumes.storage_path`). The board treated "no `resumeId`" as "no resume", so a
+stored PDF still rendered as missing or as a dash. The job dialog fetched resume text only for
+the match panel and never rendered the PDF. The Resumes editor PDF tab offered to generate a
+new file and ignored the one already in Storage.
+
+A second gap: if tailored text reached storage without `resumeId`, the job was still marked
+`resume_ready` and no resume row was created, so the Resumes page had nothing to list.
+
+**Files:**
+- `src/utils/job-resume.ts` (+ `job-resume_test.ts`)
+- `src/components/jobs/JobDetailDialog.tsx`, `src/components/resumes/StoredPdfFrame.tsx`, `src/components/resumes/ResumeEditor.tsx`
+- `src/pages/JobsPage.tsx`, `src/pages/ResumesPage.tsx`, `src/pages/ExecutionDetailPage.tsx`
+- `src/services/index.ts`, `src/types/index.ts`
+- `supabase/functions/_shared/resume-store.ts`, `supabase/functions/_shared/workflow/nodes.ts`
+
+**Fix:** A job with a stored PDF or a linked resume shows the file name, an inline PDF, and
+Open PDF / Open in Resumes. The execution log's "Stored file" line links back to that job.
+Storage creates the resume row from the tailored text when the id was dropped, and resume
+lookup no longer uses `maybeSingle` (which errors once a job has two rows and used to insert
+another).
+
+**Validation:** `job-resume_test.ts` and `resume-store_test.ts`. The already-finished run keeps
+its PDF: `jobs.pdf_url` is still valid for seven days, and a linked resume opens from
+`storage_path` with a fresh signed URL. Edge functions that import `nodes.ts` /
+`resume-store.ts` (`workflow-run`, `workflow-step`) need a deploy before the attach fallback
+runs in production. The Jobs page change is frontend-only and applies to the run that already
+finished.

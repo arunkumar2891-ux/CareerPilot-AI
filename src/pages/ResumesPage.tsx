@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Plus, FileText, GitCompare,
   Clock, Sparkles, FileX, Cloud, CloudUpload, Trash2,
@@ -30,6 +30,7 @@ import type { Resume } from '@/types';
 
 export function ResumesPage() {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: resumes, isLoading, error: resumesError, refetch: refetchResumes } = useQuery({
     queryKey: ['resumes', 'job'],
     queryFn: () => services.resume.list({ kind: 'job' }),
@@ -47,6 +48,17 @@ export function ResumesPage() {
   const [bulkSyncing, setBulkSyncing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<'all' | { ids: string[]; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const id = searchParams.get('resume');
+    if (!id || !resumes) return;
+    const match = resumes.find((resume) => resume.id === id);
+    if (!match) return;
+    setSelected(match);
+    const next = new URLSearchParams(searchParams);
+    next.delete('resume');
+    setSearchParams(next, { replace: true });
+  }, [resumes, searchParams, setSearchParams]);
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -237,14 +249,14 @@ export function ResumesPage() {
               </CardContent>
             </Card>
           ) : (
-          <StaggerList as="ul" label="Tailored resumes" className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <StaggerList as="ul" label="Tailored resumes" className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {resumes.map((r) => (
               <StaggerItem as="li" key={r.id}>
                 <Card
-                  className={`cursor-pointer transition-colors hover:bg-accent/30 ${selectedIds.has(r.id) ? 'ring-2 ring-primary' : ''}`}
+                  className={`min-w-0 cursor-pointer transition-colors hover:bg-accent/30 ${selectedIds.has(r.id) ? 'ring-2 ring-primary' : ''}`}
                   onClick={() => setSelected(r)}
                 >
-                  <CardContent className="pt-6">
+                  <CardContent className="min-w-0 pt-6">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-start gap-3">
                         <Checkbox
@@ -282,7 +294,7 @@ export function ResumesPage() {
                         )}
                       </div>
                     </div>
-                    <p className="mt-3 font-semibold">{r.name}</p>
+                    <p className="mt-3 break-words font-semibold">{r.name}</p>
                     <p className="text-xs text-muted-foreground">Updated {timeAgo(r.updatedAt)}</p>
                     <div className="mt-3 flex items-center gap-2">
                       <div className="flex-1">

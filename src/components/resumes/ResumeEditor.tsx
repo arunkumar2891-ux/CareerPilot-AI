@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { services } from '@/services';
 import { toast } from 'sonner';
 import { JdMatchPanel } from '@/components/resumes/JdMatchPanel';
+import { StoredPdfFrame } from '@/components/resumes/StoredPdfFrame';
 import type { AtsReview, Resume } from '@/types';
 
 export function ResumeEditor({
@@ -205,10 +206,25 @@ export function ResumeEditor({
             </div>
           </TabsContent>
           <TabsContent value="pdf" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
-            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-6">
-              <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
-              <p className="mt-2 text-center text-sm text-muted-foreground">Generate and download a PDF from your resume content</p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <div className="space-y-4">
+              {(resume.storagePath || resume.pdfUrl) ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Compiled PDF</p>
+                  <StoredPdfFrame
+                    storagePath={resume.storagePath}
+                    pdfUrl={resume.pdfUrl}
+                    title={`${resume.name} PDF`}
+                  />
+                </div>
+              ) : (
+                <div className="flex min-h-[160px] flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 p-6">
+                  <FileText className="mx-auto h-12 w-12 text-muted-foreground" />
+                  <p className="mt-2 text-center text-sm text-muted-foreground">No compiled PDF is stored for this resume yet.</p>
+                </div>
+              )}
+              <div className="flex flex-col items-center gap-3 rounded-lg border border-border p-4">
+              <p className="text-center text-sm text-muted-foreground">Generate a new PDF from the resume text</p>
+              <div className="flex flex-wrap items-center justify-center gap-2">
                 <Label htmlFor="pdf-template" className="text-sm">Template:</Label>
                 <Select value={pdfTemplate || 'classic'} onValueChange={setPdfTemplate}>
                   <SelectTrigger className="w-[180px]">
@@ -231,6 +247,7 @@ export function ResumeEditor({
                 <Download className="h-3.5 w-3.5" />
                 {downloadingPdf ? 'Generating…' : 'Download PDF'}
               </Button>
+              </div>
             </div>
           </TabsContent>
           <TabsContent value="jd-match" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">

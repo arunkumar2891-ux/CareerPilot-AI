@@ -17,7 +17,7 @@ import {
 import { callGeminiAtsGenerateContent, callGeminiGenerateContent } from '../gemini.ts';
 import { buildLatexFromAtsText } from '../resume-latex.ts';
 import { compileLatexToPdf } from '../resume-pdf.ts';
-import { upsertTailoredResume, linkResumePdf, resumeStorageObjectPath } from '../resume-store.ts';
+import { upsertTailoredResume, linkResumePdf, planStoredResumeAttach, resumeStorageObjectPath } from '../resume-store.ts';
 import {
   formatUnknownError,
   loadExistingJobForPipeline,
@@ -915,7 +915,16 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       const pdfBytes = data.pdfBytes as Uint8Array;
       if (!pdfBytes) return { output: data, status: 'success' };
       const admin = createAdminClient();
-      const resumeId = String(data.resumeId || '');
+      const attach = planStoredResumeAttach(data);
+      let resumeId = attach?.resumeId || '';
+      if (attach?.upsert) {
+        resumeId = await upsertTailoredResume(admin, ctx.userId, {
+          jobId: attach.jobId,
+          company: attach.company,
+          role: attach.role,
+          content: attach.content,
+        });
+      }
       const fileName = await resolveResumePdfFileName(ctx.userId, {
         company: String(data.company || data.companyName || ''),
         role: String(data.title || data.role || data.docTitle || ''),
@@ -963,7 +972,7 @@ export const nodeExecutors: Record<string, NodeExecutor> = {
       });
       ctx.variables.processedJobs = processed;
 
-      return { output: { ...data, pdf_url: pdfUrl, storage_path: path, fileName }, status: 'success' };
+      return { output: { ...data, pdf_url: pdfUrl, storage_path: path, fileName, resumeId }, status: 'success' };
     },
   },
   email: {

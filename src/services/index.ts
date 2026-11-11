@@ -21,6 +21,7 @@ import {
   applyContactOverlay,
 } from '@/content/career-corpus';
 import { corpusGroup, hasUsableMasterResume, isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import { pickResumeForJob } from '@/utils/job-resume';
 import { parseGoogleDocFileId } from '@/utils/google';
 import {
   assertResumeUploadFile,
@@ -142,6 +143,8 @@ function mapJob(row: Record<string, unknown>): Job {
     status,
     url: row.url as string | undefined,
     resumeId: row._resume_id as string | undefined,
+    resumeName: row._resume_name as string | undefined,
+    resumeStoragePath: row._resume_storage_path as string | undefined,
     driveFileId: row._drive_file_id as string | undefined,
     pdfUrl: (row._pdf_url as string | undefined) || (row.pdf_url as string | undefined),
     createdAt: row.created_at as string,
@@ -409,22 +412,22 @@ export class JobSearchService {
       supabase.from('jobs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
       supabase
         .from('resumes')
-        .select('id, job_id, drive_file_id, pdf_url, storage_path')
+        .select('id, job_id, name, drive_file_id, pdf_url, storage_path')
         .eq('user_id', userId)
         .not('job_id', 'is', null),
     ]);
     if (error) throw error;
     if (resumeError) throw resumeError;
 
-    const resumeByJob = new Map(
-      (resumeRows || []).map((row) => [String(row.job_id), row]),
-    );
+    const resumeByJob = pickResumeForJob(resumeRows || []);
 
     return collapseJobsByUrl((jobRows || []).map((row) => {
       const linked = resumeByJob.get(String(row.id));
       return mapJob({
         ...row,
         _resume_id: linked?.id,
+        _resume_name: linked?.name,
+        _resume_storage_path: linked?.storage_path,
         _drive_file_id: linked?.drive_file_id,
         _pdf_url: linked?.pdf_url || row.pdf_url,
       });
@@ -809,6 +812,21 @@ export class ResumeService {
       results: (data?.results as Array<{ resumeId: string; driveFileId: string; pdfLink: string }>) || [],
       errors: data?.errors as Array<{ resumeId: string; error: string }> | undefined,
     };
+  }
+  /**
+   * Open the PDF the pipeline already compiled. A fresh signed URL is preferred
+   * because the copy stored on the row expires after seven days.
+   */
+  async resolveStoredPdfUrl(input: { storagePath?: string; pdfUrl?: string }): Promise<string> {
+    if (input.storagePath) {
+      const { data, error } = await supabase.storage.from('resumes').createSignedUrl(input.storagePath, 60 * 60);
+      if (!error && data?.signedUrl) return data.signedUrl;
+      if (!input.pdfUrl) {
+        throw new Error(error instanceof Error ? error.message : 'Could not open the stored PDF');
+      }
+    }
+    if (input.pdfUrl) return input.pdfUrl;
+    throw new Error('No stored PDF for this resume');
   }
   async downloadPdf(id: string, content?: string, template?: string): Promise<void> {
     const resume = await this.get(id);

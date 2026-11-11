@@ -1,6 +1,7 @@
 import {
   buildTailoredResumeName,
   parseTailoredJobKey,
+  planStoredResumeAttach,
   resumeStorageObjectPath,
   storedFileLogMessages,
   storedFileNameFromOutput,
@@ -73,6 +74,32 @@ Deno.test('storedFileLogMessages skip duplicate/skipped jobs and empty uploads',
   }
   if (storedFileLogMessages({ title: 'Engineer' }).length) {
     throw new Error('uploads without a file name must not log');
+  }
+});
+
+Deno.test('planStoredResumeAttach reuses an existing resume id', () => {
+  const plan = planStoredResumeAttach({ resumeId: 'resume-1', jobId: 'job-1', output: 'NAME\nA' });
+  if (!plan || plan.upsert || plan.resumeId !== 'resume-1') throw new Error(JSON.stringify(plan));
+});
+
+Deno.test('planStoredResumeAttach creates a resume when the PDF has text but no resume id', () => {
+  const plan = planStoredResumeAttach({
+    jobId: 'job-1',
+    company: 'GlobalLogic',
+    role: 'AI Engineer',
+    output: 'NAME\nArun Kumar\nCONTACT\nEmail: a@b.com',
+  });
+  if (!plan?.upsert) throw new Error(JSON.stringify(plan));
+  if (plan.jobId !== 'job-1' || plan.company !== 'GlobalLogic') throw new Error(JSON.stringify(plan));
+  if (!plan.content.startsWith('NAME')) throw new Error('missing tailored text');
+});
+
+Deno.test('planStoredResumeAttach does not invent a resume for a PDF with no text', () => {
+  if (planStoredResumeAttach({ jobId: 'job-1', company: 'GlobalLogic', output: '   ' })) {
+    throw new Error('empty tailored text must not create a resume row');
+  }
+  if (planStoredResumeAttach({ skipped: true, jobId: 'job-1', output: 'NAME\nA' })) {
+    throw new Error('skipped jobs must not attach a resume');
   }
 });
 

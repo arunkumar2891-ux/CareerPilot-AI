@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MapPin, DollarSign, ExternalLink, FileText, Cloud, Gauge, Target, MessageSquare,
-  Mail, Send, Loader2,
+  Mail, Send, Loader2, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,10 @@ import { services } from '@/services';
 import { formatCurrency, formatDate } from '@/utils';
 import { errorMessageOr, isGmailScopeError } from '@/utils/job-filters';
 import { hasUsableMasterResume } from '@/utils/resume-classification';
+import { describeJobResume, storedPdfFileName } from '@/utils/job-resume';
 import { JdMatchPanel } from '@/components/resumes/JdMatchPanel';
+import { StoredPdfFrame } from '@/components/resumes/StoredPdfFrame';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { invalidateAll } from '@/utils/query-keys';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -45,18 +48,20 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
   const [editingEmail, setEditingEmail] = useState(false);
   const [manualEmail, setManualEmail] = useState('');
   const [extractingEmail, setExtractingEmail] = useState(false);
+  const [openingPdf, setOpeningPdf] = useState(false);
   const [emailOverride, setEmailOverride] = useState<{ jobId: string; email: string } | null>(null);
   const { data: corpusResumes } = useQuery({
     queryKey: ['resumes', 'corpus'],
     queryFn: () => services.resume.list({ kind: 'corpus' }),
   });
-  const { data: linkedResume } = useQuery({
+  const {
+    data: linkedResume,
+    isLoading: resumeLoading,
+    error: resumeError,
+    refetch: refetchResume,
+  } = useQuery({
     queryKey: ['resume', job?.resumeId],
-    queryFn: async () => {
-      if (!job?.resumeId) return null;
-      const { data } = await supabase.from('resumes').select('content').eq('id', job.resumeId).single();
-      return data?.content || null;
-    },
+    queryFn: () => services.resume.get(job!.resumeId!),
     enabled: !!job?.resumeId,
   });
   if (!job) return null;
@@ -64,6 +69,30 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
   const matchScore = scoreOverride?.jobId === job.id ? scoreOverride.score : job.matchScore;
   const matchSource = scoreOverride?.jobId === job.id ? scoreOverride.source : job.matchScoreSource;
   const effectiveApplyEmail = emailOverride?.jobId === job.id ? emailOverride.email : job.applyEmail;
+  const resumeView = describeJobResume({
+    ...job,
+    resumeStoragePath: linkedResume?.storagePath || job.resumeStoragePath,
+    pdfUrl: linkedResume?.pdfUrl || job.pdfUrl,
+  });
+  const pdfName = storedPdfFileName(
+    linkedResume?.storagePath || job.resumeStoragePath || linkedResume?.pdfUrl || job.pdfUrl,
+  );
+
+  const openStoredPdf = async () => {
+    if (openingPdf) return;
+    setOpeningPdf(true);
+    try {
+      const url = await services.resume.resolveStoredPdfUrl({
+        storagePath: linkedResume?.storagePath || job.resumeStoragePath,
+        pdfUrl: linkedResume?.pdfUrl || job.pdfUrl,
+      });
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not open the PDF');
+    } finally {
+      setOpeningPdf(false);
+    }
+  };
 
   const generateResume = async () => {
     if (starting) return;
@@ -229,9 +258,10 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
               {job.salaryMin && <Badge variant="secondary" className="gap-1"><DollarSign className="h-3 w-3" />{formatCurrency(job.salaryMin)} - {formatCurrency(job.salaryMax || 0)}</Badge>}
               <Badge variant="secondary">{job.source}</Badge>
               {job.duplicate && <Badge variant="destructive">Duplicate</Badge>}
-              {job.resumeId && <Badge variant="outline" className="gap-1"><FileText className="h-3 w-3" /> Resume linked</Badge>}
+              {resumeView.linked && <Badge variant="outline" className="gap-1"><FileText className="h-3 w-3" /> Resume linked</Badge>}
+              {resumeView.canOpenStoredPdf && !resumeView.linked && <Badge variant="outline" className="gap-1"><FileText className="h-3 w-3" /> PDF stored</Badge>}
               {job.driveFileId && <Badge variant="outline" className="gap-1"><Cloud className="h-3 w-3" /> On Drive</Badge>}
-              {!job.resumeId && job.resumeStatus === 'ready' && <Badge variant="secondary">Resume not linked</Badge>}
+              {resumeView.missing && <Badge variant="secondary">Resume not linked</Badge>}
               {effectiveApplyEmail && <Badge variant="outline" className="gap-1"><Mail className="h-3 w-3" /> {effectiveApplyEmail}</Badge>}
             </div>
             <div>
@@ -240,6 +270,33 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
                 {job.skills.map((s) => <Badge key={s} variant="outline">{s}</Badge>)}
               </div>
             </div>
+            {resumeView.show && (
+              <section className="min-w-0 space-y-2 rounded-lg border border-border p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Generated resume</p>
+                {(linkedResume?.name || job.resumeName) && (
+                  <p className="break-words text-sm font-medium">{linkedResume?.name || job.resumeName}</p>
+                )}
+                {pdfName && <p className="break-all font-mono text-xs text-muted-foreground">{pdfName}</p>}
+                {resumeView.canOpenStoredPdf && (
+                  <StoredPdfFrame
+                    storagePath={linkedResume?.storagePath || job.resumeStoragePath}
+                    pdfUrl={linkedResume?.pdfUrl || job.pdfUrl}
+                    title={pdfName || 'Generated resume PDF'}
+                  />
+                )}
+                {job.resumeId && resumeLoading && (
+                  <p className="text-sm text-muted-foreground">Loading resume…</p>
+                )}
+                {job.resumeId && resumeError && (
+                  <ErrorState title="Could not load the resume" error={resumeError} onRetry={() => void refetchResume()} />
+                )}
+                {linkedResume?.content && !resumeView.canOpenStoredPdf && (
+                  <pre className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-3 font-mono text-xs">
+                    {linkedResume.content}
+                  </pre>
+                )}
+              </section>
+            )}
             <div className="min-w-0">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Description</p>
               <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">{job.description}</p>
@@ -251,7 +308,7 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
             </div>
             {showMatchPanel && (
               <div className="mt-4 border-t border-border pt-4">
-                <JdMatchPanel jd={job.description} resume={linkedResume || ''} />
+                <JdMatchPanel jd={job.description} resume={linkedResume?.content || ''} />
               </div>
             )}
             {showInterviewPrep && job.interviewPrep && (
@@ -300,8 +357,30 @@ export function JobDetailDialog({ job, onClose }: { job: Job | null; onClose: ()
           </div>
         </ScrollArea>
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-4">
-          <Button onClick={generateResume} disabled={starting || scoring} className="gap-2">
-            <FileText className="h-4 w-4" /> {starting ? 'Starting…' : 'Generate Resume'}
+          {resumeView.canOpenStoredPdf && (
+            <Button onClick={() => void openStoredPdf()} disabled={openingPdf} className="gap-2">
+              <Download className="h-4 w-4" /> {openingPdf ? 'Opening…' : 'Open PDF'}
+            </Button>
+          )}
+          {job.resumeId && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                onClose();
+                navigate(`/resumes?resume=${encodeURIComponent(job.resumeId!)}`);
+              }}
+            >
+              <FileText className="h-4 w-4" /> Open in Resumes
+            </Button>
+          )}
+          <Button
+            onClick={generateResume}
+            disabled={starting || scoring}
+            variant={resumeView.show ? 'outline' : 'default'}
+            className="gap-2"
+          >
+            <FileText className="h-4 w-4" /> {starting ? 'Starting…' : resumeView.show ? 'Regenerate' : 'Generate Resume'}
           </Button>
           <Button variant="outline" onClick={scoreMatch} disabled={scoring || starting} className="gap-2">
             <Gauge className="h-4 w-4" /> {scoring ? 'Scoring…' : 'Score match'}

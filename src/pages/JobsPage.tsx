@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -28,7 +28,7 @@ import { formatCurrency, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ErrorState } from '@/components/shared/ErrorState';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApplicationPackageWizard } from '@/components/jobs/ApplicationPackageWizard';
 import { JobKanbanBoard } from '@/components/jobs/JobKanbanBoard';
 import {
@@ -50,11 +50,13 @@ import {
 } from '@/utils/job-filters';
 import { JobDetailDialog } from '@/components/jobs/JobDetailDialog';
 import { hasUsableMasterResume } from '@/utils/resume-classification';
+import { describeJobResume, storedPdfFileName } from '@/utils/job-resume';
 import type { Job, JobStatus } from '@/types';
 
 export function JobsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState<'kanban' | 'table'>('kanban');
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -88,6 +90,23 @@ export function JobsPage() {
   const hasMaster = hasUsableMasterResume(corpusResumes || []);
 
   const filtered = filterJobs(jobs, { search, ...filters });
+
+  useEffect(() => {
+    if (!selectedJob || !jobs) return;
+    const fresh = jobs.find((job) => job.id === selectedJob.id);
+    if (fresh && fresh !== selectedJob) setSelectedJob(fresh);
+  }, [jobs, selectedJob]);
+
+  useEffect(() => {
+    const id = searchParams.get('job');
+    if (!id || !jobs) return;
+    const match = jobs.find((job) => job.id === id);
+    if (!match) return;
+    setSelectedJob(match);
+    const next = new URLSearchParams(searchParams);
+    next.delete('job');
+    setSearchParams(next, { replace: true });
+  }, [jobs, searchParams, setSearchParams]);
 
   const runSearch = async () => {
     if (!hasMaster) {
@@ -584,14 +603,7 @@ export function JobsPage() {
                     <TableCell className="text-xs text-muted-foreground">{job.source}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{timeAgo(job.postingDate)}</TableCell>
                     <TableCell>
-                      {job.resumeId ? (
-                        <Badge variant="outline" className="gap-1 text-2xs">
-                          <FileText className="h-3 w-3" />
-                          {job.driveFileId ? 'Drive' : 'In app'}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+                      <JobResumeMark job={job} placeholder />
                     </TableCell>
                     <TableCell><StatusBadge status={job.status} /></TableCell>
                     <TableCell><ExternalLink className="h-3.5 w-3.5 text-muted-foreground" /></TableCell>
@@ -607,6 +619,31 @@ export function JobsPage() {
       <ApplicationPackageWizard open={showPasteJd} onOpenChange={setShowPasteJd} />
     </div>
   );
+}
+
+function JobResumeMark({ job, placeholder = false }: { job: Job; placeholder?: boolean }) {
+  const view = describeJobResume(job);
+  const fileName = storedPdfFileName(job.resumeStoragePath || job.pdfUrl);
+  if (view.canOpenStoredPdf) {
+    return (
+      <Badge variant="outline" className="max-w-full gap-1 text-2xs" title={fileName || 'Stored PDF'}>
+        <FileText className="h-3 w-3 shrink-0" />
+        <span className="max-w-[12rem] truncate">{fileName || (view.linked ? 'Resume' : 'PDF')}</span>
+      </Badge>
+    );
+  }
+  if (view.linked) {
+    return (
+      <Badge variant="outline" className="gap-1 text-2xs">
+        <FileText className="h-3 w-3" /> Resume
+      </Badge>
+    );
+  }
+  if (view.missing) {
+    return <Badge variant="secondary" className="text-2xs">Resume missing</Badge>;
+  }
+  if (!placeholder) return null;
+  return <span className="text-xs text-muted-foreground">—</span>;
 }
 
 function JobCard({
@@ -663,18 +700,11 @@ function JobCard({
       </div>
       {job.duplicate && <Badge variant="destructive" className="mt-2 text-2xs"><Copy className="mr-1 h-2.5 w-2.5" />Duplicate</Badge>}
       <div className="mt-2 flex flex-wrap gap-1">
-        {job.resumeId && (
-          <Badge variant="outline" className="text-2xs gap-1">
-            <FileText className="h-2.5 w-2.5" /> Resume
-          </Badge>
-        )}
+        <JobResumeMark job={job} />
         {job.driveFileId && (
           <Badge variant="outline" className="text-2xs gap-1">
             <Cloud className="h-2.5 w-2.5" /> Drive
           </Badge>
-        )}
-        {!job.resumeId && job.resumeStatus === 'ready' && (
-          <Badge variant="secondary" className="text-2xs">Resume missing</Badge>
         )}
         {job.applyEmail && (
           <Badge variant="outline" className="text-2xs gap-1">

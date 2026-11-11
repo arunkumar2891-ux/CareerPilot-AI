@@ -46,6 +46,42 @@ export function storedFileLogMessages(output: unknown): string[] {
   return messages;
 }
 
+/**
+ * The storage step marks the job resume-ready whenever it has a PDF and a job id.
+ * The resume row is a separate write that only happens when `resumeId` survived
+ * the chain. If the tailored text is still on the payload but the id was dropped,
+ * create the row before linking the PDF — otherwise the job lands in Resume Ready
+ * with a file nobody can open from the board.
+ */
+export function planStoredResumeAttach(data: Record<string, unknown> | null | undefined): {
+  resumeId: string;
+  upsert: boolean;
+  content: string;
+  jobId?: string;
+  company: string;
+  role: string;
+} | null {
+  if (!data || data.skipped) return null;
+  const content = String(data.output ?? '').trim();
+  const resumeId = String(data.resumeId || '').trim();
+  const jobId = String(data.jobId || '').trim();
+  const company = String(data.company || data.companyName || '').trim();
+  const role = String(data.title || data.role || data.docTitle || '').trim();
+  if (resumeId) {
+    return { resumeId, upsert: false, content, jobId: jobId || undefined, company, role };
+  }
+  if (!content) return null;
+  if (!jobId && !company && !role) return null;
+  return {
+    resumeId: '',
+    upsert: true,
+    content,
+    jobId: jobId || undefined,
+    company: company || 'Company',
+    role: role || 'Role',
+  };
+}
+
 /** `Tailored: Company Role (jobKey)` — job key keeps two postings of the same role distinct. */
 export function buildTailoredResumeName(company: string, role: string, jobId?: string): string {
   const suffix = jobId ? ` (${shortJobKey(jobId)})` : '';
@@ -99,12 +135,18 @@ export async function upsertTailoredResume(
   const now = new Date().toISOString();
 
   if (input.jobId) {
-    const { data: byJob } = await admin
+    // `maybeSingle` errors when a job already has two resume rows, and the
+    // caller used to ignore that error and insert yet another row. Take the
+    // newest one and update it.
+    const { data: matches, error: matchError } = await admin
       .from('resumes')
       .select('id, content, ats_score')
       .eq('user_id', userId)
       .eq('job_id', input.jobId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (matchError) throw matchError;
+    const byJob = matches?.[0];
     if (byJob?.id) {
       const resumeId = String(byJob.id);
       const contentChanged = String(byJob.content || '') !== input.content;
@@ -112,7 +154,7 @@ export async function upsertTailoredResume(
         name,
         content: input.content,
         updated_at: now,
-      }).eq('id', resumeId);
+      }).eq('id', resumeId).eq('user_id', userId);
       if (contentChanged) {
         await appendResumeVersion(
           admin,
@@ -126,19 +168,22 @@ export async function upsertTailoredResume(
       return resumeId;
     }
   } else {
-    const { data: byName } = await admin
+    const { data: matches, error: matchError } = await admin
       .from('resumes')
       .select('id, content, ats_score')
       .eq('user_id', userId)
       .eq('name', name)
-      .maybeSingle();
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    if (matchError) throw matchError;
+    const byName = matches?.[0];
     if (byName?.id) {
       const resumeId = String(byName.id);
       const contentChanged = String(byName.content || '') !== input.content;
       await admin.from('resumes').update({
         content: input.content,
         updated_at: now,
-      }).eq('id', resumeId);
+      }).eq('id', resumeId).eq('user_id', userId);
       if (contentChanged) {
         await appendResumeVersion(
           admin,

@@ -75,6 +75,8 @@ export interface Job {
   status: JobStatus;
   url?: string;
   resumeId?: string;
+  resumeName?: string;
+  resumeStoragePath?: string;
   driveFileId?: string;
   pdfUrl?: string;
   createdAt: string;
