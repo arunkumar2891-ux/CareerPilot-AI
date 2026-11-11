@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, RefreshCw, StopCircle, RotateCcw, Play,
+  ArrowLeft, RefreshCw, StopCircle, RotateCcw, Play, FileText,
 } from 'lucide-react';
 import { InlineLoader, PageLoader } from '@/components/motion';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -17,6 +17,8 @@ import { ExecutionGraph } from '@/components/executions/ExecutionGraph';
 import { ExecutionNodeDetailSheet } from '@/components/executions/ExecutionNodeDetailSheet';
 import { ExecutionRunLogs } from '@/components/executions/ExecutionRunLogs';
 import { getActiveExecutionStep } from '@/utils/execution';
+import { storedFileNamesFromLogs } from '@/utils/job-resume';
+import { invalidateAll } from '@/utils/query-keys';
 import { toast } from 'sonner';
 import { hasUsableMasterResume } from '@/utils/resume-classification';
 
@@ -88,6 +90,18 @@ export function ExecutionDetailPage() {
   }, [run, workflow, workflowLoading]);
 
   const isActive = run?.status === 'running' || run?.status === 'queued';
+  const sawActiveRun = useRef(false);
+  useEffect(() => {
+    if (!run) return;
+    if (isActive) {
+      sawActiveRun.current = true;
+      return;
+    }
+    if (!sawActiveRun.current) return;
+    sawActiveRun.current = false;
+    void invalidateAll(qc, ['jobs', 'resumes']);
+  }, [isActive, qc, run]);
+  const storedFiles = storedFileNamesFromLogs(runLogs?.length ? runLogs : run?.logs || []);
   const canRetry = run && !isActive && (run.jobsFailed ?? graph?.jobsFailed ?? 0) > 0;
   const activeStep = run ? getActiveExecutionStep(run) : null;
 
@@ -229,6 +243,23 @@ export function ExecutionDetailPage() {
               Running: {activeStep.name}
               {activeStep.detail ? ` · ${activeStep.detail}` : ''}
             </p>
+          )}
+          {storedFiles.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm">
+                Stored {storedFiles.length === 1 ? 'file' : 'files'}:{' '}
+                <span className="break-all font-mono text-xs">{storedFiles.join(', ')}</span>
+              </p>
+              {run.targetJobId && (
+                <Button
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => navigate(`/jobs?job=${encodeURIComponent(run.targetJobId!)}`)}
+                >
+                  <FileText className="h-3.5 w-3.5" /> View generated resume
+                </Button>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

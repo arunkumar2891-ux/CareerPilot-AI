@@ -21,6 +21,17 @@ import {
   applyContactOverlay,
 } from '@/content/career-corpus';
 import { corpusGroup, hasUsableMasterResume, isCorpusResume, isJobResume } from '@/utils/resume-classification';
+import {
+  jobResumesIncludingStoredPdfs,
+  pickResumeForJob,
+  planStoredJobResumes,
+  storedPdfFileName,
+  storedPdfResumeNote,
+  type JobPdfRow,
+  type ResumePdfRow,
+  type StoredResumeAttach,
+  type StoredResumeCreate,
+} from '@/utils/job-resume';
 import { parseGoogleDocFileId } from '@/utils/google';
 import {
   assertResumeUploadFile,
@@ -142,6 +153,8 @@ function mapJob(row: Record<string, unknown>): Job {
     status,
     url: row.url as string | undefined,
     resumeId: row._resume_id as string | undefined,
+    resumeName: row._resume_name as string | undefined,
+    resumeStoragePath: row._resume_storage_path as string | undefined,
     driveFileId: row._drive_file_id as string | undefined,
     pdfUrl: (row._pdf_url as string | undefined) || (row.pdf_url as string | undefined),
     createdAt: row.created_at as string,
@@ -409,22 +422,22 @@ export class JobSearchService {
       supabase.from('jobs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
       supabase
         .from('resumes')
-        .select('id, job_id, drive_file_id, pdf_url, storage_path')
+        .select('id, job_id, name, drive_file_id, pdf_url, storage_path')
         .eq('user_id', userId)
         .not('job_id', 'is', null),
     ]);
     if (error) throw error;
     if (resumeError) throw resumeError;
 
-    const resumeByJob = new Map(
-      (resumeRows || []).map((row) => [String(row.job_id), row]),
-    );
+    const resumeByJob = pickResumeForJob(resumeRows || []);
 
     return collapseJobsByUrl((jobRows || []).map((row) => {
       const linked = resumeByJob.get(String(row.id));
       return mapJob({
         ...row,
         _resume_id: linked?.id,
+        _resume_name: linked?.name,
+        _resume_storage_path: linked?.storage_path,
         _drive_file_id: linked?.drive_file_id,
         _pdf_url: linked?.pdf_url || row.pdf_url,
       });
@@ -568,9 +581,76 @@ export class ResumeService {
     const { data, error } = await supabase.from('resumes').select('*, resume_versions(*)').order('created_at', { ascending: false });
     if (error) throw error;
     let rows = (data || []).map(mapResume);
-    if (kind === 'job') rows = rows.filter(isJobResume);
+    if (kind === 'job') {
+      rows = rows.filter(isJobResume);
+      rows = await this.includeStoredJobPdfs(rows);
+    }
     if (kind === 'corpus') rows = rows.filter(isCorpusResume);
     return rows;
+  }
+  /**
+   * A finished tailor run can store the PDF on the job without a `resumes` row.
+   * The Resumes page only lists that table, so save the missing row (and attach
+   * the file onto a row that was created before the upload). If the write fails,
+   * still return a card for the stored PDF.
+   */
+  private async includeStoredJobPdfs(rows: Resume[]): Promise<Resume[]> {
+    let userId = '';
+    try {
+      userId = await requireUserId();
+    } catch {
+      return rows;
+    }
+    const [{ data: jobRows, error: jobError }, { data: resumeRows, error: resumeError }] = await Promise.all([
+      supabase.from('jobs').select('id, company, role, pdf_url, created_at').eq('user_id', userId).not('pdf_url', 'is', null),
+      supabase.from('resumes').select('id, job_id, name, pdf_url, storage_path').eq('user_id', userId),
+    ]);
+    const jobs = (jobRows || []) as JobPdfRow[];
+    if (jobError) return rows;
+    if (resumeError) return jobResumesIncludingStoredPdfs(rows, jobs);
+    const plan = planStoredJobResumes(jobs, (resumeRows || []) as ResumePdfRow[]);
+    try {
+      const wrote = await this.applyStoredJobResumePlan(userId, plan);
+      if (wrote) {
+        const { data, error } = await supabase
+          .from('resumes')
+          .select('*, resume_versions(*)')
+          .order('created_at', { ascending: false });
+        if (!error && data) return data.map(mapResume).filter(isJobResume);
+      }
+    } catch (err) {
+      console.warn('includeStoredJobPdfs', err);
+    }
+    return jobResumesIncludingStoredPdfs(rows, jobs);
+  }
+  private async applyStoredJobResumePlan(
+    userId: string,
+    plan: { create: StoredResumeCreate[]; attach: StoredResumeAttach[] },
+  ): Promise<boolean> {
+    if (plan.create.length === 0 && plan.attach.length === 0) return false;
+    const now = new Date().toISOString();
+    for (const row of plan.attach) {
+      const patch: Record<string, unknown> = { pdf_url: row.pdfUrl, updated_at: now };
+      if (row.storagePath) patch.storage_path = row.storagePath;
+      if (row.jobId) patch.job_id = row.jobId;
+      const { error } = await supabase.from('resumes').update(patch).eq('id', row.resumeId).eq('user_id', userId);
+      if (error) throw error;
+    }
+    for (const row of plan.create) {
+      const fileName = storedPdfFileName(row.storagePath || row.pdfUrl);
+      const { error } = await supabase.from('resumes').insert({
+        user_id: userId,
+        name: row.name,
+        type: 'technical',
+        content: storedPdfResumeNote(fileName),
+        ats_score: 0,
+        job_id: row.jobId,
+        pdf_url: row.pdfUrl,
+        storage_path: row.storagePath || null,
+      });
+      if (error) throw error;
+    }
+    return true;
   }
   async hasMasterResume(): Promise<boolean> {
     const resumes = await this.list({ kind: 'corpus' });
@@ -810,6 +890,21 @@ export class ResumeService {
       errors: data?.errors as Array<{ resumeId: string; error: string }> | undefined,
     };
   }
+  /**
+   * Open the PDF the pipeline already compiled. A fresh signed URL is preferred
+   * because the copy stored on the row expires after seven days.
+   */
+  async resolveStoredPdfUrl(input: { storagePath?: string; pdfUrl?: string }): Promise<string> {
+    if (input.storagePath) {
+      const { data, error } = await supabase.storage.from('resumes').createSignedUrl(input.storagePath, 60 * 60);
+      if (!error && data?.signedUrl) return data.signedUrl;
+      if (!input.pdfUrl) {
+        throw new Error(error instanceof Error ? error.message : 'Could not open the stored PDF');
+      }
+    }
+    if (input.pdfUrl) return input.pdfUrl;
+    throw new Error('No stored PDF for this resume');
+  }
   async downloadPdf(id: string, content?: string, template?: string): Promise<void> {
     const resume = await this.get(id);
     if (!resume) throw new Error('Resume not found');
@@ -839,7 +934,9 @@ export class ResumeService {
     if (uniqueIds.length === 0) return 0;
 
     const userId = await requireUserId();
-    const jobResumes = (await this.list({ kind: 'job' })).filter((resume) => uniqueIds.includes(resume.id));
+    const jobResumes = (await this.list({ kind: 'job' })).filter((resume) => (
+      uniqueIds.includes(resume.id) && !resume.synthetic
+    ));
     if (jobResumes.length === 0) return 0;
 
     const ownedIds = jobResumes.map((resume) => resume.id);
@@ -892,7 +989,7 @@ export class ResumeService {
     return ownedIds.length;
   }
   async deleteAllJobResumes(): Promise<number> {
-    const jobResumes = await this.list({ kind: 'job' });
+    const jobResumes = (await this.list({ kind: 'job' })).filter((resume) => !resume.synthetic);
     return this.deleteJobResumes(jobResumes.map((resume) => resume.id));
   }
   async deleteCorpusResumes(ids: string[]): Promise<number> {
