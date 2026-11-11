@@ -21,7 +21,17 @@ import {
   applyContactOverlay,
 } from '@/content/career-corpus';
 import { corpusGroup, hasUsableMasterResume, isCorpusResume, isJobResume } from '@/utils/resume-classification';
-import { pickResumeForJob } from '@/utils/job-resume';
+import {
+  jobResumesIncludingStoredPdfs,
+  pickResumeForJob,
+  planStoredJobResumes,
+  storedPdfFileName,
+  storedPdfResumeNote,
+  type JobPdfRow,
+  type ResumePdfRow,
+  type StoredResumeAttach,
+  type StoredResumeCreate,
+} from '@/utils/job-resume';
 import { parseGoogleDocFileId } from '@/utils/google';
 import {
   assertResumeUploadFile,
@@ -571,9 +581,76 @@ export class ResumeService {
     const { data, error } = await supabase.from('resumes').select('*, resume_versions(*)').order('created_at', { ascending: false });
     if (error) throw error;
     let rows = (data || []).map(mapResume);
-    if (kind === 'job') rows = rows.filter(isJobResume);
+    if (kind === 'job') {
+      rows = rows.filter(isJobResume);
+      rows = await this.includeStoredJobPdfs(rows);
+    }
     if (kind === 'corpus') rows = rows.filter(isCorpusResume);
     return rows;
+  }
+  /**
+   * A finished tailor run can store the PDF on the job without a `resumes` row.
+   * The Resumes page only lists that table, so save the missing row (and attach
+   * the file onto a row that was created before the upload). If the write fails,
+   * still return a card for the stored PDF.
+   */
+  private async includeStoredJobPdfs(rows: Resume[]): Promise<Resume[]> {
+    let userId = '';
+    try {
+      userId = await requireUserId();
+    } catch {
+      return rows;
+    }
+    const [{ data: jobRows, error: jobError }, { data: resumeRows, error: resumeError }] = await Promise.all([
+      supabase.from('jobs').select('id, company, role, pdf_url, created_at').eq('user_id', userId).not('pdf_url', 'is', null),
+      supabase.from('resumes').select('id, job_id, name, pdf_url, storage_path').eq('user_id', userId),
+    ]);
+    const jobs = (jobRows || []) as JobPdfRow[];
+    if (jobError) return rows;
+    if (resumeError) return jobResumesIncludingStoredPdfs(rows, jobs);
+    const plan = planStoredJobResumes(jobs, (resumeRows || []) as ResumePdfRow[]);
+    try {
+      const wrote = await this.applyStoredJobResumePlan(userId, plan);
+      if (wrote) {
+        const { data, error } = await supabase
+          .from('resumes')
+          .select('*, resume_versions(*)')
+          .order('created_at', { ascending: false });
+        if (!error && data) return data.map(mapResume).filter(isJobResume);
+      }
+    } catch (err) {
+      console.warn('includeStoredJobPdfs', err);
+    }
+    return jobResumesIncludingStoredPdfs(rows, jobs);
+  }
+  private async applyStoredJobResumePlan(
+    userId: string,
+    plan: { create: StoredResumeCreate[]; attach: StoredResumeAttach[] },
+  ): Promise<boolean> {
+    if (plan.create.length === 0 && plan.attach.length === 0) return false;
+    const now = new Date().toISOString();
+    for (const row of plan.attach) {
+      const patch: Record<string, unknown> = { pdf_url: row.pdfUrl, updated_at: now };
+      if (row.storagePath) patch.storage_path = row.storagePath;
+      if (row.jobId) patch.job_id = row.jobId;
+      const { error } = await supabase.from('resumes').update(patch).eq('id', row.resumeId).eq('user_id', userId);
+      if (error) throw error;
+    }
+    for (const row of plan.create) {
+      const fileName = storedPdfFileName(row.storagePath || row.pdfUrl);
+      const { error } = await supabase.from('resumes').insert({
+        user_id: userId,
+        name: row.name,
+        type: 'technical',
+        content: storedPdfResumeNote(fileName),
+        ats_score: 0,
+        job_id: row.jobId,
+        pdf_url: row.pdfUrl,
+        storage_path: row.storagePath || null,
+      });
+      if (error) throw error;
+    }
+    return true;
   }
   async hasMasterResume(): Promise<boolean> {
     const resumes = await this.list({ kind: 'corpus' });
@@ -857,7 +934,9 @@ export class ResumeService {
     if (uniqueIds.length === 0) return 0;
 
     const userId = await requireUserId();
-    const jobResumes = (await this.list({ kind: 'job' })).filter((resume) => uniqueIds.includes(resume.id));
+    const jobResumes = (await this.list({ kind: 'job' })).filter((resume) => (
+      uniqueIds.includes(resume.id) && !resume.synthetic
+    ));
     if (jobResumes.length === 0) return 0;
 
     const ownedIds = jobResumes.map((resume) => resume.id);
@@ -910,7 +989,7 @@ export class ResumeService {
     return ownedIds.length;
   }
   async deleteAllJobResumes(): Promise<number> {
-    const jobResumes = await this.list({ kind: 'job' });
+    const jobResumes = (await this.list({ kind: 'job' })).filter((resume) => !resume.synthetic);
     return this.deleteJobResumes(jobResumes.map((resume) => resume.id));
   }
   async deleteCorpusResumes(ids: string[]): Promise<number> {

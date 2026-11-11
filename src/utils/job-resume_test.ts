@@ -1,6 +1,9 @@
 import {
   describeJobResume,
+  jobResumesIncludingStoredPdfs,
   pickResumeForJob,
+  planStoredJobResumes,
+  storagePathFromSignedPdfUrl,
   storedFileNamesFromLogs,
   storedPdfFileName,
 } from './job-resume.ts';
@@ -75,4 +78,68 @@ Deno.test('storedFileNamesFromLogs reads the Upload to Storage log line', () => 
   ]);
   if (names.length !== 1) throw new Error(`expected 1 name, got ${names.length}`);
   if (!names[0].startsWith('GlobalLogic_')) throw new Error(names[0]);
+});
+
+const storedPdfUrl = 'https://abc.supabase.co/storage/v1/object/sign/resumes/user-1/resumes/GlobalLogic_ArunkumarJS_AIEngineeringIRC306669_11112026.pdf?token=eyJ';
+
+Deno.test('storagePathFromSignedPdfUrl reads the object path inside the resumes bucket', () => {
+  const path = storagePathFromSignedPdfUrl(storedPdfUrl);
+  if (path !== 'user-1/resumes/GlobalLogic_ArunkumarJS_AIEngineeringIRC306669_11112026.pdf') {
+    throw new Error(path);
+  }
+  if (storagePathFromSignedPdfUrl('https://example.com/files/resume.pdf')) {
+    throw new Error('unrelated URL must not invent a storage path');
+  }
+  if (storagePathFromSignedPdfUrl('https://abc.supabase.co/storage/v1/object/sign/resumes/user-1/../secrets.pdf?token=x')) {
+    throw new Error('path traversal must be rejected');
+  }
+});
+
+Deno.test('planStoredJobResumes adds a Resumes-page row for a stored PDF with no resume', () => {
+  const plan = planStoredJobResumes(
+    [{ id: 'job-1234abcd', company: 'GlobalLogic', role: 'AI Engineer', pdf_url: storedPdfUrl, created_at: '2026-11-11T03:45:18.573Z' }],
+    [],
+  );
+  if (plan.attach.length !== 0) throw new Error('nothing to attach');
+  if (plan.create.length !== 1) throw new Error(`expected 1 create, got ${plan.create.length}`);
+  const created = plan.create[0];
+  if (!created.name.startsWith('Tailored: GlobalLogic AI Engineer')) throw new Error(created.name);
+  if (!created.name.endsWith('(job1234a)')) throw new Error(created.name);
+  if (!created.storagePath.endsWith('GlobalLogic_ArunkumarJS_AIEngineeringIRC306669_11112026.pdf')) {
+    throw new Error(created.storagePath);
+  }
+});
+
+Deno.test('planStoredJobResumes does not duplicate a resume already linked to the job', () => {
+  const plan = planStoredJobResumes(
+    [{ id: 'job-1', company: 'GlobalLogic', role: 'AI Engineer', pdf_url: storedPdfUrl }],
+    [{ id: 'resume-1', job_id: 'job-1', name: 'Tailored: GlobalLogic AI Engineer (job1)', pdf_url: storedPdfUrl, storage_path: 'user-1/resumes/file.pdf' }],
+  );
+  if (plan.create.length || plan.attach.length) throw new Error(JSON.stringify(plan));
+});
+
+Deno.test('planStoredJobResumes attaches the stored PDF onto a linked resume that has no file', () => {
+  const plan = planStoredJobResumes(
+    [{ id: 'job-1', company: 'GlobalLogic', role: 'AI Engineer', pdf_url: storedPdfUrl }],
+    [{ id: 'resume-1', job_id: 'job-1', name: 'Tailored: GlobalLogic AI Engineer' }],
+  );
+  if (plan.create.length !== 0) throw new Error('resume row already exists');
+  if (plan.attach.length !== 1 || plan.attach[0].resumeId !== 'resume-1') throw new Error(JSON.stringify(plan));
+  if (!plan.attach[0].storagePath.includes('GlobalLogic_')) throw new Error(plan.attach[0].storagePath);
+});
+
+Deno.test('jobResumesIncludingStoredPdfs shows the stored PDF on the Resumes page', () => {
+  const shown = jobResumesIncludingStoredPdfs([], [{
+    id: 'job-1234abcd',
+    company: 'GlobalLogic',
+    role: 'AI Engineer',
+    pdf_url: storedPdfUrl,
+    created_at: '2026-11-11T03:45:18.573Z',
+  }]);
+  if (shown.length !== 1) throw new Error(`expected 1 resume, got ${shown.length}`);
+  if (!shown[0].synthetic) throw new Error('fallback card must be marked synthetic');
+  if (shown[0].jobId !== 'job-1234abcd') throw new Error(shown[0].jobId || 'missing job');
+  if (!shown[0].pdfUrl) throw new Error('pdf url missing');
+  const fileName = storedPdfFileName(shown[0].storagePath || shown[0].pdfUrl);
+  if (fileName !== 'GlobalLogic_ArunkumarJS_AIEngineeringIRC306669_11112026.pdf') throw new Error(fileName);
 });

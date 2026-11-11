@@ -22,6 +22,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ApplicationPackageWizard } from '@/components/jobs/ApplicationPackageWizard';
 import { ResumeEditor } from '@/components/resumes/ResumeEditor';
 import { services } from '@/services';
+import { storedPdfFileName } from '@/utils/job-resume';
 import { formatDate, timeAgo } from '@/utils';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ErrorState } from '@/components/shared/ErrorState';
@@ -250,7 +251,9 @@ export function ResumesPage() {
             </Card>
           ) : (
           <StaggerList as="ul" label="Tailored resumes" className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {resumes.map((r) => (
+            {resumes.map((r) => {
+              const fileName = storedPdfFileName(r.storagePath || r.pdfUrl);
+              return (
               <StaggerItem as="li" key={r.id}>
                 <Card
                   className={`min-w-0 cursor-pointer transition-colors hover:bg-accent/30 ${selectedIds.has(r.id) ? 'ring-2 ring-primary' : ''}`}
@@ -259,31 +262,35 @@ export function ResumesPage() {
                   <CardContent className="min-w-0 pt-6">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-start gap-3">
-                        <Checkbox
-                          checked={selectedIds.has(r.id)}
-                          onCheckedChange={() => toggleSelected(r.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Select ${r.name}`}
-                        />
+                        {!r.synthetic && (
+                          <Checkbox
+                            checked={selectedIds.has(r.id)}
+                            onCheckedChange={() => toggleSelected(r.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Select ${r.name}`}
+                          />
+                        )}
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                           <FileText className="h-5 w-5 text-primary" />
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            aria-label={`Delete ${r.name}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDeleteTarget({ ids: [r.id], label: r.name });
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {!r.synthetic && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              aria-label={`Delete ${r.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget({ ids: [r.id], label: r.name });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Badge variant="secondary" className="capitalize">{r.type}</Badge>
                         </div>
                         {r.jobId && <Badge variant="outline" className="text-xs">Job linked</Badge>}
@@ -295,6 +302,9 @@ export function ResumesPage() {
                       </div>
                     </div>
                     <p className="mt-3 break-words font-semibold">{r.name}</p>
+                    {fileName && (
+                      <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{fileName}</p>
+                    )}
                     <p className="text-xs text-muted-foreground">Updated {timeAgo(r.updatedAt)}</p>
                     <div className="mt-3 flex items-center gap-2">
                       <div className="flex-1">
@@ -311,7 +321,8 @@ export function ResumesPage() {
                   </CardContent>
                 </Card>
               </StaggerItem>
-            ))}
+              );
+            })}
           </StaggerList>
           )}
         </TabsContent>

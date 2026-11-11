@@ -110,6 +110,8 @@ export interface Resume {
   corpusSource?: 'google_doc' | 'upload' | 'paste' | null;
   createdAt: string;
   updatedAt: string;
+  /** Shown from a stored job PDF before a `resumes` row could be saved. */
+  synthetic?: boolean;
 }
 
 export interface ResumeVersion {

@@ -50,9 +50,10 @@ export function ResumeEditor({
     setAtsScore(resume.atsScore);
     setAtsReview(resume.atsReview);
     setDriveFileId(resume.driveFileId);
-    setActiveTab('edit');
+    const storedPdfOnly = resume.synthetic || resume.content.startsWith('Compiled PDF:');
+    setActiveTab(storedPdfOnly ? 'pdf' : 'edit');
     setLinkedJd('');
-  }, [resume?.id, resume?.atsScore, resume?.atsReview, resume?.driveFileId]);
+  }, [resume?.id, resume?.content, resume?.synthetic, resume?.atsScore, resume?.atsReview, resume?.driveFileId]);
 
   useEffect(() => {
     if (!resume?.jobId) return;
@@ -222,6 +223,7 @@ export function ResumeEditor({
                   <p className="mt-2 text-center text-sm text-muted-foreground">No compiled PDF is stored for this resume yet.</p>
                 </div>
               )}
+              {!resume.synthetic && !resume.content.startsWith('Compiled PDF:') && (
               <div className="flex flex-col items-center gap-3 rounded-lg border border-border p-4">
               <p className="text-center text-sm text-muted-foreground">Generate a new PDF from the resume text</p>
               <div className="flex flex-wrap items-center justify-center gap-2">
@@ -248,6 +250,7 @@ export function ResumeEditor({
                 {downloadingPdf ? 'Generating…' : 'Download PDF'}
               </Button>
               </div>
+              )}
             </div>
           </TabsContent>
           <TabsContent value="jd-match" className="mt-4 min-h-0 flex-1 overflow-y-auto data-[state=inactive]:hidden">
@@ -287,6 +290,7 @@ export function ResumeEditor({
             )}
           </TabsContent>
         </Tabs>
+        {!resume.synthetic && (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border pt-4">
           <Button onClick={save} className="gap-2"><FileCheck className="h-4 w-4" /> Save</Button>
           <Button variant="outline" onClick={scoreATS} disabled={scoring} className="gap-2">
@@ -303,6 +307,7 @@ export function ResumeEditor({
           )}
           <Button variant="ghost" onClick={exportResume} className="gap-2"><Download className="h-4 w-4" /> Export</Button>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -1169,3 +1169,38 @@ its PDF: `jobs.pdf_url` is still valid for seven days, and a linked resume opens
 `resume-store.ts` (`workflow-run`, `workflow-step`) need a deploy before the attach fallback
 runs in production. The Jobs page change is frontend-only and applies to the run that already
 finished.
+
+---
+
+## BUG-018 — Stored tailor PDF never appeared on the Resumes page
+
+**Status:** Fixed
+**Feature:** Resume management
+
+**Symptom:** After Upload to Storage logged `Stored file: GlobalLogic_….pdf` and the job moved
+to Resume Ready, the Resumes page still had no card for that file.
+
+**Root Cause:** The Resumes page lists only `resumes` rows. The pipeline's durable copy of the
+compiled PDF is `jobs.pdf_url` (and the object in the `resumes` bucket). When that upload did
+not leave a resume row — or left a row with no `storage_path` / `pdf_url` — the page had
+nothing to render. The card also never showed the stored file name, so a text row named
+`Tailored: …` did not look like the PDF from the log.
+
+**Files:**
+- `src/utils/job-resume.ts` (+ `job-resume_test.ts`)
+- `src/services/index.ts` → `ResumeService.list({ kind: 'job' })`
+- `src/pages/ResumesPage.tsx`
+- `src/components/resumes/ResumeEditor.tsx`
+- `src/types/index.ts`
+
+**Fix:** Opening Resumes saves a resume row for every job that has a stored PDF and none linked,
+and copies the PDF onto a linked row that is missing it. The object path is parsed from the
+signed URL so the file can be re-signed after seven days. Each card shows the PDF file name.
+If the save fails, the page still shows a card that opens the stored PDF. Regenerating a PDF
+from the one-line "Compiled PDF" note is not offered, so that action cannot replace the file
+the pipeline uploaded.
+
+**Validation:** `job-resume_test.ts` covers the GlobalLogic signed URL: a job with that PDF and
+no resume row plans one `Tailored:` resume, a linked row is not duplicated, and a linked row
+without a file gets the PDF attached. No edge deploy is required for this path — it runs in
+the browser against the job row the finished run already wrote.

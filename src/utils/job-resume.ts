@@ -1,4 +1,4 @@
-import type { Job } from '../types';
+import type { Job, Resume } from '../types';
 
 /**
  * What the Jobs board can show after tailoring.
@@ -72,6 +72,170 @@ export function storedPdfFileName(source?: string): string {
   }
   base = base.trim();
   return /\.pdf$/i.test(base) ? base : '';
+}
+
+/** Same shape as the pipeline's `Tailored: Company Role (jobKey)` name. */
+export function tailoredResumeDisplayName(company: string, role: string, jobId?: string): string {
+  const key = String(jobId || '').replace(/-/g, '').slice(0, 8);
+  const suffix = key ? ` (${key})` : '';
+  const prefix = 'Tailored: ';
+  const maxBase = Math.max(8, 120 - prefix.length - suffix.length);
+  const base = `${company} ${role}`.replace(/\s+/g, ' ').trim().slice(0, maxBase).trim();
+  return `${prefix}${base}${suffix}`;
+}
+
+/**
+ * Object path inside the `resumes` bucket, taken from a Supabase signed URL.
+ * Returns '' when the URL is not one of those objects, so a bad link cannot
+ * be turned into a guessed path.
+ */
+export function storagePathFromSignedPdfUrl(pdfUrl?: string): string {
+  if (!pdfUrl || pdfUrl.includes('..')) return '';
+  try {
+    const url = new URL(pdfUrl);
+    const match = url.pathname.match(/\/object\/(?:sign|public|authenticated)\/resumes\/(.+)$/);
+    if (!match?.[1]) return '';
+    const path = decodeURIComponent(match[1]).replace(/^\/+/, '');
+    if (!path || path.split('/').some((part) => part === '..' || part === '.')) return '';
+    return path;
+  } catch {
+    return '';
+  }
+}
+
+export interface JobPdfRow {
+  id: string;
+  company?: string | null;
+  role?: string | null;
+  pdf_url?: string | null;
+  created_at?: string | null;
+}
+
+export interface ResumePdfRow {
+  id: string;
+  job_id?: string | null;
+  name?: string | null;
+  pdf_url?: string | null;
+  storage_path?: string | null;
+}
+
+export interface StoredResumeCreate {
+  jobId: string;
+  name: string;
+  pdfUrl: string;
+  storagePath: string;
+  company: string;
+  role: string;
+  createdAt: string;
+}
+
+export interface StoredResumeAttach {
+  resumeId: string;
+  pdfUrl: string;
+  storagePath: string;
+  jobId?: string;
+}
+
+/**
+ * Jobs whose compiled PDF never became a Resumes-page row, and linked rows
+ * that were saved before the PDF was attached.
+ */
+export function planStoredJobResumes(
+  jobs: readonly JobPdfRow[],
+  resumes: readonly ResumePdfRow[],
+): { create: StoredResumeCreate[]; attach: StoredResumeAttach[] } {
+  const byJob = new Map<string, ResumePdfRow[]>();
+  const byName = new Map<string, ResumePdfRow>();
+  for (const resume of resumes) {
+    const jobId = String(resume.job_id || '').trim();
+    if (jobId) {
+      const list = byJob.get(jobId) || [];
+      list.push(resume);
+      byJob.set(jobId, list);
+    }
+    const name = String(resume.name || '').trim();
+    if (name && !byName.has(name)) byName.set(name, resume);
+  }
+
+  const create: StoredResumeCreate[] = [];
+  const attach: StoredResumeAttach[] = [];
+  for (const job of jobs) {
+    const pdfUrl = String(job.pdf_url || '').trim();
+    if (!pdfUrl) continue;
+    const storagePath = storagePathFromSignedPdfUrl(pdfUrl);
+    const company = String(job.company || '').trim() || 'Company';
+    const role = String(job.role || '').trim() || 'Role';
+    const name = tailoredResumeDisplayName(company, role, job.id);
+    const linked = byJob.get(String(job.id));
+    const existing = linked?.[0] || byName.get(name);
+    if (existing) {
+      if (!existing.storage_path && !existing.pdf_url) {
+        attach.push({
+          resumeId: existing.id,
+          pdfUrl,
+          storagePath,
+          jobId: linked?.[0] ? undefined : job.id,
+        });
+      }
+      continue;
+    }
+    create.push({
+      jobId: job.id,
+      name,
+      pdfUrl,
+      storagePath,
+      company,
+      role,
+      createdAt: job.created_at || new Date(0).toISOString(),
+    });
+  }
+  return { create, attach };
+}
+
+export function storedPdfResumeNote(fileName: string): string {
+  return `Compiled PDF: ${fileName || 'resume.pdf'}`;
+}
+
+function syntheticResumeFromStoredPdf(created: StoredResumeCreate): Resume {
+  const fileName = storedPdfFileName(created.storagePath || created.pdfUrl);
+  return {
+    id: `stored-job:${created.jobId}`,
+    name: created.name,
+    type: 'technical',
+    content: storedPdfResumeNote(fileName),
+    atsScore: 0,
+    versions: [],
+    jobId: created.jobId,
+    storagePath: created.storagePath || undefined,
+    pdfUrl: created.pdfUrl,
+    createdAt: created.createdAt,
+    updatedAt: created.createdAt,
+    synthetic: true,
+  };
+}
+
+/** Resumes-page list, plus a card for every stored PDF that has no row yet. */
+export function jobResumesIncludingStoredPdfs(
+  resumes: readonly Resume[],
+  jobs: readonly JobPdfRow[],
+): Resume[] {
+  const plan = planStoredJobResumes(jobs, resumes.map((resume) => ({
+    id: resume.id,
+    job_id: resume.jobId,
+    name: resume.name,
+    pdf_url: resume.pdfUrl,
+    storage_path: resume.storagePath,
+  })));
+  const next = resumes.map((resume) => ({ ...resume }));
+  for (const row of plan.attach) {
+    const resume = next.find((item) => item.id === row.resumeId);
+    if (!resume) continue;
+    if (!resume.pdfUrl) resume.pdfUrl = row.pdfUrl;
+    if (!resume.storagePath && row.storagePath) resume.storagePath = row.storagePath;
+    if (!resume.jobId && row.jobId) resume.jobId = row.jobId;
+  }
+  const added = plan.create.map(syntheticResumeFromStoredPdf);
+  return [...added, ...next];
 }
 
 export function storedFileNamesFromLogs(logs: readonly { message: string }[]): string[] {
