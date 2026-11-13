@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CareerPilot AI - Startup Buildathon India 2026 Idea Submission</title>
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  :root {
+    --ink: #202124; --muted: #5f6368; --line: #dadce0; --soft: #f1f3f4;
+    --blue: #1a73e8; --blue-soft: #e8f0fe; --green: #188038; --green-soft: #e6f4ea;
+    --amber: #b06000; --amber-soft: #fef7e0; --red: #d93025;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', 'Liberation Sans', sans-serif; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #fff; }
+  .slide { width: 1280px; height: 720px; position: relative; overflow: hidden; page-break-after: always; break-after: page; background-size: 1280px 720px; background-repeat: no-repeat; }
+  .slide:last-child { page-break-after: auto; break-after: auto; }
+  .bg-title { background-image: url(bg_title.jpg); }
+  .bg-content { background-image: url(bg_content.jpg); }
+  .bg-thanks { background-image: url(bg_thanks.jpg); }
+
+  .title { position: absolute; left: 71px; top: 124px; font-size: 38px; font-weight: 400; letter-spacing: -.01em; }
+  .body { position: absolute; left: 71px; right: 71px; top: 196px; bottom: 30px; }
+
+  .meta { position: absolute; left: 94px; right: 94px; top: 442px; }
+  .meta p { font-size: 25px; line-height: 1.4; margin-bottom: 20px; }
+  .meta b { font-weight: 500; }
+
+  h3 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  p { font-size: 17px; line-height: 1.45; color: var(--muted); }
+  .grid { display: grid; gap: 18px; }
+  .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .card { border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; background: #fff; }
+  .card .k { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--blue); margin-bottom: 8px; }
+  .card ul { list-style: none; }
+  .card li { font-size: 16px; line-height: 1.42; color: var(--muted); padding-left: 18px; position: relative; margin: 6px 0; }
+  .card li::before { content: ''; position: absolute; left: 0; top: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+  .card li b, .card p b { color: var(--ink); font-weight: 600; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 10px; }
+  .tag.live { background: var(--green-soft); color: var(--green); }
+  .tag.plan { background: var(--amber-soft); color: var(--amber); }
+  .bar { margin-top: 18px; border-left: 5px solid var(--blue); background: var(--blue-soft); border-radius: 0 12px 12px 0; padding: 14px 20px; font-size: 18px; line-height: 1.4; color: var(--ink); }
+  .bar b { font-weight: 600; }
+
+  .flow { display: flex; align-items: stretch; gap: 8px; }
+  .step { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 12px 11px; background: #fff; }
+  .step b { display: block; font-size: 15px; margin-bottom: 4px; font-weight: 600; }
+  .step span { display: block; font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+  .step.gate { background: var(--blue); border-color: var(--blue); }
+  .step.gate b, .step.gate span { color: #fff; }
+  .arrow { align-self: center; color: var(--blue); font-weight: 700; font-size: 18px; }
+  .lbl { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+
+  .arch { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+  .layer { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px; background: #fff; }
+  .layer.wide { grid-column: 1 / -1; }
+  .layer h4 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .layer.g { background: var(--blue-soft); border-color: #c6dafc; }
+  .layer.g h4 { color: var(--blue); }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip { font-size: 13.5px; font-weight: 500; padding: 5px 11px; border-radius: 8px; background: var(--soft); border: 1px solid var(--line); }
+  .layer.g .chip { background: #fff; border-color: #c6dafc; }
+  .chip.plan { background: #fff; border: 1px dashed #e0a84a; color: var(--amber); }
+  .legend { margin-top: 10px; font-size: 13.5px; color: var(--muted); display: flex; gap: 22px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; background: var(--soft); border: 1px solid var(--line); }
+  .legend i.p { background: #fff; border: 1px dashed #e0a84a; }
+  .foot { margin-top: 14px; font-size: 15px; color: var(--muted); line-height: 1.4; }
+</style>
+</head>
+<body>
+
+<!-- 1. Title -->
+<section class="slide bg-title">
+  <div class="meta">
+    <p><b>Team Name:</b> [enter team name]</p>
+    <p><b>Team Size:</b> [enter team size]</p>
+    <p><b>Problem Statement:</b> Job seekers repeat search, resume tailoring, and tracking for every opening, and generic AI shortcuts fabricate experience they cannot defend.</p>
+  </div>
+</section>
+
+<!-- 2. Problem Statement -->
+<section class="slide bg-content">
+  <div class="title">Problem Statement</div>
+  <div class="body">
+    <div class="grid g3">
+      <div class="card"><div class="k">01 &nbsp;Search is repetitive</div><p>Listings live on job boards. A candidate re-runs the same searches every day, skims duplicates, and loses track of what they have already seen.</p></div>
+      <div class="card"><div class="k">02 &nbsp;Tailoring is slow</div><p>Each role needs a resume rewritten against its description and shaped to pass an applicant tracking system (ATS), usually by hand.</p></div>
+      <div class="card"><div class="k">03 &nbsp;Tools fabricate</div><p>Generic AI resume tools raise keyword scores by inventing employers, metrics, and skills, leaving a document the candidate cannot defend in an interview.</p></div>
+    </div>
+    <div class="bar"><b>Who feels it:</b> mid-career technology professionals in India, and those targeting US roles, who apply every week and keep a master resume in a Google Doc.</div>
+    <div class="bar" style="margin-top:12px"><b>The cost</b> is not only time. It is applying to the wrong roles, or sending a resume that does not hold up.</div>
+  </div>
+</section>
+
+<!-- 3. Proposed Solution -->
+<section class="slide bg-content">
+  <div class="title">Proposed Solution</div>
+  <div class="body">
+    <div class="lbl">CareerPilot AI: one scheduled loop, run daily by the candidate's own settings</div>
+    <div class="flow">
+      <div class="step"><b>Daily schedule</b><span>Runs only if left on</span></div><div class="arrow">&rarr;</div>
+      <div class="step"><b>Find roles</b><span>LinkedIn query per target role</span></div><div class="arrow">&rarr;</div>
+      <div class="step"><b>De-duplicate</b><span>Then cap to new jobs</span></div><div class="arrow">&rarr;</div>
+      <div class="step gate"><b>Match gate</b><span>Scored vs. master resume; below the user's bar, stop</span></div><div class="arrow">&rarr;</div>
+      <div class="step"><b>ATS resume</b><span>Fixed 8-section contract, validated</span></div><div class="arrow">&rarr;</div>
+      <div class="step"><b>PDF</b><span>LaTeX compile, stored</span></div><div class="arrow">&rarr;</div>
+      <div class="step"><b>Summary + board</b><span>Email, kanban to offer</span></div>
+    </div>
+    <div class="grid g3" style="margin-top:22px">
+      <div class="card"><div class="k">Fixes repetitive search</div><ul><li>Daily scheduled run per target role</li><li>Duplicates removed before the cap is applied</li><li>Kanban board from discovered to offer</li></ul></div>
+      <div class="card"><div class="k">Fixes slow tailoring</div><ul><li>Match gate spends the rewrite only on jobs above the candidate's own score</li><li>ATS-structured resume and PDF generated automatically</li><li>Cover letter and interview prep in the same workspace</li></ul></div>
+      <div class="card"><div class="k">Fixes fabrication</div><ul><li>Prompt and validator share one contract</li><li>Employers, dates, metrics, skills must trace to the source resume</li><li>Candidate reviews every resume before anything is sent</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Solution Architecture -->
+<section class="slide bg-content">
+  <div class="title">Solution Architecture</div>
+  <div class="body">
+    <div class="arch">
+      <div class="layer"><h4>Client</h4><div class="chips"><span class="chip">React + Vite SPA</span><span class="chip">Job kanban</span><span class="chip">Copilot chat</span></div></div>
+      <div class="layer"><h4>Backend (running today)</h4><div class="chips"><span class="chip">Supabase Auth</span><span class="chip">PostgreSQL + RLS</span><span class="chip">Storage</span><span class="chip">Edge Functions</span></div></div>
+      <div class="layer"><h4>Workflow engine</h4><div class="chips"><span class="chip">Run per role</span><span class="chip">Step per job</span><span class="chip">Step queue</span><span class="chip">Match gate</span></div></div>
+      <div class="layer g wide"><h4>Google AI and services</h4>
+        <div class="chips">
+          <span class="chip">Gemini API: gemini-3.6-flash (+ fallback key)</span>
+          <span class="chip">Google Docs / Drive</span>
+          <span class="chip">Gmail (apply by email)</span>
+          <span class="chip plan">Gemini Omni: resume / posting upload</span>
+          <span class="chip plan">Gemini Live: interview practice</span>
+          <span class="chip plan">Vertex AI + Cloud Run + Cloud Tasks + Scheduler</span>
+        </div>
+      </div>
+      <div class="layer wide"><h4>External data and output</h4><div class="chips"><span class="chip">Apify (LinkedIn jobs)</span><span class="chip">LaTeX compiler (PDF)</span><span class="chip">Email summary</span><span class="chip plan">Cloud SQL + Cloud Storage + Secret Manager + Firebase Hosting</span></div></div>
+    </div>
+    <div class="legend"><span><i></i>Built and running</span><span><i class="p"></i>Planned for the buildathon (Google Cloud migration path)</span></div>
+    <div class="foot">One run per target role, executed one at a time. Within a run, each job is its own step, so a long search never sits inside one request.</div>
+  </div>
+</section>
+
+<!-- 5. Google AI Tools -->
+<section class="slide bg-content">
+  <div class="title">Google AI Tools</div>
+  <div class="body">
+    <div class="grid g3">
+      <div class="card"><span class="tag plan">Planned</span><h3>Google AI Studio</h3><p>Design and evaluate the prompts behind each stage: match scoring, the ATS resume contract, cover letters, and interview briefs. Test them against real resumes before promoting them.</p></div>
+      <div class="card"><span class="tag plan">Planned</span><h3>Google Antigravity</h3><p>Build the scheduled agent steps during the buildathon: search, score, stop or tailor, PDF, and summary, with each step verifiable on its own.</p></div>
+      <div class="card"><span class="tag plan">Planned</span><h3>Google Agent Skills</h3><p>Package each stage as a reusable skill, so the loop can be extended per market, per role family, or per cohort of candidates.</p></div>
+    </div>
+    <div class="bar" style="margin-top:24px"><b>Today:</b> the product calls the Gemini API directly from Supabase Edge Functions. These three tools are the plan for the buildathon, not part of the current build.</div>
+  </div>
+</section>
+
+<!-- 6. Google AI Models -->
+<section class="slide bg-content">
+  <div class="title">Google AI Models</div>
+  <div class="body">
+    <div class="grid g3">
+      <div class="card"><span class="tag live">In production</span><h3>Gemini API</h3><p><b>gemini-3.6-flash</b> scores each job against the master resume, rewrites the resume into the ATS contract, drafts cover letters, and writes interview briefs. A second Gemini key is the automatic fallback.</p></div>
+      <div class="card"><span class="tag plan">Planned</span><h3>Gemini Omni</h3><p>Read an uploaded PDF resume or a screenshot of a job posting into the same master-resume corpus, so setup needs no retyping.</p></div>
+      <div class="card"><span class="tag plan">Planned</span><h3>Gemini Live</h3><p>Spoken interview rehearsal built on the brief the API already writes, with follow-up questions drawn from the candidate's real resume.</p></div>
+    </div>
+    <div class="bar" style="margin-top:24px"><b>Why a Flash-class model:</b> the match gate runs on every discovered job, and the rewrite runs only on jobs that pass it, so per-job cost stays low enough for a daily scheduled run.</div>
+  </div>
+</section>
+
+<!-- 7. Business model, competition, markets -->
+<section class="slide bg-content">
+  <div class="title">Business Model, Competition and Markets</div>
+  <div class="body">
+    <div class="grid g3">
+      <div class="card"><div class="k">Business model</div><ul><li><b>Free:</b> manual search, small monthly quota of tailored resumes</li><li><b>Pro:</b> scheduled daily runs, more roles, ATS review, cover letters, interview prep, apply by email</li><li><b>Credits:</b> top-ups for heavy months</li><li><b>Teams:</b> per active candidate, for bootcamps and placement cells</li></ul></div>
+      <div class="card"><div class="k">Competition</div><ul><li><b>Teal, Simplify:</b> tracking and tailoring, triggered by hand</li><li><b>LazyApply, Sonara:</b> volume auto-apply, not defensibility</li><li><b>Jobscan, Rezi:</b> keyword scores, no discovery or tracking</li><li><b>Naukri, Instahyre:</b> discovery only</li><li><b>Us:</b> the whole loop, gated by match score, validated against the source</li></ul></div>
+      <div class="card"><div class="k">Target markets</div><ul><li><b>Primary: India.</b> India-based and India-remote roles</li><li><b>Secondary: United States,</b> already the default search location</li><li><b>Next:</b> United Kingdom, Canada, Singapore on the same English-language LinkedIn pipeline</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. Thank you -->
+<section class="slide bg-thanks"></section>
+
+</body>
+</html>
